@@ -19,6 +19,8 @@ def app_factory(tmp_path, monkeypatch) -> Callable:
     """임시 DATA_DIR·SQLite로 격리된 앱 생성기. env 오버라이드 가능."""
 
     def make(**env: str):
+        # 실제 루트 .env가 테스트로 스미지 않도록 dotenv를 무효화
+        monkeypatch.setenv("FILESHARER_ENV_FILE", str(tmp_path / "no-such.env"))
         monkeypatch.setenv("APP_ENV", "test")
         monkeypatch.setenv("SECRET_KEY", "test-secret-key")
         monkeypatch.setenv("DATA_DIR", str(tmp_path / "data"))

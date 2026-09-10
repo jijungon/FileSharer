@@ -16,7 +16,7 @@ web-deps:
 
 dev: ## 로컬 개발 서버 (도커 없음): uvicorn --reload(8642) + vite dev(5173)
 	@trap 'kill 0' INT; \
-	(cd backend && .venv/bin/uvicorn app.main:app --reload --port 8642) & \
+	backend/.venv/bin/uvicorn app.main:app --app-dir backend --reload --reload-dir backend --port 8642 & \
 	(cd frontend && npm run dev) & \
 	wait
 
