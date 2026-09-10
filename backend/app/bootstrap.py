@@ -1,8 +1,11 @@
-from sqlalchemy import func, select
+from datetime import timedelta
+
+from sqlalchemy import delete as sql_delete
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from .config import get_settings
-from .models import Space, User
+from .models import ShareLink, Space, User, utcnow
 from .security import hash_password
 
 
@@ -40,8 +43,19 @@ def users_count(db: Session) -> int:
     return db.scalar(select(func.count()).select_from(User)) or 0
 
 
+def cleanup_stale_shares(db: Session) -> int:
+    """만료/회수 후 90일 지난 공유 링크 행 정리 (기동 시 하우스키핑)."""
+    cutoff = utcnow() - timedelta(days=90)
+    result = db.execute(
+        sql_delete(ShareLink).where(
+            or_(ShareLink.expires_at < cutoff, ShareLink.revoked_at < cutoff)
+        )
+    )
+    return result.rowcount or 0
+
+
 def run_bootstrap(db: Session) -> None:
-    """기동 시 1회: 전체(org) 공간 보장 + (설정 시) 최초 로컬 관리자 생성."""
+    """기동 시 1회: 전체(org) 공간 보장 + (설정 시) 최초 로컬 관리자 생성 + 링크 정리."""
     if db.scalar(select(Space).where(Space.type == "org")) is None:
         db.add(Space(type="org"))
 
@@ -56,4 +70,5 @@ def run_bootstrap(db: Session) -> None:
                 role="admin",
                 password=settings.admin_password,
             )
+    cleanup_stale_shares(db)
     db.commit()

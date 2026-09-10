@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { api, ApiError, Me } from '../lib/api'
+import { api, ApiError, Me, SpaceInfo } from '../lib/api'
+import { NodeInfo, restoreNode } from '../lib/files'
+import { formatBytes } from '../lib/format'
 
 interface AdminUser {
   id: string
@@ -19,7 +21,7 @@ interface AdminTeam {
 
 export default function Admin() {
   const navigate = useNavigate()
-  const [tab, setTab] = useState<'users' | 'teams'>('users')
+  const [tab, setTab] = useState<'users' | 'teams' | 'system'>('users')
   const [users, setUsers] = useState<AdminUser[]>([])
   const [teams, setTeams] = useState<AdminTeam[]>([])
   const [error, setError] = useState('')
@@ -81,15 +83,19 @@ export default function Admin() {
         >
           팀
         </button>
+        <button
+          className={tab === 'system' ? 'btn-primary' : 'btn-ghost'}
+          onClick={() => setTab('system')}
+        >
+          시스템
+        </button>
       </nav>
 
       {error && <p style={{ color: '#d70015', fontSize: 14 }}>{error}</p>}
 
-      {tab === 'users' ? (
-        <UsersTab users={users} onAction={run} />
-      ) : (
-        <TeamsTab teams={teams} users={users} onAction={run} />
-      )}
+      {tab === 'users' && <UsersTab users={users} onAction={run} />}
+      {tab === 'teams' && <TeamsTab teams={teams} users={users} onAction={run} />}
+      {tab === 'system' && <SystemTab onError={setError} />}
     </div>
   )
 }
@@ -329,6 +335,156 @@ function AddMember({
         추가
       </button>
     </form>
+  )
+}
+
+
+interface DiskInfo {
+  total: number
+  used: number
+  free: number
+  used_ratio: number
+  blob_bytes: number
+  warn: boolean
+  warn_ratio: number
+}
+
+interface AuditRow {
+  id: number
+  at: string | null
+  action: string
+  user: string
+  detail: string
+}
+
+function SystemTab({ onError }: { onError: (msg: string) => void }) {
+  const [disk, setDisk] = useState<DiskInfo | null>(null)
+  const [auditRows, setAuditRows] = useState<AuditRow[]>([])
+  const [actionFilter, setActionFilter] = useState('')
+  const [spaces, setSpaces] = useState<SpaceInfo[]>([])
+  const [trashSpace, setTrashSpace] = useState('')
+  const [trash, setTrash] = useState<NodeInfo[]>([])
+
+  useEffect(() => {
+    api<DiskInfo>('/api/system/disk').then(setDisk).catch(() => {})
+    api<SpaceInfo[]>('/api/spaces').then(setSpaces).catch(() => {})
+  }, [])
+
+  useEffect(() => {
+    const q = actionFilter ? `?action=${actionFilter}` : ''
+    api<AuditRow[]>(`/api/system/audit${q}`).then(setAuditRows).catch(() => {})
+  }, [actionFilter])
+
+  const loadTrash = (spaceId: string) => {
+    setTrashSpace(spaceId)
+    if (spaceId) api<NodeInfo[]>(`/api/spaces/${spaceId}/trash`).then(setTrash).catch(() => {})
+    else setTrash([])
+  }
+
+  async function act(fn: () => Promise<unknown>) {
+    try {
+      await fn()
+      if (trashSpace) loadTrash(trashSpace)
+    } catch (err) {
+      onError(err instanceof Error ? err.message : '요청 실패')
+    }
+  }
+
+  return (
+    <>
+      <Card>
+        <h3 style={{ fontSize: 21, marginBottom: 'var(--sp-sm)' }}>디스크</h3>
+        {disk && (
+          <div className="disk-card">
+            <div className="disk-bar">
+              <div
+                className={`disk-fill${disk.warn ? ' warn' : ''}`}
+                style={{ width: `${Math.round(disk.used_ratio * 100)}%` }}
+              />
+            </div>
+            <span className="muted">
+              사용 {formatBytes(disk.used)} / 전체 {formatBytes(disk.total)} (
+              {Math.round(disk.used_ratio * 100)}%) · 파일 본체 {formatBytes(disk.blob_bytes)}
+              {disk.warn && <strong style={{ color: '#d70015' }}> · 임계치 초과!</strong>}
+            </span>
+          </div>
+        )}
+      </Card>
+
+      <Card>
+        <h3 style={{ fontSize: 21, marginBottom: 'var(--sp-sm)' }}>
+          휴지통 관리 <span className="muted" style={{ fontWeight: 400 }}>(복원 / 영구 삭제)</span>
+        </h3>
+        <select value={trashSpace} onChange={(e) => loadTrash(e.target.value)}>
+          <option value="">공간 선택…</option>
+          {spaces.map((s) => (
+            <option key={s.id} value={s.id}>
+              {s.name}
+            </option>
+          ))}
+        </select>
+        <ul style={{ paddingLeft: 20 }}>
+          {trash.map((n) => (
+            <li key={n.id} style={{ marginBottom: 4 }}>
+              {n.type === 'folder' ? '📁' : '📄'} {n.name}{' '}
+              <button
+                className="login-local-toggle"
+                onClick={() => act(() => restoreNode(n.id))}
+              >
+                복원
+              </button>{' '}
+              <button
+                className="login-local-toggle"
+                style={{ color: '#d70015' }}
+                onClick={() => {
+                  if (window.confirm(`"${n.name}" 영구 삭제? 되돌릴 수 없습니다.`))
+                    act(() => api(`/api/system/nodes/${n.id}/purge`, { method: 'DELETE' }))
+                }}
+              >
+                영구 삭제
+              </button>
+            </li>
+          ))}
+          {trashSpace && trash.length === 0 && (
+            <li className="muted">이 공간의 휴지통은 비어 있습니다</li>
+          )}
+        </ul>
+      </Card>
+
+      <Card>
+        <h3 style={{ fontSize: 21, marginBottom: 'var(--sp-sm)' }}>감사 로그</h3>
+        <select value={actionFilter} onChange={(e) => setActionFilter(e.target.value)}>
+          <option value="">전체 액션</option>
+          {['upload', 'download', 'share_create', 'share_download', 'edit', 'delete', 'restore', 'purge', 'move', 'rename'].map(
+            (a) => (
+              <option key={a} value={a}>
+                {a}
+              </option>
+            ),
+          )}
+        </select>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, marginTop: 8 }}>
+          <thead>
+            <tr style={{ textAlign: 'left', color: 'var(--ink-muted-48)' }}>
+              <th style={thStyle}>시각</th>
+              <th style={thStyle}>사용자</th>
+              <th style={thStyle}>액션</th>
+              <th style={thStyle}>내용</th>
+            </tr>
+          </thead>
+          <tbody>
+            {auditRows.map((r) => (
+              <tr key={r.id} style={{ borderTop: '1px solid var(--divider-soft)' }}>
+                <td style={tdStyle}>{r.at?.slice(0, 19).replace('T', ' ')}</td>
+                <td style={tdStyle}>{r.user}</td>
+                <td style={tdStyle}>{r.action}</td>
+                <td style={tdStyle}>{r.detail}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </Card>
+    </>
   )
 }
 

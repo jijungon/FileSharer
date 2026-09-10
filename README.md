@@ -23,11 +23,18 @@ make test                 # backend ruff + pytest (same as CI)
 make prod-check           # build the prod image and smoke-test via compose (8484)
 ```
 
-## Deploy
+## Deploy (internal VM)
 
 ```bash
+# one-time: install docker, clone repo, cp .env.example .env (set real SECRET_KEY, APP_ENV=prod,
+# BASE_URL=https://<host>, Google OAuth values), register the prod redirect URI in GCP
 docker compose up -d      # proxy(Caddy, :8484) + app; state in the filesharer-data volume
 ```
+
+- HTTPS: put your hostname in `deploy/Caddyfile` (replace `:80`) and Caddy issues certs automatically.
+- Upgrade/rollback: `docker compose pull && docker compose up -d` (images on GHCR, tagged by commit).
+- Backup: `./deploy/backup.sh /opt/backups` daily via cron (keeps 14); restore with
+  `./deploy/restore.sh <file>` while stopped. Rehearse restores.
 
 CI (GitHub Actions): gitleaks secret scan → backend/frontend lint+test → Docker image
 (pushed to GHCR on main). E2E smoke (Playwright) runs on every main push and on PRs
