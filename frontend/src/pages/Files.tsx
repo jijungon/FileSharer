@@ -33,6 +33,7 @@ export default function Files() {
   const [notice, setNotice] = useState('')
   const [dropActive, setDropActive] = useState(false)
   const [fullscreen, setFullscreen] = useState(false)
+  const [bootError, setBootError] = useState('')
   const [viewerH, setViewerH] = useState(340)
   const fileInput = useRef<HTMLInputElement>(null)
   const restoredFromUrl = useRef(false)
@@ -69,7 +70,14 @@ export default function Files() {
         }
         setSpaceId((prev) => prev ?? spacesRes[0]?.id ?? null)
       } catch (err) {
-        if (err instanceof ApiError && err.status === 401) navigate('/login', { replace: true })
+        if (err instanceof ApiError && err.status === 401) {
+          navigate('/login', { replace: true })
+        } else {
+          setBootError(
+            '백엔드 API에 연결할 수 없습니다. 개발 모드라면 make dev가 떠 있는지(API: 8642), ' +
+              '배포 모드라면 앱 컨테이너 상태를 확인하세요.',
+          )
+        }
       }
     }
     boot()
@@ -210,6 +218,19 @@ export default function Files() {
     }
     e.dataTransfer.effectAllowed = 'copyMove'
   }
+
+  if (bootError)
+    return (
+      <div className="login-page">
+        <div className="login-card">
+          <h1>⚠️</h1>
+          <p>{bootError}</p>
+          <button className="btn-primary" onClick={() => window.location.reload()}>
+            다시 시도
+          </button>
+        </div>
+      </div>
+    )
 
   if (!me) return null
 

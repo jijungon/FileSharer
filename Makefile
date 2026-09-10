@@ -14,9 +14,9 @@ venv:
 web-deps:
 	@test -d frontend/node_modules || (cd frontend && npm install)
 
-dev: ## 로컬 개발 서버 (도커 없음): uvicorn --reload + vite dev
+dev: ## 로컬 개발 서버 (도커 없음): uvicorn --reload(8642) + vite dev(5173)
 	@trap 'kill 0' INT; \
-	(cd backend && .venv/bin/uvicorn app.main:app --reload --port 8000) & \
+	(cd backend && .venv/bin/uvicorn app.main:app --reload --port 8642) & \
 	(cd frontend && npm run dev) & \
 	wait
 
