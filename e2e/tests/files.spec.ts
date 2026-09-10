@@ -11,7 +11,7 @@ test('local login → browse → create folder → upload file', async ({ page }
   await page.getByRole('button', { name: '로컬 계정으로 로그인' }).click()
 
   await expect(page).toHaveURL(/\/files/)
-  await expect(page.getByRole('button', { name: /내 공간/ })).toBeVisible()
+  await expect(page.getByRole('button', { name: '🔒 내 공간' })).toBeVisible()
 
   page.once('dialog', (d) => d.accept('E2E폴더'))
   await page.getByRole('button', { name: /새 폴더/ }).click()
