@@ -66,6 +66,13 @@ def unique_name(db: Session, space_id: str, parent_id: str | None, name: str) ->
     raise HTTPException(status_code=409, detail="같은 이름이 너무 많습니다")
 
 
+def _stamp(dt) -> str | None:
+    """updated_at 비교용 스탬프 — SQLite(naive)와 메모리(aware)를 naive UTC로 통일."""
+    if dt is None:
+        return None
+    return dt.replace(tzinfo=None).isoformat()
+
+
 def node_out(node: Node) -> dict:
     return {
         "id": node.id,
@@ -75,7 +82,7 @@ def node_out(node: Node) -> dict:
         "name": node.name,
         "size": node.size,
         "mime": node.mime,
-        "updated_at": node.updated_at.isoformat() if node.updated_at else None,
+        "updated_at": _stamp(node.updated_at),
     }
 
 
@@ -397,3 +404,43 @@ def node_path(
     ancestors.reverse()
     space = db.get(Space, node.space_id)
     return {"node": node_out(node), "ancestors": ancestors, "space_id": space.id}
+
+class PutContentBody(BaseModel):
+    content: str
+    base_updated_at: str | None = None  # 낙관적 잠금: 클라이언트가 마지막으로 본 updated_at
+
+
+@router.put("/files/{node_id}/content")
+def save_content(
+    node_id: str,
+    body: PutContentBody,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+    storage: LocalStorage = Depends(get_storage),
+) -> dict:
+    node = get_node_checked(db, user, node_id)
+    if node.type != "file":
+        raise HTTPException(status_code=400, detail="파일이 아닙니다")
+
+    current_stamp = _stamp(node.updated_at)
+    if body.base_updated_at is not None and body.base_updated_at != current_stamp:
+        raise HTTPException(
+            status_code=409,
+            detail="다른 사람이 먼저 수정했습니다. 새로고침 후 다시 시도하세요",
+        )
+
+    settings = get_settings()
+    data = body.content.encode("utf-8")
+    try:
+        key, size, _sha = storage.put_bytes(data, settings.max_upload_mb * 1024 * 1024)
+    except FileTooLargeError:
+        raise HTTPException(status_code=413, detail="문서가 너무 큽니다") from None
+
+    old_key = node.storage_key
+    node.storage_key = key
+    node.size = size
+    node.updated_at = utcnow()
+    db.flush()
+    storage.delete(old_key)
+    audit.log(db, "edit", user_id=user.id, node_id=node.id, detail=node.name)
+    return node_out(node)
