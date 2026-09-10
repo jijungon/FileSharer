@@ -21,8 +21,11 @@ test('share link: create in UI, open without login, download', async ({ page, br
   await page.getByRole('button', { name: '공유 링크' }).click()
   await page.getByRole('button', { name: '링크 만들기' }).click()
 
-  const urlCode = page.locator('.share-copyrow code').first()
-  await expect(urlCode).toContainText('/s/')
+  // 행 순서와 무관하게 '순수 URL'인 code만 선택 (첫 행은 원커맨드일 수 있음)
+  const urlCode = page.locator('.share-copyrow code', {
+    hasText: /^https?:\/\/\S+\/s\/[A-Za-z0-9_-]+$/,
+  })
+  await expect(urlCode).toBeVisible()
   const shareUrl = (await urlCode.textContent())!.trim()
 
   // 비로그인 컨텍스트에서 공유 페이지 열람 + 렌더 확인
