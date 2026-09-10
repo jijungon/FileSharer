@@ -112,6 +112,7 @@ export default function Share() {
   const isImg = meta.mime.startsWith('image/')
   const isPdf = meta.mime === 'application/pdf' || extOf(meta.name) === 'pdf'
   const downloadHref = `${base}/download`
+  const oneCommand = `curl -fsSL ${window.location.origin}${base}/get | sh`
   const curl =
     meta.type === 'folder'
       ? `mkdir -p '${meta.name}' && curl -fL ${window.location.origin}${base}/tar | tar xzf - -C '${meta.name}'`
@@ -152,8 +153,8 @@ export default function Share() {
         </button>
         {showAdvanced && (
           <pre className="share-curl">
-            {curl}
-            {meta.protected ? "\n# 비밀번호 링크는: curl -u :'<비밀번호>' ..." : ''}
+            {`# 원커맨드 (다운로드+해제+검증)\n${oneCommand}\n\n# 수동\n${curl}`}
+            {meta.protected ? "\n\n# 비밀번호 링크: SHARE_PW='<비밀번호>' 를 앞에 붙이거나 curl -u :'<비밀번호>'" : ''}
           </pre>
         )}
       </main>
