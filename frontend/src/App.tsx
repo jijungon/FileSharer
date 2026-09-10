@@ -1,4 +1,5 @@
 import { Navigate, Route, Routes } from 'react-router-dom'
+import Admin from './pages/Admin'
 import Files from './pages/Files'
 import Login from './pages/Login'
 
@@ -7,6 +8,7 @@ export default function App() {
     <Routes>
       <Route path="/login" element={<Login />} />
       <Route path="/files" element={<Files />} />
+      <Route path="/admin" element={<Admin />} />
       <Route path="*" element={<Navigate to="/files" replace />} />
     </Routes>
   )
