@@ -31,3 +31,15 @@ export const saveContent = (nodeId: string, content: string, baseUpdatedAt: stri
     method: 'PUT',
     body: JSON.stringify({ content, base_updated_at: baseUpdatedAt }),
   })
+
+const IMAGE_EXTS = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp', 'avif']
+
+export function isImage(node: NodeInfo): boolean {
+  if (node.type !== 'file') return false
+  return node.mime.startsWith('image/') || IMAGE_EXTS.includes(extOf(node.name))
+}
+
+export function isPdf(node: NodeInfo): boolean {
+  if (node.type !== 'file') return false
+  return node.mime === 'application/pdf' || extOf(node.name) === 'pdf'
+}
