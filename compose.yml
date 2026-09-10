@@ -1,0 +1,26 @@
+# prod 구성: proxy(Caddy) + app 단일 이미지. 상태는 filesharer-data 볼륨 하나.
+services:
+  app:
+    build: .
+    env_file: .env
+    environment:
+      DATA_DIR: /data
+      DATABASE_URL: sqlite:////data/app.db
+    volumes:
+      - filesharer-data:/data
+    expose:
+      - "8000"
+    restart: unless-stopped
+
+  proxy:
+    image: caddy:2-alpine
+    ports:
+      - "${FILESHARER_PORT:-8484}:80"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+    depends_on:
+      - app
+    restart: unless-stopped
+
+volumes:
+  filesharer-data:

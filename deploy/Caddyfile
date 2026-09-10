@@ -1,0 +1,8 @@
+# 로컬/사내 HTTP 구성. 사내 VM에 도메인이 생기면 ":80" 대신 도메인을 적으면
+# Caddy가 자동으로 HTTPS 인증서를 발급한다 (Phase 4에서 전환).
+:80 {
+	request_body {
+		max_size 1GB
+	}
+	reverse_proxy app:8000
+}

@@ -1,0 +1,27 @@
+# dev 보조 구성 (핫리로드). 일상 개발은 도커 없이 `make dev`가 기본 — 워크플로우 문서 참고.
+services:
+  api:
+    image: python:3.13-slim
+    working_dir: /srv/backend
+    command: sh -c "pip install -e '.[dev]' && uvicorn app.main:app --reload --host 0.0.0.0 --port 8000"
+    env_file: .env
+    environment:
+      DATA_DIR: /data
+      DATABASE_URL: sqlite:////data/app.db
+    volumes:
+      - ./backend:/srv/backend
+      - dev-data:/data
+    ports:
+      - "8000:8000"
+
+  web:
+    image: node:22-alpine
+    working_dir: /web
+    command: sh -c "npm ci && npm run dev -- --host"
+    volumes:
+      - ./frontend:/web
+    ports:
+      - "5173:5173"
+
+volumes:
+  dev-data:

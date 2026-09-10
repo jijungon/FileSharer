@@ -1,0 +1,45 @@
+name: E2E smoke
+on:
+  push:
+    branches: [main]
+  pull_request:
+    types: [labeled, synchronize, opened]
+
+jobs:
+  e2e:
+    if: github.event_name == 'push' || contains(github.event.pull_request.labels.*.name, 'e2e')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: CI용 .env 구성 (example의 안전한 기본값 + 테스트 관리자)
+        run: |
+          cp .env.example .env
+          echo "ADMIN_EMAIL=e2e@test.local" >> .env
+          echo "ADMIN_PASSWORD=e2e-password-123" >> .env
+      - run: docker compose up -d --build
+      - name: 서버 기동 대기
+        run: |
+          for i in $(seq 1 30); do
+            curl -fsS http://localhost:8484/api/health && exit 0
+            sleep 2
+          done
+          echo "server did not come up" && exit 1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: cd e2e && npm ci && npx playwright install --with-deps chromium
+      - run: cd e2e && npx playwright test
+        env:
+          BASE_URL: http://localhost:8484
+      - name: 로그 수집·정리
+        if: always()
+        run: |
+          docker compose logs > compose.log || true
+          docker compose down -v
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: e2e-logs
+          path: |
+            compose.log
+            e2e/test-results/

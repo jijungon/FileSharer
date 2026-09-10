@@ -1,0 +1,195 @@
+/* ==========================================================
+   FileSharer 디자인 토큰 — 설계/DESIGN-apple.md 기반
+   단일 액센트(Action Blue), hairline 구분, 그림자 없는 크롬
+   ========================================================== */
+:root {
+  --primary: #0066cc;
+  --primary-focus: #0071e3;
+  --primary-on-dark: #2997ff;
+  --ink: #1d1d1f;
+  --ink-muted-80: #333333;
+  --ink-muted-48: #7a7a7a;
+  --divider-soft: #f0f0f0;
+  --hairline: #e0e0e0;
+  --canvas: #ffffff;
+  --canvas-parchment: #f5f5f7;
+  --surface-pearl: #fafafc;
+  --surface-tile: #272729;
+  --on-primary: #ffffff;
+  --on-dark: #ffffff;
+
+  --radius-sm: 8px;
+  --radius-md: 11px;
+  --radius-lg: 18px;
+  --radius-pill: 9999px;
+
+  --sp-xxs: 4px;
+  --sp-xs: 8px;
+  --sp-sm: 12px;
+  --sp-md: 17px;
+  --sp-lg: 24px;
+  --sp-xl: 32px;
+
+  font-family:
+    'Pretendard Variable', Pretendard, -apple-system, BlinkMacSystemFont, system-ui, 'Inter',
+    sans-serif;
+  color: var(--ink);
+  background: var(--canvas-parchment);
+  font-size: 17px;
+  line-height: 1.47;
+  letter-spacing: -0.374px;
+  -webkit-font-smoothing: antialiased;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+}
+
+h1,
+h2,
+h3 {
+  font-weight: 600;
+  margin: 0;
+}
+
+a {
+  color: var(--primary);
+  text-decoration: none;
+}
+
+button {
+  font: inherit;
+  cursor: pointer;
+  border: none;
+  transition: transform 0.12s ease;
+}
+
+button:active {
+  transform: scale(0.95);
+}
+
+button:focus-visible {
+  outline: 2px solid var(--primary-focus);
+  outline-offset: 2px;
+}
+
+/* --- 버튼 문법 2종 --- */
+.btn-primary {
+  background: var(--primary);
+  color: var(--on-primary);
+  border-radius: var(--radius-pill);
+  padding: 11px 22px;
+  font-size: 17px;
+}
+
+.btn-utility {
+  background: var(--ink);
+  color: var(--on-dark);
+  border-radius: var(--radius-sm);
+  padding: 8px 15px;
+  font-size: 14px;
+  letter-spacing: -0.224px;
+}
+
+.btn-ghost {
+  background: transparent;
+  color: var(--primary);
+  border: 1px solid var(--primary);
+  border-radius: var(--radius-pill);
+  padding: 11px 22px;
+  font-size: 17px;
+}
+
+/* --- 로그인 화면 --- */
+.login-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--canvas-parchment);
+}
+
+.login-card {
+  background: var(--canvas);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-lg);
+  padding: 48px 40px;
+  width: min(400px, 90vw);
+  text-align: center;
+}
+
+.login-card h1 {
+  font-size: 34px;
+  letter-spacing: -0.374px;
+  margin-bottom: var(--sp-xxs);
+}
+
+.login-card .tagline {
+  color: var(--ink-muted-48);
+  font-size: 14px;
+  letter-spacing: -0.224px;
+  margin-bottom: var(--sp-xl);
+}
+
+.login-google {
+  width: 100%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+.login-divider {
+  margin: var(--sp-lg) 0;
+  color: var(--ink-muted-48);
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.login-divider::before,
+.login-divider::after {
+  content: '';
+  flex: 1;
+  border-top: 1px solid var(--divider-soft);
+}
+
+.login-local {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-sm);
+}
+
+.login-local input {
+  font: inherit;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  padding: 12px 16px;
+  background: var(--surface-pearl);
+}
+
+.login-local input:focus-visible {
+  outline: 2px solid var(--primary-focus);
+  outline-offset: 0;
+  background: var(--canvas);
+}
+
+.login-error {
+  color: #d70015;
+  font-size: 14px;
+  min-height: 20px;
+  margin-top: var(--sp-xs);
+}
+
+.login-local-toggle {
+  background: none;
+  color: var(--primary);
+  font-size: 14px;
+  padding: 0;
+}

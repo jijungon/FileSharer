@@ -1,0 +1,67 @@
+# ============================================================
+# FileSharer .gitignore — PUBLIC 레포 전제 (2026-09-10 선작성)
+# 원칙: 사용자 데이터 · 비밀정보 · 사내 문서는 어떤 경우에도 커밋하지 않는다
+# ============================================================
+
+# --- 1) 서비스 데이터: 업로드 파일·DB (절대 커밋 금지) ---
+data/
+*.db
+*.sqlite
+*.sqlite3
+*.db-wal
+*.db-shm
+backups/
+
+# --- 2) 비밀정보: 환경변수·키 (절대 커밋 금지) ---
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets/
+
+# --- 3) 사내 기획/계획 문서 — PUBLIC 레포에 올리지 않음 (로컬 보관) ---
+FileSharer-프로젝트.md
+설계/
+
+# --- 4) Python (backend) ---
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+*.egg-info/
+
+# --- 5) Node / Vite (frontend) ---
+node_modules/
+frontend/dist/
+.vite/
+.eslintcache
+npm-debug.log*
+
+# --- 6) E2E / 테스트 산출물 ---
+e2e/test-results/
+e2e/playwright-report/
+compose.log
+
+# --- 7) Docker 로컬 오버라이드 ---
+compose.override.yml
+docker-compose.override.yml
+
+# --- 8) OS / IDE ---
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+
+# --- 9) AI 도구 로컬 설정 ---
+.claude/settings.local.json
+CLAUDE.local.md
+
+# --- 10) 안전망: 레포 내부에 worktree를 만들 경우 대비 ---
+.worktrees/
