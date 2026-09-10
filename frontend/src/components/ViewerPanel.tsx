@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { ApiError } from '../lib/api'
 import { downloadUrl, NodeInfo } from '../lib/files'
 import { formatBytes } from '../lib/format'
-import { fetchText, isMarkdown, isTextFile, saveContent } from '../lib/markdown'
+import { fetchText, isImage, isMarkdown, isPdf, isTextFile, saveContent } from '../lib/markdown'
 import MarkdownPreview from './MarkdownPreview'
 
 const AUTOSAVE_KEY = 'filesharer.autosave'
@@ -20,7 +20,34 @@ interface Props {
 
 export default function ViewerPanel(props: Props) {
   if (isTextFile(props.node)) return <TextEditor {...props} key={props.node.id} />
+  if (isImage(props.node)) return <MediaPreview {...props} kind="image" key={props.node.id} />
+  if (isPdf(props.node)) return <MediaPreview {...props} kind="pdf" key={props.node.id} />
   return <DownloadCard {...props} />
+}
+
+function MediaPreview({ node, onClose, kind }: Props & { kind: 'image' | 'pdf' }) {
+  return (
+    <div className="editor-shell">
+      <div className="editor-toolbar">
+        <span className="editor-name">{node.name}</span>
+        <span className="editor-status">{formatBytes(node.size)}</span>
+        <span className="toolbar-spacer" />
+        <a href={downloadUrl(node)}>
+          <button className="btn-utility">다운로드</button>
+        </a>
+        <button className="btn-utility" onClick={onClose}>
+          닫기
+        </button>
+      </div>
+      {kind === 'image' ? (
+        <div className="image-preview">
+          <img src={`/api/files/${node.id}/raw`} alt={node.name} />
+        </div>
+      ) : (
+        <iframe className="pdf-frame" src={`/api/files/${node.id}/raw`} title={node.name} />
+      )}
+    </div>
+  )
 }
 
 function DownloadCard({ node, onClose }: Props) {

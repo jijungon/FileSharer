@@ -149,6 +149,18 @@ export default function Files() {
     await guard(() => createFolder(spaceId, currentFolder?.id ?? null, name))
   }
 
+  async function onNewMd() {
+    const raw = window.prompt('새 MD 문서 이름', '새 문서.md')
+    if (!raw || !spaceId) return
+    const name = raw.endsWith('.md') ? raw : `${raw}.md`
+    const title = name.replace(/\.md$/, '')
+    const file = new File([`# ${title}\n\n`], name, { type: 'text/markdown' })
+    const created = await guard(() =>
+      uploadFile({ spaceId, parentId: currentFolder?.id ?? null }, file),
+    )
+    if (created) selectNode(created)
+  }
+
   async function uploadAll(files: FileList | File[]) {
     if (!spaceId) return
     for (const file of Array.from(files)) {
@@ -280,6 +292,9 @@ export default function Files() {
                 </button>
                 <button className="btn-utility" onClick={() => fileInput.current?.click()}>
                   ↑ 업로드
+                </button>
+                <button className="btn-utility" onClick={onNewMd}>
+                  ✎ 새 MD
                 </button>
                 <input
                   ref={fileInput}
