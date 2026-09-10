@@ -13,7 +13,6 @@ e2e/
 설계/
 FileSharer-프로젝트.md
 *.md
-!backend/README.md
 compose*.yml
 Makefile
 .github/
