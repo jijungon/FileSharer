@@ -1,4 +1,6 @@
-import { FormEvent, useState } from 'react'
+import { FormEvent, useEffect, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
+import { api } from '../lib/api'
 
 const GOOGLE_ICON = (
   <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true">
@@ -9,31 +11,39 @@ const GOOGLE_ICON = (
   </svg>
 )
 
+const CALLBACK_ERRORS: Record<string, string> = {
+  forbidden_domain: '사내 구글 계정으로만 로그인할 수 있습니다.',
+  disabled: '비활성화된 계정입니다. 관리자에게 문의하세요.',
+  oauth_failed: '구글 로그인에 실패했습니다. 다시 시도해 주세요.',
+}
+
 export default function Login() {
+  const [params] = useSearchParams()
+  const [googleEnabled, setGoogleEnabled] = useState(true)
   const [showLocal, setShowLocal] = useState(false)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [error, setError] = useState('')
+  const [error, setError] = useState(() => CALLBACK_ERRORS[params.get('error') ?? ''] ?? '')
   const [busy, setBusy] = useState(false)
+
+  useEffect(() => {
+    api<{ google_enabled: boolean }>('/api/auth/config')
+      .then((cfg) => setGoogleEnabled(cfg.google_enabled))
+      .catch(() => setGoogleEnabled(false))
+  }, [])
 
   async function submitLocal(e: FormEvent) {
     e.preventDefault()
     setBusy(true)
     setError('')
     try {
-      const res = await fetch('/api/auth/login', {
+      await api('/api/auth/login', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),
       })
-      if (res.ok) {
-        window.location.href = '/files'
-      } else {
-        const body = await res.json().catch(() => null)
-        setError(body?.detail ?? '로그인에 실패했습니다.')
-      }
-    } catch {
-      setError('서버에 연결할 수 없습니다.')
+      window.location.href = '/files'
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '로그인에 실패했습니다.')
     } finally {
       setBusy(false)
     }
@@ -45,11 +55,17 @@ export default function Login() {
         <h1>FileSharer</h1>
         <p className="tagline">사내 파일 공유 · MD 뷰어</p>
 
-        <a href="/api/auth/google">
-          <button className="btn-primary login-google" type="button">
-            {GOOGLE_ICON} Google로 로그인
-          </button>
-        </a>
+        {googleEnabled ? (
+          <a href="/api/auth/google">
+            <button className="btn-primary login-google" type="button">
+              {GOOGLE_ICON} Google로 로그인
+            </button>
+          </a>
+        ) : (
+          <p style={{ color: 'var(--ink-muted-48)', fontSize: 14 }}>
+            구글 로그인이 아직 설정되지 않았습니다.
+          </p>
+        )}
 
         <div className="login-divider">또는</div>
 
@@ -74,13 +90,13 @@ export default function Login() {
             <button className="btn-ghost" type="submit" disabled={busy}>
               로컬 계정으로 로그인
             </button>
-            <div className="login-error">{error}</div>
           </form>
         ) : (
           <button className="login-local-toggle" type="button" onClick={() => setShowLocal(true)}>
             로컬 계정으로 로그인 (관리자·비상용)
           </button>
         )}
+        <div className="login-error">{error}</div>
       </div>
     </div>
   )
