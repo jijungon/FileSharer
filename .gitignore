@@ -37,7 +37,7 @@ htmlcov/
 *.egg-info/
 
 # --- 5) Node / Vite (frontend) ---
-node_modules/
+node_modules
 frontend/dist/
 .vite/
 .eslintcache
