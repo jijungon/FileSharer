@@ -768,3 +768,27 @@ button:focus-visible {
   font-size: 13px;
   overflow-x: auto;
 }
+
+/* --- 시스템 탭: 디스크 바 --- */
+.disk-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-xs);
+}
+
+.disk-bar {
+  height: 10px;
+  border-radius: var(--radius-pill);
+  background: var(--divider-soft);
+  overflow: hidden;
+}
+
+.disk-fill {
+  height: 100%;
+  background: var(--primary);
+  border-radius: var(--radius-pill);
+}
+
+.disk-fill.warn {
+  background: #d70015;
+}
