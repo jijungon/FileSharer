@@ -8,6 +8,7 @@ export default function App() {
     <Routes>
       <Route path="/login" element={<Login />} />
       <Route path="/files" element={<Files />} />
+      <Route path="/files/:nodeId" element={<Files />} />
       <Route path="/admin" element={<Admin />} />
       <Route path="*" element={<Navigate to="/files" replace />} />
     </Routes>
