@@ -63,10 +63,22 @@ def auth_config(settings: Settings = Depends(get_settings)) -> dict:
     return {"google_enabled": bool(settings.google_client_id and settings.google_client_secret)}
 
 
+def _return_origin(request: Request) -> str:
+    """로그인을 시작한 오리진 — dev면 vite(5173), prod면 공개 호스트."""
+    return str(request.base_url).rstrip("/")
+
+
+def _redirect_after_login(origin: str, path: str) -> RedirectResponse:
+    target = f"{origin}{path}" if origin else path
+    return RedirectResponse(target)
+
+
 @router.get("/google")
 async def google_login(request: Request):
     settings = get_settings()
     client = _google_client(settings)
+    # 콜백은 백엔드 오리진(8642 등)으로 돌아오므로, 끝나면 시작 오리진으로 복귀시킨다
+    request.session["post_login_origin"] = _return_origin(request)
     redirect_uri = settings.base_url.rstrip("/") + "/api/auth/google/callback"
     return await client.authorize_redirect(request, redirect_uri)
 
@@ -75,18 +87,19 @@ async def google_login(request: Request):
 async def google_callback(request: Request, db: Session = Depends(get_db)):
     settings = get_settings()
     client = _google_client(settings)
+    origin = request.session.pop("post_login_origin", "")
     try:
         token = await client.authorize_access_token(request)
     except OAuthError:
-        return RedirectResponse("/login?error=oauth_failed")
+        return _redirect_after_login(origin, "/login?error=oauth_failed")
 
     claims = token.get("userinfo") or {}
     try:
         user = resolve_google_user(db, dict(claims), settings.allowed_google_domain.lower())
     except DomainNotAllowedError:
-        return RedirectResponse("/login?error=forbidden_domain")
+        return _redirect_after_login(origin, "/login?error=forbidden_domain")
     except AccountDisabledError:
-        return RedirectResponse("/login?error=disabled")
+        return _redirect_after_login(origin, "/login?error=disabled")
 
     request.session["uid"] = user.id
-    return RedirectResponse("/files")
+    return _redirect_after_login(origin, "/files")

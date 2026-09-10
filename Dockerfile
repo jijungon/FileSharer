@@ -21,4 +21,5 @@ COPY --from=web /web/dist ./static
 USER app
 VOLUME /data
 EXPOSE 8000
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# --proxy-headers: Caddy 뒤에서 올바른 scheme/host로 리다이렉트 생성
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips", "*"]
