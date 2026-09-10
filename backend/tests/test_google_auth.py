@@ -84,3 +84,16 @@ def test_provisioned_user_gets_personal_space(client, db):
 
     user = db.query(User).filter_by(email=f"space@{DOMAIN}").one()
     assert db.query(Space).filter_by(type="personal", user_id=user.id).count() == 1
+
+
+def test_redirect_after_login_uses_saved_origin():
+    from app.api.google_auth import _redirect_after_login
+
+    res = _redirect_after_login("http://localhost:5173", "/files")
+    assert res.headers["location"] == "http://localhost:5173/files"
+
+    err = _redirect_after_login("http://localhost:5173", "/login?error=disabled")
+    assert err.headers["location"] == "http://localhost:5173/login?error=disabled"
+
+    # 오리진이 없으면(비정상 플로우) 상대 경로 폴백
+    assert _redirect_after_login("", "/files").headers["location"] == "/files"
