@@ -3,7 +3,7 @@ services:
   api:
     image: python:3.13-slim
     working_dir: /srv/backend
-    command: sh -c "pip install -e '.[dev]' && uvicorn app.main:app --reload --host 0.0.0.0 --port 8000"
+    command: sh -c "pip install -e '.[dev]' && uvicorn app.main:app --reload --host 0.0.0.0 --port 8642"
     env_file: .env
     environment:
       DATA_DIR: /data
@@ -12,7 +12,7 @@ services:
       - ./backend:/srv/backend
       - dev-data:/data
     ports:
-      - "8000:8000"
+      - "8642:8642"
 
   web:
     image: node:22-alpine

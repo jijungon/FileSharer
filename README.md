@@ -18,7 +18,7 @@ All state lives in one `/data` volume (blobs + SQLite).
 ```bash
 cp .env.example .env      # fill in values (never committed)
 make bootstrap            # venv + node_modules
-make dev                  # uvicorn --reload (8000) + vite dev (5173)
+make dev                  # uvicorn --reload (8642) + vite dev (5173)
 make test                 # backend ruff + pytest (same as CI)
 make prod-check           # build the prod image and smoke-test via compose (8484)
 ```
