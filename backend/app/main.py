@@ -5,6 +5,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.staticfiles import StaticFiles
 
+from .api.admin import router as admin_router
 from .api.auth import me_router
 from .api.auth import router as auth_router
 from .api.google_auth import router as google_router
@@ -42,6 +43,7 @@ def create_app() -> FastAPI:
 
     app.include_router(auth_router)
     app.include_router(me_router)
+    app.include_router(admin_router)
     app.include_router(google_router)
     app.include_router(spaces_router)
 

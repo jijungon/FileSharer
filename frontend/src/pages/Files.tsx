@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { api, ApiError, Me, SpaceInfo } from '../lib/api'
 
 export default function Files() {
@@ -38,6 +38,11 @@ export default function Files() {
         <h2>FileSharer</h2>
         <div style={{ display: 'flex', gap: 'var(--sp-sm)', alignItems: 'center' }}>
           <span style={{ color: 'var(--ink-muted-48)', fontSize: 14 }}>{me.email}</span>
+          {me.role === 'admin' && (
+            <Link to="/admin">
+              <button className="btn-utility">관리</button>
+            </Link>
+          )}
           <button className="btn-utility" onClick={logout}>
             로그아웃
           </button>
