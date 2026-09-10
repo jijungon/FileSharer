@@ -16,6 +16,7 @@ jobs:
           cp .env.example .env
           echo "ADMIN_EMAIL=e2e@test.local" >> .env
           echo "ADMIN_PASSWORD=e2e-password-123" >> .env
+          echo "BASE_URL=http://localhost:8484" >> .env
       - run: docker compose up -d --build
       - name: 서버 기동 대기
         run: |

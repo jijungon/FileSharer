@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import SharePopover from './SharePopover'
 import { SpaceInfo } from '../lib/api'
 import { downloadUrl, NodeInfo } from '../lib/files'
 
@@ -12,6 +13,7 @@ interface Props {
 
 export default function LinkBar({ space, path, selected, onNavigate, onDropToCrumb }: Props) {
   const [copied, setCopied] = useState(false)
+  const [shareOpen, setShareOpen] = useState(false)
 
   const target = selected ?? (path.length > 0 ? path[path.length - 1] : null)
 
@@ -70,9 +72,16 @@ export default function LinkBar({ space, path, selected, onNavigate, onDropToCru
             </button>
           </>
         )}
-        <button className="btn-primary linkbar-share" disabled title="공유 링크는 다음 단계에서 열립니다">
+        <button
+          className="btn-primary linkbar-share"
+          disabled={!target}
+          onClick={() => setShareOpen((v) => !v)}
+        >
           공유 링크
         </button>
+        {shareOpen && target && (
+          <SharePopover node={target} onClose={() => setShareOpen(false)} />
+        )}
       </div>
     </div>
   )
