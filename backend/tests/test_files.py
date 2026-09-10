@@ -266,3 +266,50 @@ def test_node_path_for_deeplink(admin_client):
     assert res["node"]["name"] == "deep.txt"
     assert [n["name"] for n in res["ancestors"]] == ["A", "B"]
     assert res["space_id"] == pid
+
+
+# ---------- MD 편집 저장 (낙관적 잠금) ----------
+
+
+def test_save_content_roundtrip_and_conflict(admin_client):
+    sp = spaces_of(admin_client)
+    node = upload(
+        admin_client, f"/api/spaces/{sp['personal']['id']}/files", "문서.md", b"# v1"
+    ).json()
+
+    saved = admin_client.put(
+        f"/api/files/{node['id']}/content",
+        json={"content": "# v2 수정", "base_updated_at": node["updated_at"]},
+    )
+    assert saved.status_code == 200
+    fresh = saved.json()
+    assert fresh["updated_at"] != node["updated_at"]
+    assert admin_client.get(f"/api/files/{node['id']}/raw").text == "# v2 수정"
+
+    # 낡은 base로 저장하면 409
+    stale = admin_client.put(
+        f"/api/files/{node['id']}/content",
+        json={"content": "# v3", "base_updated_at": node["updated_at"]},
+    )
+    assert stale.status_code == 409
+
+    # 최신 base로는 성공
+    ok = admin_client.put(
+        f"/api/files/{node['id']}/content",
+        json={"content": "# v3", "base_updated_at": fresh["updated_at"]},
+    )
+    assert ok.status_code == 200
+
+
+def test_save_content_requires_space_permission(admin_client, db):
+    setup_people(admin_client, db)
+    a_spaces = as_user(admin_client, "a@test.local")
+    node = upload(
+        admin_client, f"/api/spaces/{a_spaces['personal']['id']}/files", "개인.md", b"x"
+    ).json()
+
+    as_user(admin_client, "b@test.local")
+    res = admin_client.put(
+        f"/api/files/{node['id']}/content", json={"content": "해킹", "base_updated_at": None}
+    )
+    assert res.status_code == 403

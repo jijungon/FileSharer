@@ -414,3 +414,191 @@ button:focus-visible {
   color: var(--ink-muted-48);
   padding: 48px 0 !important;
 }
+
+/* --- 뷰어·편집기 (T자 하단) --- */
+.vsplit-handle {
+  height: 6px;
+  cursor: row-resize;
+  background: var(--canvas-parchment);
+  border-top: 1px solid var(--hairline);
+  flex-shrink: 0;
+}
+
+.vsplit-handle:hover {
+  background: var(--divider-soft);
+}
+
+.viewer-area {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--canvas);
+  border-top: 1px solid var(--hairline);
+  min-height: 0;
+}
+
+.editor-shell {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.editor-toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-sm);
+  padding: 8px var(--sp-lg);
+  border-bottom: 1px solid var(--divider-soft);
+  background: var(--surface-pearl);
+}
+
+.editor-name {
+  font-weight: 600;
+  font-size: 15px;
+}
+
+.editor-status {
+  font-size: 13px;
+  color: var(--ink-muted-48);
+}
+
+.editor-status.dirty {
+  color: var(--primary);
+}
+
+.toolbar-spacer {
+  flex: 1;
+}
+
+.autosave-toggle {
+  font-size: 13px;
+  color: var(--ink-muted-80);
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+}
+
+.conflict-banner {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-sm);
+  padding: 8px var(--sp-lg);
+  background: #fff4e5;
+  border-bottom: 1px solid #f0ddc0;
+  font-size: 14px;
+}
+
+.editor-split {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.editor-pane {
+  min-width: 0;
+  overflow: auto;
+  border-right: none;
+}
+
+.editor-pane .cm-editor {
+  height: 100%;
+  font-size: 14px;
+}
+
+.split-handle {
+  width: 6px;
+  cursor: col-resize;
+  background: var(--canvas-parchment);
+  flex-shrink: 0;
+}
+
+.split-handle:hover {
+  background: var(--divider-soft);
+}
+
+.preview-pane {
+  min-width: 0;
+  overflow: auto;
+  background: var(--canvas);
+}
+
+.md-preview {
+  padding: var(--sp-md) var(--sp-lg);
+  max-width: 860px;
+}
+
+.md-preview pre {
+  background: var(--surface-tile);
+  color: var(--on-dark);
+  padding: var(--sp-md);
+  border-radius: var(--radius-sm);
+  overflow-x: auto;
+}
+
+.md-preview pre code {
+  background: none;
+}
+
+.md-preview code {
+  background: var(--divider-soft);
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-size: 0.9em;
+}
+
+.md-preview table {
+  border-collapse: collapse;
+}
+
+.md-preview th,
+.md-preview td {
+  border: 1px solid var(--hairline);
+  padding: 6px 12px;
+}
+
+.md-preview img {
+  max-width: 100%;
+}
+
+.plain-preview {
+  padding: var(--sp-md) var(--sp-lg);
+  font-size: 14px;
+  white-space: pre-wrap;
+}
+
+.mermaid-block {
+  margin: var(--sp-md) 0;
+}
+
+.mermaid-error {
+  color: #d70015;
+  font-size: 13px;
+}
+
+/* 다운로드 카드 (미리보기 불가 형식) */
+.viewer-card-wrap {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.viewer-card {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-md);
+  background: var(--canvas);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-lg);
+  padding: var(--sp-lg) var(--sp-xl);
+}
+
+.viewer-card-icon {
+  font-size: 40px;
+}
+
+.viewer-card-name {
+  font-weight: 600;
+}

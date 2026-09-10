@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import LinkBar from '../components/LinkBar'
+import ViewerPanel from '../components/ViewerPanel'
 import { api, ApiError, Me, SpaceInfo } from '../lib/api'
 import { downloadUrlData, supportsDragOut } from '../lib/dragout'
 import { formatBytes } from '../lib/format'
@@ -31,6 +32,8 @@ export default function Files() {
   const [trashMode, setTrashMode] = useState(false)
   const [notice, setNotice] = useState('')
   const [dropActive, setDropActive] = useState(false)
+  const [fullscreen, setFullscreen] = useState(false)
+  const [viewerH, setViewerH] = useState(340)
   const fileInput = useRef<HTMLInputElement>(null)
   const restoredFromUrl = useRef(false)
 
@@ -101,6 +104,7 @@ export default function Files() {
     setSpaceId(id)
     setPath([])
     setSelected(null)
+    setFullscreen(false)
     setTrashMode(false)
     navigate('/files')
   }
@@ -118,6 +122,7 @@ export default function Files() {
 
   function crumbNavigate(index: number | null) {
     setSelected(null)
+    setFullscreen(false)
     if (index === null) {
       setPath([])
       navigate('/files')
@@ -171,6 +176,21 @@ export default function Files() {
     )
   }
 
+  function viewerDrag(e: React.PointerEvent) {
+    e.preventDefault()
+    const startY = e.clientY
+    const startH = viewerH
+    function move(ev: PointerEvent) {
+      setViewerH(Math.min(window.innerHeight * 0.75, Math.max(180, startH + (startY - ev.clientY))))
+    }
+    function up() {
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', up)
+    }
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', up)
+  }
+
   function rowDragStart(e: React.DragEvent, node: NodeInfo) {
     e.dataTransfer.setData('application/x-node-id', node.id)
     if (supportsDragOut()) {
@@ -211,7 +231,7 @@ export default function Files() {
         onDropToCrumb={(id, idx) => onMove(id, idx === null ? null : path[idx].id)}
       />
 
-      <div className="workspace">
+      <div className="workspace" style={{ display: fullscreen && selected ? 'none' : undefined }}>
         <aside className="sidebar">
           {spaces.map((s) => (
             <button
@@ -365,6 +385,31 @@ export default function Files() {
           </table>
         </main>
       </div>
+
+      {selected && selected.type === 'file' && !trashMode && (
+        <>
+          {!fullscreen && <div className="vsplit-handle" onPointerDown={viewerDrag} />}
+          <div
+            className="viewer-area"
+            style={fullscreen ? { flex: 1, minHeight: 0 } : { height: viewerH }}
+          >
+            <ViewerPanel
+              node={selected}
+              fullscreen={fullscreen}
+              onToggleFullscreen={() => setFullscreen((f) => !f)}
+              onNodeUpdated={(fresh) => {
+                setSelected(fresh)
+                reload()
+              }}
+              onClose={() => {
+                setSelected(null)
+                setFullscreen(false)
+                navigate(currentFolder ? `/files/${currentFolder.id}` : '/files')
+              }}
+            />
+          </div>
+        </>
+      )}
     </div>
   )
 }
