@@ -75,14 +75,21 @@ export default function SharePopover({ node, onClose }: { node: NodeInfo; onClos
 
       {created ? (
         <div className="share-result">
-          <label className="share-label">공유 URL (만료 {days}일)</label>
+          <label className="share-label">원커맨드 — VM·터미널에서 한 줄로 받기+해제</label>
+          <div className="share-copyrow">
+            <code>{created.get_command}</code>
+            <button className="btn-primary" onClick={() => copy(created.get_command, 'get')}>
+              {copied === 'get' ? '복사됨 ✓' : '복사'}
+            </button>
+          </div>
+          <label className="share-label">공유 URL (브라우저용, 만료 {days}일)</label>
           <div className="share-copyrow">
             <code>{created.url}</code>
             <button className="btn-utility" onClick={() => copy(created.url, 'url')}>
               {copied === 'url' ? '복사됨 ✓' : '복사'}
             </button>
           </div>
-          <label className="share-label">터미널(VM)에서 받기</label>
+          <label className="share-label">수동 명령 (고급)</label>
           <div className="share-copyrow">
             <code>{curlCommand}</code>
             <button className="btn-utility" onClick={() => copy(curlCommand, 'curl')}>

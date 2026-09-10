@@ -1,0 +1,49 @@
+#!/bin/sh
+# FileSharer 원커맨드 받기 — 의존성: curl, tar, sh (alpine/미니멀 VM 호환)
+# 사용: curl -fsSL <url>/get | sh [-s -- -C <대상디렉토리>]
+# 비밀번호 링크: SHARE_PW=<pw> curl -fsSL <url>/get | sh
+set -eu
+
+BASE="__BASE__"
+TOKEN="__TOKEN__"
+TYPE="__TYPE__"
+NAME="__NAME__"
+SHA="__SHA256__"
+
+DEST="."
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -C) DEST="$2"; shift 2 ;;
+    *) echo "usage: curl -fsSL .../get | sh -s -- [-C dir]" >&2; exit 2 ;;
+  esac
+done
+
+AUTH_USER=""
+[ -n "${SHARE_PW:-}" ] && AUTH_USER=":${SHARE_PW}"
+
+mkdir -p "$DEST"
+
+if [ "$TYPE" = "folder" ]; then
+  echo "-> ${NAME}/ (tar.gz stream)"
+  if [ -n "$AUTH_USER" ]; then
+    curl -fsSL -u "$AUTH_USER" "$BASE/s/$TOKEN/tar" | tar xzf - -C "$DEST"
+  else
+    curl -fsSL "$BASE/s/$TOKEN/tar" | tar xzf - -C "$DEST"
+  fi
+  echo "ok: $DEST/$NAME"
+else
+  echo "-> $NAME"
+  if [ -n "$AUTH_USER" ]; then
+    curl -fsSL -u "$AUTH_USER" -o "$DEST/$NAME" "$BASE/s/$TOKEN/download"
+  else
+    curl -fsSL -o "$DEST/$NAME" "$BASE/s/$TOKEN/download"
+  fi
+  if [ -n "$SHA" ]; then
+    if command -v sha256sum >/dev/null 2>&1; then
+      echo "$SHA  $DEST/$NAME" | sha256sum -c - >/dev/null && echo "ok: sha256"
+    elif command -v shasum >/dev/null 2>&1; then
+      echo "$SHA  $DEST/$NAME" | shasum -a 256 -c - >/dev/null && echo "ok: sha256"
+    fi
+  fi
+  echo "ok: $DEST/$NAME"
+fi
