@@ -5,7 +5,12 @@ from fastapi.responses import FileResponse, JSONResponse
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.staticfiles import StaticFiles
 
+from .api.auth import me_router
+from .api.auth import router as auth_router
+from .api.spaces import router as spaces_router
+from .bootstrap import run_bootstrap
 from .config import get_settings
+from .db import build_engine, make_sessionmaker, run_migrations
 
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 
@@ -15,7 +20,14 @@ def create_app() -> FastAPI:
     settings.validate_prod()
     Path(settings.data_dir, "blobs").mkdir(parents=True, exist_ok=True)
 
+    run_migrations(settings.database_url)
+    engine = build_engine(settings.database_url)
+    SessionLocal = make_sessionmaker(engine)
+    with SessionLocal() as db:
+        run_bootstrap(db)
+
     app = FastAPI(title="FileSharer", docs_url=None, redoc_url=None)
+    app.state.sessionmaker = SessionLocal
     app.add_middleware(
         SessionMiddleware,
         secret_key=settings.secret_key,
@@ -26,6 +38,10 @@ def create_app() -> FastAPI:
     @app.get("/api/health")
     def health() -> dict:
         return {"ok": True, "app": "filesharer"}
+
+    app.include_router(auth_router)
+    app.include_router(me_router)
+    app.include_router(spaces_router)
 
     # 빌드된 SPA 서빙 (frontend/dist -> backend/static). API 외 경로는 index.html로 폴백.
     if STATIC_DIR.exists():

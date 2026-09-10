@@ -34,6 +34,7 @@ target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "W", "UP", "B"]
+ignore = ["B008"]  # FastAPI Depends(...) 기본 인자 관용구
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
