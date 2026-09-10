@@ -248,3 +248,21 @@ def test_folder_tar_download(admin_client):
         assert names == ["배포", "배포/모델.bin", "배포/설정", "배포/설정/config.yml"]
         member = tar.extractfile("배포/설정/config.yml")
         assert member is not None and member.read() == b"key: v"
+
+
+# ---------- 딥링크 경로 ----------
+
+
+def test_node_path_for_deeplink(admin_client):
+    sp = spaces_of(admin_client)
+    pid = sp["personal"]["id"]
+    a = admin_client.post("/api/nodes", json={"space_id": pid, "name": "A"}).json()
+    b = admin_client.post(
+        "/api/nodes", json={"space_id": pid, "parent_id": a["id"], "name": "B"}
+    ).json()
+    f = upload(admin_client, f"/api/nodes/{b['id']}/files", "deep.txt").json()
+
+    res = admin_client.get(f"/api/nodes/{f['id']}/path").json()
+    assert res["node"]["name"] == "deep.txt"
+    assert [n["name"] for n in res["ancestors"]] == ["A", "B"]
+    assert res["space_id"] == pid

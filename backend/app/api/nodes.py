@@ -380,3 +380,20 @@ def restore_node(
     node.deleted_at = None
     audit.log(db, "restore", user_id=user.id, node_id=node.id, detail=node.name)
     return node_out(node)
+
+@router.get("/nodes/{node_id}/path")
+def node_path(
+    node_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)
+) -> dict:
+    """딥링크 복원용: 노드 + 조상 폴더 경로(루트→직전) + 공간."""
+    node = get_node_checked(db, user, node_id)
+    ancestors: list[dict] = []
+    current = db.get(Node, node.parent_id) if node.parent_id else None
+    hops = 0
+    while current is not None and hops < 100:
+        ancestors.append(node_out(current))
+        current = db.get(Node, current.parent_id) if current.parent_id else None
+        hops += 1
+    ancestors.reverse()
+    space = db.get(Space, node.space_id)
+    return {"node": node_out(node), "ancestors": ancestors, "space_id": space.id}
