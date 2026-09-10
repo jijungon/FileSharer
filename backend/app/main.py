@@ -10,6 +10,8 @@ from .api.auth import me_router
 from .api.auth import router as auth_router
 from .api.google_auth import router as google_router
 from .api.nodes import router as nodes_router
+from .api.public import router as public_router
+from .api.shares import router as shares_router
 from .api.spaces import router as spaces_router
 from .bootstrap import run_bootstrap
 from .config import get_settings
@@ -48,6 +50,8 @@ def create_app() -> FastAPI:
     app.include_router(google_router)
     app.include_router(spaces_router)
     app.include_router(nodes_router)
+    app.include_router(shares_router)
+    app.include_router(public_router)
 
     # 빌드된 SPA 서빙 (frontend/dist -> backend/static). API 외 경로는 index.html로 폴백.
     if STATIC_DIR.exists():
