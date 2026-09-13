@@ -97,3 +97,29 @@ def test_redirect_after_login_uses_saved_origin():
 
     # 오리진이 없으면(비정상 플로우) 상대 경로 폴백
     assert _redirect_after_login("", "/files").headers["location"] == "/files"
+
+
+def test_return_origin_prefers_frontend_url(app_factory):
+    """FRONTEND_URL이 설정되면 요청 오리진과 무관하게 그것으로 복귀한다."""
+
+    class _Req:
+        base_url = "http://localhost:8642/"
+
+    app_factory(FRONTEND_URL="http://localhost:5173")
+    from app.api.google_auth import _return_origin
+    from app.config import get_settings
+
+    assert _return_origin(get_settings(), _Req()) == "http://localhost:5173"
+
+
+def test_return_origin_falls_back_to_request(app_factory):
+    """FRONTEND_URL이 없으면 요청 오리진(prod same-origin)."""
+
+    class _Req:
+        base_url = "https://files.example.com/"
+
+    app_factory()  # FRONTEND_URL 미설정 (side effect: env + settings cache)
+    from app.api.google_auth import _return_origin
+    from app.config import get_settings
+
+    assert _return_origin(get_settings(), _Req()) == "https://files.example.com"

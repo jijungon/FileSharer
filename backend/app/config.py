@@ -18,6 +18,9 @@ class Settings(BaseSettings):
     app_env: str = "dev"
     secret_key: str = "dev-only-not-for-prod"
     base_url: str = "http://localhost:8000"
+    # 로그인 후 돌아갈 프론트 오리진. dev(SPA=5173, API=8642)처럼 오리진이 다를 때만 지정.
+    # prod는 same-origin이므로 비워둔다(상대경로 리다이렉트).
+    frontend_url: str = ""
     data_dir: str = "./data"
     database_url: str = "sqlite:///./data/app.db"
     max_upload_mb: int = 1024

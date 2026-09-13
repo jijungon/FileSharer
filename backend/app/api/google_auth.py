@@ -63,8 +63,13 @@ def auth_config(settings: Settings = Depends(get_settings)) -> dict:
     return {"google_enabled": bool(settings.google_client_id and settings.google_client_secret)}
 
 
-def _return_origin(request: Request) -> str:
-    """로그인을 시작한 오리진 — dev면 vite(5173), prod면 공개 호스트."""
+def _return_origin(settings: Settings, request: Request) -> str:
+    """로그인 후 돌아갈 오리진.
+    1) FRONTEND_URL이 설정돼 있으면 그것(dev의 5173 등, 결정론적).
+    2) 없으면 요청 오리진(prod same-origin이면 자기 자신).
+    """
+    if settings.frontend_url:
+        return settings.frontend_url.rstrip("/")
     return str(request.base_url).rstrip("/")
 
 
@@ -77,8 +82,6 @@ def _redirect_after_login(origin: str, path: str) -> RedirectResponse:
 async def google_login(request: Request):
     settings = get_settings()
     client = _google_client(settings)
-    # 콜백은 백엔드 오리진(8642 등)으로 돌아오므로, 끝나면 시작 오리진으로 복귀시킨다
-    request.session["post_login_origin"] = _return_origin(request)
     redirect_uri = settings.base_url.rstrip("/") + "/api/auth/google/callback"
     return await client.authorize_redirect(request, redirect_uri)
 
@@ -87,7 +90,7 @@ async def google_login(request: Request):
 async def google_callback(request: Request, db: Session = Depends(get_db)):
     settings = get_settings()
     client = _google_client(settings)
-    origin = request.session.pop("post_login_origin", "")
+    origin = _return_origin(settings, request)
     try:
         token = await client.authorize_access_token(request)
     except OAuthError:
