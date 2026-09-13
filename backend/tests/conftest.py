@@ -27,6 +27,7 @@ def app_factory(tmp_path, monkeypatch) -> Callable:
         monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path / 'test.db'}")
         monkeypatch.setenv("GOOGLE_CLIENT_ID", "")
         monkeypatch.setenv("GOOGLE_CLIENT_SECRET", "")
+        monkeypatch.setenv("FRONTEND_URL", "")
         for key, value in env.items():
             monkeypatch.setenv(key, value)
         monkeypatch.chdir(tmp_path)
