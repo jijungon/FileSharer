@@ -19,7 +19,7 @@ async function loginAsAdmin(page) {
 
 test('image preview renders inline', async ({ page }) => {
   await loginAsAdmin(page)
-  await page.locator('input[type="file"]').setInputFiles({
+  await page.locator('input[type="file"]:not([webkitdirectory])').setInputFiles({
     name: '픽셀.png',
     mimeType: 'image/png',
     buffer: PNG,
