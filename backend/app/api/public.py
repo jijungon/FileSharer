@@ -83,7 +83,7 @@ def share_download(
     path = storage.path_for(node.storage_key)
     if not path.is_file():
         raise HTTPException(status_code=410, detail="파일 본체가 없습니다")
-    consume_download(db, share)
+    consume_download(db, share, request)
     audit.log(db, "share_download", node_id=node.id, detail=node.name)
     return FileResponse(
         path,
@@ -106,7 +106,7 @@ def share_tar(
     check_password(request, share)
     if node.type != "folder":
         raise HTTPException(status_code=400, detail="폴더가 아닙니다")
-    consume_download(db, share)
+    consume_download(db, share, request)
     audit.log(db, "share_download", node_id=node.id, detail=f"{node.name} (tar)")
     entries = list(collect_tar_entries(db, storage, node))
     return StreamingResponse(

@@ -864,3 +864,53 @@ button:focus-visible {
 .sort-caret {
   font-size: 9px;
 }
+
+/* --- 자동저장 슬라이드 토글 스위치 --- */
+.autosave-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--ink-muted-80);
+  cursor: pointer;
+}
+
+.switch {
+  position: relative;
+  width: 38px;
+  height: 22px;
+  border-radius: var(--radius-pill);
+  background: var(--hairline);
+  padding: 0;
+  transition: background 0.15s ease;
+  flex-shrink: 0;
+}
+
+.switch.on {
+  background: var(--primary);
+}
+
+.switch-knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+  transition: transform 0.15s ease;
+}
+
+.switch.on .switch-knob {
+  transform: translateX(16px);
+}
+
+.switch:active {
+  transform: none;
+}
+
+.switch:focus-visible {
+  outline: 2px solid var(--primary-focus);
+  outline-offset: 2px;
+}

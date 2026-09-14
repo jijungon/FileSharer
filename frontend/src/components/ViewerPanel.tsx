@@ -213,7 +213,17 @@ function TextEditor({ node, fullscreen, onToggleFullscreen, onNodeUpdated, onClo
         <span className={`editor-status${dirty && !saving ? ' dirty' : ''}`}>{status}</span>
         <span className="toolbar-spacer" />
         <label className="autosave-toggle">
-          <input type="checkbox" checked={autosave} onChange={toggleAutosave} /> 자동저장
+          <span>자동저장</span>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={autosave}
+            className={`switch${autosave ? ' on' : ''}`}
+            onClick={toggleAutosave}
+            title={autosave ? '자동저장 켜짐' : '자동저장 꺼짐'}
+          >
+            <span className="switch-knob" />
+          </button>
         </label>
         <button className="btn-utility" onClick={() => doSave()} disabled={saving || !dirty}>
           저장 ⌘S

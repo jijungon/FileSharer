@@ -162,3 +162,27 @@ def test_share_url_uses_frontend_url_when_set(app_factory):
         body = c.post(f"/api/nodes/{node['id']}/shares", json={}).json()
         assert body["url"].startswith("http://localhost:5173/s/")
         assert body["get_command"].startswith("curl -fsSL http://localhost:5173/s/")
+
+
+def test_range_continuation_does_not_consume_download(admin_client):
+    """Range 이어받기 조각(bytes=N-, N>0)은 다운로드 횟수를 소비하지 않는다."""
+    _, res = make_file_share(admin_client, b"0123456789", max_downloads=2)
+    token = res.json()["token"]
+    admin_client.post("/api/auth/logout")
+
+    ok = (200, 206)
+    # ① 전체 다운로드 1회 → 카운트 1
+    assert admin_client.get(f"/s/{token}/download").status_code == 200
+    # ② 이어받기 조각(bytes=3-) 여러 번 → 카운트 안 됨(남은 1회 유지)
+    for _ in range(5):
+        assert admin_client.get(
+            f"/s/{token}/download", headers={"Range": "bytes=3-"}
+        ).status_code in ok
+    # ③ bytes=0- (새 다운로드 시작)은 카운트 → 2회째, 한도 소진
+    assert admin_client.get(f"/s/{token}/download", headers={"Range": "bytes=0-"}).status_code in ok
+    # ④ 한도(2) 소진 후 전체 다운로드는 410
+    assert admin_client.get(f"/s/{token}/download").status_code == 410
+    # ⑤ 하지만 이어받기 조각은 진행 중 다운로드 보호를 위해 여전히 통과
+    assert admin_client.get(
+        f"/s/{token}/download", headers={"Range": "bytes=5-"}
+    ).status_code in ok
