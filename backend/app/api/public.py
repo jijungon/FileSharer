@@ -154,5 +154,6 @@ def share_get_script(
         .replace("__TYPE__", node.type)
         .replace("__NAME__", _sh_escape(name))
         .replace("__SHA256__", sha)
+        .replace("__PROTECTED__", "1" if share.password_hash is not None else "0")
     )
     return PlainTextResponse(script, media_type="text/x-sh; charset=utf-8")
