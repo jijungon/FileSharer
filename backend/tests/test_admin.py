@@ -147,3 +147,41 @@ def test_delete_team_blocked_when_files_present(admin_client):
 
 def test_delete_nonexistent_team(admin_client):
     assert admin_client.delete("/api/teams/nope").status_code == 404
+
+
+def test_force_delete_team_with_files(admin_client):
+    import io
+
+    me = admin_client.get("/api/me").json()
+    team = admin_client.post("/api/teams", json={"name": "강제팀"}).json()
+    admin_client.post(f"/api/teams/{team['id']}/members", json={"user_id": me["id"]})
+    tsp = _team_space_id(admin_client, team["id"])
+    # 폴더 + 하위 파일 + 공유까지 만들어 둔다
+    folder = admin_client.post("/api/nodes", json={"space_id": tsp, "name": "f"}).json()
+    admin_client.post(
+        f"/api/nodes/{folder['id']}/files",
+        files={"file": ("t.txt", io.BytesIO(b"x"), "text/plain")},
+    )
+    admin_client.post(
+        f"/api/spaces/{tsp}/files", files={"file": ("r.txt", io.BytesIO(b"y"), "text/plain")}
+    )
+    nid = admin_client.get(f"/api/spaces/{tsp}/children").json()[0]["id"]
+    admin_client.post(f"/api/nodes/{nid}/shares", json={})
+
+    # 일반 삭제는 409
+    assert admin_client.delete(f"/api/teams/{team['id']}").status_code == 409
+    # force=true면 파일까지 지우고 팀 삭제
+    assert admin_client.delete(f"/api/teams/{team['id']}?force=true").status_code == 200
+    assert admin_client.get("/api/teams").json() == []
+    assert not any(s["type"] == "team" for s in admin_client.get("/api/spaces").json())
+
+
+def test_force_delete_requires_admin(admin_client, db):
+    from app.bootstrap import create_user
+
+    team = admin_client.post("/api/teams", json={"name": "권한팀"}).json()
+    create_user(db, email="np3@test.local", password="pw-123456")
+    db.commit()
+    admin_client.post("/api/auth/logout")
+    login(admin_client, "np3@test.local", "pw-123456")
+    assert admin_client.delete(f"/api/teams/{team['id']}?force=true").status_code == 403
