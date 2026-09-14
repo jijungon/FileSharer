@@ -13,7 +13,7 @@ from ..deps import get_db, require_admin
 from ..models import AuditLog, Node, ShareLink, User
 from ..services import audit
 from ..services.permissions import get_node_checked
-from ..services.storage import LocalStorage
+from ..services.storage import StorageBackend, build_storage
 
 router = APIRouter(prefix="/api/system", tags=["system"])
 
@@ -67,7 +67,7 @@ def audit_log(
     ]
 
 
-def _purge_subtree(db: Session, storage: LocalStorage, node: Node) -> int:
+def _purge_subtree(db: Session, storage: StorageBackend, node: Node) -> int:
     """노드 서브트리를 영구 삭제 — blob·공유 링크·행 제거. 반환: 삭제 행 수."""
     count = 0
     children = db.scalars(select(Node).where(Node.parent_id == node.id)).all()
@@ -90,7 +90,7 @@ def purge_node(
     node = get_node_checked(db, admin, node_id, include_deleted=True)
     if node.deleted_at is None:
         raise HTTPException(status_code=400, detail="휴지통에 있는 항목만 영구 삭제할 수 있습니다")
-    storage = LocalStorage(get_settings().data_dir)
+    storage = build_storage(get_settings())
     removed = _purge_subtree(db, storage, node)
     audit.log(db, "purge", user_id=admin.id, node_id=node_id, detail=f"{node.name} ({removed})")
     return {"ok": True, "removed": removed}

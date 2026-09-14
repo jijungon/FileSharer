@@ -20,7 +20,11 @@ from ..services.permissions import (
 )
 from ..services.serving import content_disposition as _content_disposition
 from ..services.serving import serve_blob
-from ..services.storage import FileTooLargeError, LocalStorage
+from ..services.storage import (
+    FileTooLargeError,
+    StorageBackend,
+    build_storage,
+)
 from ..services.tar_stream import stream_tar_gz
 
 router = APIRouter(prefix="/api", tags=["files"])
@@ -50,8 +54,8 @@ def media_type_for(node: Node) -> str:
     return _EXTRA_MIME.get(ext) or mimetypes.guess_type(node.name)[0] or "application/octet-stream"
 
 
-def get_storage() -> LocalStorage:
-    return LocalStorage(get_settings().data_dir)
+def get_storage() -> StorageBackend:
+    return build_storage(get_settings())
 
 
 def clean_name(raw: str) -> str:
@@ -235,7 +239,7 @@ def _do_upload(
 ) -> dict:
     parent_id = _resolve_upload_parent(db, user, space, parent_id, rel_path)
     settings = get_settings()
-    storage = LocalStorage(settings.data_dir)
+    storage = build_storage(settings)
     try:
         key, size, sha = storage.put_stream(
             upload.file, settings.max_upload_mb * 1024 * 1024
@@ -289,7 +293,7 @@ def upload_to_folder(
     space = db.get(Space, parent.space_id)
     return _do_upload(db, user, space, parent.id, file, rel_path)
 
-def _node_sha256(storage: LocalStorage, node: Node) -> str:
+def _node_sha256(storage: StorageBackend, node: Node) -> str:
     """업로드 때 저장한 sha가 있으면 그걸, 없으면(구 데이터) 계산."""
     return node.sha256 or storage.sha256(node.storage_key)
 
@@ -300,7 +304,7 @@ def download_file(
     request: Request,
     user: User = Depends(current_user),
     db: Session = Depends(get_db),
-    storage: LocalStorage = Depends(get_storage),
+    storage: StorageBackend = Depends(get_storage),
 ):
     node = get_node_checked(db, user, node_id)
     if node.type != "file":
@@ -323,7 +327,7 @@ def raw_file(
     request: Request,
     user: User = Depends(current_user),
     db: Session = Depends(get_db),
-    storage: LocalStorage = Depends(get_storage),
+    storage: StorageBackend = Depends(get_storage),
 ):
     node = get_node_checked(db, user, node_id)
     if node.type != "file":
@@ -350,7 +354,7 @@ def office_preview(
     node_id: str,
     user: User = Depends(current_user),
     db: Session = Depends(get_db),
-    storage: LocalStorage = Depends(get_storage),
+    storage: StorageBackend = Depends(get_storage),
 ):
     """오피스 문서(PPT·워드·엑셀 등)를 PDF로 변환해 미리보기용으로 내려준다."""
     node = get_node_checked(db, user, node_id)
@@ -376,8 +380,8 @@ def office_preview(
     )
 
 
-def collect_tar_entries(db: Session, storage: LocalStorage, root: Node):
-    """폴더 서브트리를 (경로|None, 아카이브명)으로 평탄화 — 삭제 항목 제외."""
+def collect_tar_entries(db: Session, root: Node):
+    """폴더 서브트리를 (파일 노드|None(=디렉토리), 아카이브명)으로 평탄화 — 삭제 항목 제외."""
     def walk(node: Node, prefix: str):
         children = db.scalars(
             select(Node).where(
@@ -391,9 +395,7 @@ def collect_tar_entries(db: Session, storage: LocalStorage, root: Node):
                 yield (None, arcname)
                 yield from walk(child, arcname)
             else:
-                path = storage.path_for(child.storage_key)
-                if path.is_file():
-                    yield (path, arcname)
+                yield (child, arcname)
 
     yield (None, root.name)
     yield from walk(root, root.name)
@@ -404,16 +406,16 @@ def download_folder_tar(
     node_id: str,
     user: User = Depends(current_user),
     db: Session = Depends(get_db),
-    storage: LocalStorage = Depends(get_storage),
+    storage: StorageBackend = Depends(get_storage),
 ):
     node = get_node_checked(db, user, node_id)
     if node.type != "folder":
         raise HTTPException(status_code=400, detail="폴더가 아닙니다")
-    entries = list(collect_tar_entries(db, storage, node))
+    entries = list(collect_tar_entries(db, node))
     audit.log(db, "tar_download", user_id=user.id, node_id=node.id, detail=node.name)
     filename = f"{node.name}.tar.gz"
     return StreamingResponse(
-        stream_tar_gz(entries),
+        stream_tar_gz(storage, entries),
         media_type="application/gzip",
         headers={"Content-Disposition": _content_disposition("attachment", filename)},
     )
@@ -474,7 +476,7 @@ def _move_subtree_space(db: Session, node: Node, space_id: str) -> None:
 
 def _copy_node(
     db: Session,
-    storage: LocalStorage,
+    storage: StorageBackend,
     user: User,
     src: Node,
     target_space_id: str,
@@ -519,7 +521,7 @@ def copy_node(
     body: CopyNodeBody,
     user: User = Depends(current_user),
     db: Session = Depends(get_db),
-    storage: LocalStorage = Depends(get_storage),
+    storage: StorageBackend = Depends(get_storage),
 ) -> dict:
     """노드를 다른 공간(또는 폴더)으로 복사 — 원본은 그대로. 출발·도착 공간 모두 접근 가능해야."""
     src = get_node_checked(db, user, node_id)  # 출발 공간 접근 확인 포함
@@ -603,7 +605,7 @@ def save_content(
     body: PutContentBody,
     user: User = Depends(current_user),
     db: Session = Depends(get_db),
-    storage: LocalStorage = Depends(get_storage),
+    storage: StorageBackend = Depends(get_storage),
 ) -> dict:
     node = get_node_checked(db, user, node_id)
     if node.type != "file":
