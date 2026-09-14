@@ -7,16 +7,19 @@ from .models import User
 
 
 def get_db(request: Request) -> Iterator[Session]:
+    """요청 세션. 성공 시 커밋은 미들웨어(commit_db_middleware)가 응답 전송 '전에' 수행한다.
+    (FastAPI의 yield 의존성 teardown은 응답 전송 '후'에 돌아, 방금 만든 자원을 곧바로
+    조회하면 커밋 전이라 404가 나던 read-after-write 경합을 피하기 위함.)
+    예외 시에는 여기서 즉시 롤백한다.
+    """
     SessionLocal = request.app.state.sessionmaker
     db = SessionLocal()
+    request.state.db = db
     try:
         yield db
-        db.commit()
     except Exception:
         db.rollback()
         raise
-    finally:
-        db.close()
 
 
 def current_user(request: Request, db: Session = Depends(get_db)) -> User:

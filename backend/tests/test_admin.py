@@ -95,3 +95,55 @@ def test_remove_member_revokes_space(admin_client):
 
     # 비팀원의 팀원 열람은 403
     assert admin_client.get(f"/api/teams/{team['id']}/members").status_code == 403
+
+
+def _team_space_id(client, team_id):
+    # 팀원으로서 팀 공간 id 조회
+    return next(s["id"] for s in client.get("/api/spaces").json() if s["type"] == "team")
+
+
+def test_delete_empty_team(admin_client):
+    me = admin_client.get("/api/me").json()
+    team = admin_client.post("/api/teams", json={"name": "지울팀"}).json()
+    admin_client.post(f"/api/teams/{team['id']}/members", json={"user_id": me["id"]})
+    # 팀 공간이 보인다
+    assert any(s["type"] == "team" for s in admin_client.get("/api/spaces").json())
+
+    res = admin_client.delete(f"/api/teams/{team['id']}")
+    assert res.status_code == 200
+    # 팀 목록·공간에서 사라진다
+    assert admin_client.get("/api/teams").json() == []
+    assert not any(s["type"] == "team" for s in admin_client.get("/api/spaces").json())
+
+
+def test_delete_team_requires_admin(admin_client, db):
+    from app.bootstrap import create_user
+
+    team = admin_client.post("/api/teams", json={"name": "보호팀"}).json()
+    create_user(db, email="member2@test.local", password="pw-123456")
+    db.commit()
+    admin_client.post("/api/auth/logout")
+    login(admin_client, "member2@test.local", "pw-123456")
+    assert admin_client.delete(f"/api/teams/{team['id']}").status_code == 403
+
+
+def test_delete_team_blocked_when_files_present(admin_client):
+    import io
+
+    me = admin_client.get("/api/me").json()
+    team = admin_client.post("/api/teams", json={"name": "파일팀"}).json()
+    admin_client.post(f"/api/teams/{team['id']}/members", json={"user_id": me["id"]})
+    tsp = _team_space_id(admin_client, team["id"])
+    admin_client.post(
+        f"/api/spaces/{tsp}/files", files={"file": ("t.txt", io.BytesIO(b"x"), "text/plain")}
+    )
+    # 활성 파일이 있으면 409
+    assert admin_client.delete(f"/api/teams/{team['id']}").status_code == 409
+    # 비우면(휴지통) 삭제 가능
+    nid = admin_client.get(f"/api/spaces/{tsp}/children").json()[0]["id"]
+    admin_client.delete(f"/api/nodes/{nid}")
+    assert admin_client.delete(f"/api/teams/{team['id']}").status_code == 200
+
+
+def test_delete_nonexistent_team(admin_client):
+    assert admin_client.delete("/api/teams/nope").status_code == 404

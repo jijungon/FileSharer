@@ -266,7 +266,26 @@ function TeamsTab({
 
       {teams.map((team) => (
         <Card key={team.id}>
-          <h3 style={{ fontSize: 21, marginBottom: 'var(--sp-sm)' }}>{team.name}</h3>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              marginBottom: 'var(--sp-sm)',
+            }}
+          >
+            <h3 style={{ fontSize: 21 }}>{team.name}</h3>
+            <button
+              className="btn-utility"
+              style={{ background: '#d70015' }}
+              onClick={() => {
+                if (window.confirm(`팀 "${team.name}"을(를) 삭제할까요? (팀 공간이 비어 있어야 합니다)`))
+                  onAction(() => api(`/api/teams/${team.id}`, { method: 'DELETE' }))
+              }}
+            >
+              팀 삭제
+            </button>
+          </div>
           <ul style={{ paddingLeft: 20 }}>
             {team.members.map((m) => (
               <li key={m.id} style={{ marginBottom: 4 }}>

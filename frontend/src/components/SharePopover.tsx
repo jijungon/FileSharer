@@ -57,12 +57,16 @@ export default function SharePopover({ node, onClose }: { node: NodeInfo; onClos
     setTimeout(() => setCopied(''), 1500)
   }
 
+  // 공유 URL은 지금 보고 있는 브라우저 오리진 기준으로 만든다 —
+  // dev(5173)·prod(동일 오리진) 모두 그 오리진에서 열리고 curl도 그 오리진으로 동작한다.
+  const shareUrl = created ? `${window.location.origin}/s/${created.token}` : ''
+  const getCommand = created ? `curl -fsSL ${shareUrl}/get | sh` : ''
   const pw = created?.protected // 비번 링크면 -u :'<비밀번호>' 를 붙여 안내
   const auth = pw ? ` -u :'<비밀번호>'` : ''
   const curlCommand = created
     ? node.type === 'folder'
-      ? `mkdir -p '${node.name}' && curl -fL${auth} ${created.url}/tar | tar xzf - -C '${node.name}'`
-      : `curl -fLOJ${auth} ${created.url}/download`
+      ? `mkdir -p '${node.name}' && curl -fL${auth} ${shareUrl}/tar | tar xzf - -C '${node.name}'`
+      : `curl -fLOJ${auth} ${shareUrl}/download`
     : ''
 
   return (
@@ -79,8 +83,8 @@ export default function SharePopover({ node, onClose }: { node: NodeInfo; onClos
         <div className="share-result">
           <label className="share-label">원커맨드 — VM·터미널에서 한 줄로 받기+해제</label>
           <div className="share-copyrow">
-            <code>{created.get_command}</code>
-            <button className="btn-primary" onClick={() => copy(created.get_command, 'get')}>
+            <code>{getCommand}</code>
+            <button className="btn-primary" onClick={() => copy(getCommand, 'get')}>
               {copied === 'get' ? '복사됨 ✓' : '복사'}
             </button>
           </div>
@@ -92,8 +96,8 @@ export default function SharePopover({ node, onClose }: { node: NodeInfo; onClos
           )}
           <label className="share-label">공유 URL (브라우저용, 만료 {days}일)</label>
           <div className="share-copyrow">
-            <code>{created.url}</code>
-            <button className="btn-utility" onClick={() => copy(created.url, 'url')}>
+            <code>{shareUrl}</code>
+            <button className="btn-utility" onClick={() => copy(shareUrl, 'url')}>
               {copied === 'url' ? '복사됨 ✓' : '복사'}
             </button>
           </div>
