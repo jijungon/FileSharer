@@ -1,7 +1,18 @@
-"""스토리지 추상화 — v1은 로컬 디스크(blobs/<uuid>), 추후 S3 호환(R2/MinIO) 어댑터 교체 지점."""
+"""스토리지 추상화.
 
+v1은 로컬 디스크(blobs/<uuid>). 원격(S3 호환 R2/MinIO) 어댑터는 StorageBackend를
+구현해 교체한다. 서빙·오피스변환·tar는 이 인터페이스만 쓰고 로컬 경로에 의존하지 않는다
+(local_copy로 필요할 때만 로컬 파일을 확보).
+"""
+
+import contextlib
 import hashlib
+import io
+import shutil
+import tempfile
 import uuid
+from abc import ABC, abstractmethod
+from collections.abc import Iterator
 from pathlib import Path
 from typing import BinaryIO
 
@@ -12,7 +23,66 @@ class FileTooLargeError(Exception):
     pass
 
 
-class LocalStorage:
+class StorageBackend(ABC):
+    """blob 저장소 인터페이스. 키는 불투명한 문자열(로컬은 uuid 파일명, R2는 객체 키)."""
+
+    @abstractmethod
+    def put_stream(self, stream: BinaryIO, max_bytes: int) -> tuple[str, int, str]:
+        """스트리밍 저장. 반환: (storage_key, size, sha256)."""
+
+    def put_bytes(self, data: bytes, max_bytes: int) -> tuple[str, int, str]:
+        return self.put_stream(io.BytesIO(data), max_bytes)
+
+    @abstractmethod
+    def exists(self, key: str) -> bool: ...
+
+    @abstractmethod
+    def size(self, key: str) -> int: ...
+
+    @abstractmethod
+    def open_stream(self, key: str) -> BinaryIO:
+        """처음부터 끝까지 읽는 바이너리 스트림."""
+
+    def open_range(self, key: str, start: int, length: int) -> BinaryIO:
+        """start부터 length바이트 범위를 읽는 스트림. 기본은 open_stream + seek(로컬용).
+        원격 백엔드는 get_object(Range=...)로 오버라이드해 효율화한다."""
+        stream = self.open_stream(key)
+        if start:
+            stream.seek(start)
+        return stream
+
+    @abstractmethod
+    def copy_blob(self, key: str) -> str:
+        """기존 blob을 새 키로 복제하고 새 키를 반환."""
+
+    @abstractmethod
+    def delete(self, key: str) -> None: ...
+
+    @abstractmethod
+    def sha256(self, key: str) -> str:
+        """저장된 blob의 sha256 (가능하면 업로드 때 저장한 값을 쓰고 호출을 피한다)."""
+
+    def local_path(self, key: str) -> Path | None:
+        """로컬 파일 경로가 있으면 반환(로컬 백엔드). 원격이면 None."""
+        return None
+
+    @contextlib.contextmanager
+    def local_copy(self, key: str) -> Iterator[Path]:
+        """로컬 파일이 꼭 필요한 작업(LibreOffice 변환, tar 묶기)용.
+        로컬 백엔드면 원본 경로를 그대로, 원격이면 임시파일로 내려받아 제공."""
+        local = self.local_path(key)
+        if local is not None:
+            yield local
+            return
+        with tempfile.NamedTemporaryFile(delete=True) as tmp:
+            with self.open_stream(key) as src:
+                while chunk := src.read(CHUNK):
+                    tmp.write(chunk)
+            tmp.flush()
+            yield Path(tmp.name)
+
+
+class LocalStorage(StorageBackend):
     def __init__(self, data_dir: str | Path):
         self.blob_dir = Path(data_dir) / "blobs"
         self.blob_dir.mkdir(parents=True, exist_ok=True)
@@ -20,8 +90,19 @@ class LocalStorage:
     def path_for(self, key: str) -> Path:
         return self.blob_dir / key
 
+    def local_path(self, key: str) -> Path | None:
+        return self.path_for(key)
+
+    def exists(self, key: str) -> bool:
+        return bool(key) and self.path_for(key).is_file()
+
+    def size(self, key: str) -> int:
+        return self.path_for(key).stat().st_size
+
+    def open_stream(self, key: str) -> BinaryIO:
+        return self.path_for(key).open("rb")
+
     def put_stream(self, stream: BinaryIO, max_bytes: int) -> tuple[str, int, str]:
-        """스트리밍 저장 (메모리 상수). 반환: (storage_key, size, sha256)."""
         key = uuid.uuid4().hex
         target = self.path_for(key)
         digest = hashlib.sha256()
@@ -39,16 +120,7 @@ class LocalStorage:
             raise
         return key, size, digest.hexdigest()
 
-    def put_bytes(self, data: bytes, max_bytes: int) -> tuple[str, int, str]:
-        import io
-
-        return self.put_stream(io.BytesIO(data), max_bytes)
-
     def copy_blob(self, key: str) -> str:
-        """기존 blob을 새 키로 복제하고 새 키를 돌려준다 (파일 복사용)."""
-        import shutil
-        import uuid
-
         new_key = uuid.uuid4().hex
         shutil.copyfile(self.path_for(key), self.path_for(new_key))
         return new_key

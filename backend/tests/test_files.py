@@ -54,6 +54,19 @@ def test_upload_download_roundtrip(admin_client):
     assert "inline" in raw.headers["content-disposition"]
 
 
+def test_upload_stores_sha256_for_checksum(admin_client):
+    """업로드 때 sha를 저장하고, 다운로드 체크섬은 그 값을 쓴다(원격서 재다운로드 방지)."""
+    import hashlib
+
+    sp = spaces_of(admin_client)
+    content = b"checksum-me-123"
+    node = upload(
+        admin_client, f"/api/spaces/{sp['personal']['id']}/files", "c.bin", content
+    ).json()
+    res = admin_client.get(f"/api/files/{node['id']}")
+    assert res.headers["X-Checksum-SHA256"] == hashlib.sha256(content).hexdigest()
+
+
 def test_folder_upload_creates_and_reuses_path(admin_client):
     """rel_path 업로드는 중간 폴더를 만들고, 같은 경로의 두 번째 파일은 그 폴더를 재사용한다."""
     sp = spaces_of(admin_client)
