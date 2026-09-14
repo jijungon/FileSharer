@@ -24,6 +24,13 @@ class Settings(BaseSettings):
     data_dir: str = "./data"
     database_url: str = "sqlite:///./data/app.db"
     max_upload_mb: int = 1024
+    # 스토리지 백엔드: local | r2. r2면 아래 R2_* 값이 필요하다.
+    storage_backend: str = "local"
+    r2_account_id: str = ""
+    r2_access_key_id: str = ""
+    r2_secret_access_key: str = ""
+    r2_bucket: str = ""
+    r2_endpoint: str = ""  # 비우면 account_id로 구성
     share_default_days: int = 7
     share_max_days: int = 30
     disk_warn_ratio: float = 0.8
