@@ -109,6 +109,20 @@ def space_children(
     return _children(db, space.id, None)
 
 
+@router.get("/spaces/{space_id}/folders")
+def space_folders(
+    space_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)
+) -> list[dict]:
+    """공간의 모든 폴더(비삭제)를 평면 목록으로 — 사이드바 폴더 트리 구성용."""
+    space = get_space_checked(db, user, space_id)
+    rows = db.scalars(
+        select(Node)
+        .where(Node.space_id == space.id, Node.type == "folder", Node.deleted_at.is_(None))
+        .order_by(Node.name)
+    ).all()
+    return [{"id": n.id, "name": n.name, "parent_id": n.parent_id} for n in rows]
+
+
 @router.get("/nodes/{node_id}/children")
 def node_children(
     node_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)
