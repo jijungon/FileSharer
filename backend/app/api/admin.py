@@ -1,11 +1,15 @@
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import delete as sql_delete
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from ..bootstrap import create_user
+from ..config import get_settings
 from ..deps import current_user, get_db, require_admin
-from ..models import Space, Team, TeamMember, User, utcnow
+from ..models import Node, ShareLink, Space, Team, TeamMember, User, utcnow
+from ..services import audit
+from ..services.storage import LocalStorage
 
 router = APIRouter(prefix="/api", tags=["admin"])
 
@@ -170,6 +174,49 @@ def remove_member(
     team = db.get(Team, team_id)
     db.flush()
     return _team_out(db, team)
+
+
+@router.delete("/teams/{team_id}")
+def delete_team(
+    team_id: str,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> dict:
+    """팀 삭제 — 팀 공간에 활성 파일이 있으면 거부(먼저 비우게). 빈 팀이면 공간·멤버십까지 정리."""
+    team = db.get(Team, team_id)
+    if team is None:
+        raise HTTPException(status_code=404, detail="팀이 없습니다")
+    team_name = team.name
+
+    space = db.scalar(select(Space).where(Space.type == "team", Space.team_id == team_id))
+
+    if space is not None:
+        active = db.scalar(
+            select(Node).where(Node.space_id == space.id, Node.deleted_at.is_(None)).limit(1)
+        )
+        if active is not None:
+            raise HTTPException(
+                status_code=409,
+                detail="팀 공간에 파일이 남아 있어 삭제할 수 없습니다. 먼저 비워 주세요",
+            )
+
+        # 남은(휴지통) 노드의 blob·공유 링크·행 정리
+        node_ids = list(db.scalars(select(Node.id).where(Node.space_id == space.id)))
+        if node_ids:
+            storage = LocalStorage(get_settings().data_dir)
+            for node in db.scalars(select(Node).where(Node.id.in_(node_ids))):
+                if node.type == "file" and node.storage_key:
+                    storage.delete(node.storage_key)
+            db.execute(sql_delete(ShareLink).where(ShareLink.node_id.in_(node_ids)))
+            # 자기참조(parent_id) FK를 먼저 끊고 일괄 삭제
+            db.execute(update(Node).where(Node.space_id == space.id).values(parent_id=None))
+            db.execute(sql_delete(Node).where(Node.space_id == space.id))
+        db.delete(space)
+
+    db.execute(sql_delete(TeamMember).where(TeamMember.team_id == team_id))
+    db.delete(team)
+    audit.log(db, "team_delete", user_id=admin.id, detail=team_name)
+    return {"ok": True}
 
 
 # ---------- 팀원 열람 (일반 사용자: 소속 팀만) ----------
