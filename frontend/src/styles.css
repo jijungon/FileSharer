@@ -300,21 +300,29 @@ button:focus-visible {
 }
 
 .space-item {
+  display: block;
+  width: 100%;
   text-align: left;
   background: none;
   padding: 9px 12px;
   border-radius: var(--radius-md);
   font-size: 15px;
   color: var(--ink);
+  transition:
+    background 0.15s ease,
+    box-shadow 0.15s ease;
 }
 
 .space-item:hover {
   background: var(--divider-soft);
 }
 
+/* 활성 공간 탭 — 글자만 감싸는 네모 대신 폭을 채우고,
+   자동저장 켜짐과 같은 은은한 파란 틴트 + inset 링을 준다 */
 .space-item.active {
-  background: var(--canvas);
-  border: 1px solid var(--hairline);
+  background: color-mix(in srgb, var(--primary) 8%, var(--canvas-parchment));
+  box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--primary) 45%, transparent);
+  color: var(--primary);
   font-weight: 600;
 }
 
