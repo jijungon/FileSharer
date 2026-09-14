@@ -17,7 +17,7 @@ test('local login → browse → create folder → upload file', async ({ page }
   await page.getByRole('button', { name: /새 폴더/ }).click()
   await expect(page.getByRole('cell', { name: /E2E폴더/ })).toBeVisible()
 
-  await page.locator('input[type="file"]').setInputFiles({
+  await page.locator('input[type="file"]:not([webkitdirectory])').setInputFiles({
     name: '스모크.txt',
     mimeType: 'text/plain',
     buffer: Buffer.from('e2e smoke content'),
@@ -43,7 +43,7 @@ test('non-text viewer (image/pdf) can maximize and restore', async ({ page }) =>
   await page.getByRole('button', { name: '로컬 계정으로 로그인' }).click()
   await expect(page).toHaveURL(/\/files/)
 
-  await page.locator('input[type="file"]').setInputFiles({
+  await page.locator('input[type="file"]:not([webkitdirectory])').setInputFiles({
     name: '사진.png',
     mimeType: 'image/png',
     buffer: PNG_1x1,
@@ -95,7 +95,7 @@ test('viewer resize handle works when dragging down over an iframe preview', asy
   await expect(page).toHaveURL(/\/files/)
 
   // HTML 파일 = iframe 뷰어 (핸들 아래로 끌면 커서가 iframe 위를 지나감)
-  await page.locator('input[type="file"]').setInputFiles({
+  await page.locator('input[type="file"]:not([webkitdirectory])').setInputFiles({
     name: '리사이즈.html',
     mimeType: 'text/html',
     buffer: Buffer.from('<h1>resize drag test</h1>'),

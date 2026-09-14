@@ -54,6 +54,37 @@ def test_upload_download_roundtrip(admin_client):
     assert "inline" in raw.headers["content-disposition"]
 
 
+def test_folder_upload_creates_and_reuses_path(admin_client):
+    """rel_path 업로드는 중간 폴더를 만들고, 같은 경로의 두 번째 파일은 그 폴더를 재사용한다."""
+    sp = spaces_of(admin_client)
+    base = f"/api/spaces/{sp['personal']['id']}/files"
+
+    def up(name, rel):
+        return admin_client.post(
+            base,
+            files={"file": (name, io.BytesIO(b"x"), "text/plain")},
+            data={"rel_path": rel},
+        )
+
+    assert up("a.txt", "docs/2026/a.txt").status_code == 201
+    assert up("b.txt", "docs/2026/b.txt").status_code == 201  # docs/2026 재사용
+    assert up("c.txt", "docs/sub/c.txt").status_code == 201
+
+    # 루트에 docs 하나만 (suffix 없이 재사용)
+    root = admin_client.get(f"/api/spaces/{sp['personal']['id']}/children").json()
+    docs = [n for n in root if n["name"] == "docs"]
+    assert len(docs) == 1 and docs[0]["type"] == "folder"
+
+    # docs 아래: 2026, sub (폴더 2개)
+    under_docs = admin_client.get(f"/api/nodes/{docs[0]['id']}/children").json()
+    assert sorted(n["name"] for n in under_docs) == ["2026", "sub"]
+
+    # docs/2026 아래: a.txt, b.txt (같은 폴더에 합쳐짐)
+    y2026 = next(n for n in under_docs if n["name"] == "2026")
+    files = admin_client.get(f"/api/nodes/{y2026['id']}/children").json()
+    assert sorted(n["name"] for n in files) == ["a.txt", "b.txt"]
+
+
 def test_raw_reinfers_content_type_from_extension(admin_client):
     """브라우저가 generic mime으로 올려도 raw는 확장자로 재추론해 렌더 가능하게 한다."""
     sp = spaces_of(admin_client)

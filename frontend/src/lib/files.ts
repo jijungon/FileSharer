@@ -45,12 +45,15 @@ export const createFolder = (spaceId: string, parentId: string | null, name: str
 export async function uploadFile(
   target: { spaceId: string; parentId: string | null },
   file: File,
+  relPath?: string,
 ): Promise<NodeInfo> {
   const url = target.parentId
     ? `/api/nodes/${target.parentId}/files`
     : `/api/spaces/${target.spaceId}/files`
   const form = new FormData()
   form.append('file', file)
+  // 폴더 업로드: 상대 경로를 보내면 서버가 중간 폴더를 만들어(있으면 재사용) 그 안에 넣는다
+  if (relPath) form.append('rel_path', relPath)
   const res = await fetch(url, { method: 'POST', body: form })
   if (!res.ok) {
     const body = (await res.json().catch(() => null)) as { detail?: string } | null

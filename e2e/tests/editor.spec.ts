@@ -11,7 +11,7 @@ test('markdown editor: open → live preview → edit → save', async ({ page }
   await page.getByRole('button', { name: '로컬 계정으로 로그인' }).click()
   await expect(page).toHaveURL(/\/files/)
 
-  await page.locator('input[type="file"]').setInputFiles({
+  await page.locator('input[type="file"]:not([webkitdirectory])').setInputFiles({
     name: '에디터.md',
     mimeType: 'text/markdown',
     buffer: Buffer.from('# 제목\n\n- 항목 하나\n'),

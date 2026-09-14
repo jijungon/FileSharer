@@ -12,7 +12,7 @@ test('share link: create in UI, open without login, download', async ({ page, br
   await page.getByRole('button', { name: '로컬 계정으로 로그인' }).click()
   await expect(page).toHaveURL(/\/files/)
 
-  await page.locator('input[type="file"]').setInputFiles({
+  await page.locator('input[type="file"]:not([webkitdirectory])').setInputFiles({
     name: '외부공유.md',
     mimeType: 'text/markdown',
     buffer: Buffer.from('# 외부 공유 문서\n\n내용입니다.\n'),

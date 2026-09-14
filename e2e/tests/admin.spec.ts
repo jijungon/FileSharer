@@ -9,7 +9,7 @@ test('admin system tab: disk, audit log, trash manager', async ({ page }) => {
   await expect(page).toHaveURL(/\/files/)
 
   // 감사 로그에 뭔가 남도록 파일 하나 업로드
-  await page.locator('input[type="file"]').setInputFiles({
+  await page.locator('input[type="file"]:not([webkitdirectory])').setInputFiles({
     name: '운영.txt',
     mimeType: 'text/plain',
     buffer: Buffer.from('ops'),

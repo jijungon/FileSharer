@@ -58,6 +58,7 @@ export default function Files() {
   const [dragOverSpace, setDragOverSpace] = useState<string | null>(null)
   const [treeVersion, setTreeVersion] = useState(0)
   const fileInput = useRef<HTMLInputElement>(null)
+  const folderInput = useRef<HTMLInputElement | null>(null)
   const restoredFromUrl = useRef(false)
   const navSynced = useRef(false) // 부팅 완료 후 브라우저 뒤로/앞으로(URL) 동기화 활성화
 
@@ -263,7 +264,48 @@ export default function Files() {
   async function uploadAll(files: FileList | File[]) {
     if (!spaceId) return
     for (const file of Array.from(files)) {
-      await guard(() => uploadFile({ spaceId, parentId: currentFolder?.id ?? null }, file))
+      // 폴더 선택 업로드면 webkitRelativePath에 'folder/sub/file' 경로가 담긴다
+      const relPath = file.webkitRelativePath || undefined
+      await guard(() => uploadFile({ spaceId, parentId: currentFolder?.id ?? null }, file, relPath))
+    }
+    flash('업로드 완료')
+  }
+
+  // 드롭된 폴더를 하위까지 재귀로 읽어 상대경로와 함께 업로드
+  async function readAllEntries(reader: FileSystemDirectoryReader): Promise<FileSystemEntry[]> {
+    const out: FileSystemEntry[] = []
+    for (;;) {
+      const batch = await new Promise<FileSystemEntry[]>((res, rej) =>
+        reader.readEntries(res, rej),
+      )
+      if (batch.length === 0) break
+      out.push(...batch)
+    }
+    return out
+  }
+
+  async function walkEntry(
+    entry: FileSystemEntry,
+    prefix: string,
+    out: { file: File; relPath: string }[],
+  ) {
+    if (entry.isFile) {
+      const file = await new Promise<File>((res, rej) =>
+        (entry as FileSystemFileEntry).file(res, rej),
+      )
+      out.push({ file, relPath: prefix + entry.name })
+    } else if (entry.isDirectory) {
+      const entries = await readAllEntries((entry as FileSystemDirectoryEntry).createReader())
+      for (const child of entries) await walkEntry(child, `${prefix}${entry.name}/`, out)
+    }
+  }
+
+  async function uploadDropped(entries: FileSystemEntry[]) {
+    if (!spaceId) return
+    const collected: { file: File; relPath: string }[] = []
+    for (const entry of entries) await walkEntry(entry, '', collected)
+    for (const { file, relPath } of collected) {
+      await guard(() => uploadFile({ spaceId, parentId: currentFolder?.id ?? null }, file, relPath))
     }
     flash('업로드 완료')
   }
@@ -448,7 +490,17 @@ export default function Files() {
           }}
           onDragLeave={() => setDropActive(false)}
           onDrop={(e) => {
-            if (e.dataTransfer.files.length > 0) {
+            // 폴더 드롭 지원: items에서 동기적으로 entry를 먼저 확보(핸들러 종료 후 무효화됨)
+            const entries = e.dataTransfer.items
+              ? Array.from(e.dataTransfer.items)
+                  .map((it) => it.webkitGetAsEntry?.() ?? null)
+                  .filter((x): x is FileSystemEntry => x !== null)
+              : []
+            if (entries.length > 0) {
+              e.preventDefault()
+              setDropActive(false)
+              uploadDropped(entries)
+            } else if (e.dataTransfer.files.length > 0) {
               e.preventDefault()
               setDropActive(false)
               uploadAll(e.dataTransfer.files)
@@ -464,11 +516,31 @@ export default function Files() {
                 <button className="btn-utility" onClick={() => fileInput.current?.click()}>
                   ↑ 업로드
                 </button>
+                <button className="btn-utility" onClick={() => folderInput.current?.click()}>
+                  ↑ 폴더 업로드
+                </button>
                 <button className="btn-utility" onClick={onNewMd}>
                   ✎ 새 MD
                 </button>
                 <input
                   ref={fileInput}
+                  type="file"
+                  multiple
+                  hidden
+                  onChange={(e) => {
+                    if (e.target.files) uploadAll(e.target.files)
+                    e.target.value = ''
+                  }}
+                />
+                <input
+                  ref={(el) => {
+                    folderInput.current = el
+                    // webkitdirectory는 React 타입에 없어 마운트 시 직접 세팅 → 폴더 선택창
+                    if (el) {
+                      el.setAttribute('webkitdirectory', '')
+                      el.setAttribute('directory', '')
+                    }
+                  }}
                   type="file"
                   multiple
                   hidden
