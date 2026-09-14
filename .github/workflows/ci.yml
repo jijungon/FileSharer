@@ -55,6 +55,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # arm64(오라클 Ampere 등)용 크로스 빌드를 위해 QEMU + buildx
+      - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
       - name: GHCR 로그인 (main push일 때만)
         if: github.event_name == 'push'
@@ -63,10 +65,12 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+      # PR은 amd64만 빌드해 빠르게 검증, main push면 amd64+arm64 멀티아치로 GHCR에 push
       - name: 빌드 (main push면 GHCR push까지)
         uses: docker/build-push-action@v6
         with:
           context: .
+          platforms: ${{ github.event_name == 'push' && 'linux/amd64,linux/arm64' || 'linux/amd64' }}
           push: ${{ github.event_name == 'push' }}
           tags: |
             ghcr.io/jijungon/filesharer:latest
