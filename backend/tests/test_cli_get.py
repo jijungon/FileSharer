@@ -44,7 +44,7 @@ def test_get_script_renders_for_folder(admin_client):
     share = admin_client.post(f"/api/nodes/{folder['id']}/shares", json={}).json()
     res = admin_client.get(f"/s/{share['token']}/get")
     assert 'TYPE="folder"' in res.text
-    assert "/tar" in res.text
+    assert "fetch tar" in res.text  # 폴더는 tar 경로로 받는다
 
 
 def test_get_script_gone_when_expired(admin_client, db):
@@ -145,3 +145,25 @@ def test_one_command_in_bare_alpine(tmp_path):
     finally:
         server.terminate()
         server.wait(timeout=10)
+
+
+def test_get_script_protected_flag_and_prompt(admin_client):
+    """비번 링크의 /get 스크립트는 PROTECTED=1 이고 /dev/tty 프롬프트 로직을 포함한다."""
+    sp = personal_space(admin_client)
+    node = upload(admin_client, f"/api/spaces/{sp['id']}/files", "비밀.txt", b"x").json()
+    share = admin_client.post(
+        f"/api/nodes/{node['id']}/shares", json={"password": "pw123"}
+    ).json()
+    admin_client.post("/api/auth/logout")
+    body = admin_client.get(f"/s/{share['token']}/get").text
+    assert 'PROTECTED="1"' in body
+    assert "/dev/tty" in body
+    assert "__PROTECTED__" not in body
+
+
+def test_get_script_unprotected_flag(admin_client):
+    sp = personal_space(admin_client)
+    node = upload(admin_client, f"/api/spaces/{sp['id']}/files", "공개.txt", b"y").json()
+    share = admin_client.post(f"/api/nodes/{node['id']}/shares", json={}).json()
+    body = admin_client.get(f"/s/{share['token']}/get").text
+    assert 'PROTECTED="0"' in body

@@ -57,10 +57,12 @@ export default function SharePopover({ node, onClose }: { node: NodeInfo; onClos
     setTimeout(() => setCopied(''), 1500)
   }
 
+  const pw = created?.protected // 비번 링크면 -u :'<비밀번호>' 를 붙여 안내
+  const auth = pw ? ` -u :'<비밀번호>'` : ''
   const curlCommand = created
     ? node.type === 'folder'
-      ? `mkdir -p '${node.name}' && curl -fL ${created.url}/tar | tar xzf - -C '${node.name}'`
-      : `curl -fLOJ ${created.url}/download`
+      ? `mkdir -p '${node.name}' && curl -fL${auth} ${created.url}/tar | tar xzf - -C '${node.name}'`
+      : `curl -fLOJ${auth} ${created.url}/download`
     : ''
 
   return (
@@ -82,6 +84,12 @@ export default function SharePopover({ node, onClose }: { node: NodeInfo; onClos
               {copied === 'get' ? '복사됨 ✓' : '복사'}
             </button>
           </div>
+          {pw && (
+            <p className="muted" style={{ margin: '2px 0 6px' }}>
+              🔒 실행하면 비밀번호를 물어봅니다. (비대화형이면{' '}
+              <code style={{ fontSize: 12 }}>| SHARE_PW=&lt;비번&gt; sh</code>)
+            </p>
+          )}
           <label className="share-label">공유 URL (브라우저용, 만료 {days}일)</label>
           <div className="share-copyrow">
             <code>{created.url}</code>

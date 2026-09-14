@@ -112,11 +112,13 @@ export default function Share() {
   const isImg = meta.mime.startsWith('image/')
   const isPdf = meta.mime === 'application/pdf' || extOf(meta.name) === 'pdf'
   const downloadHref = `${base}/download`
-  const oneCommand = `curl -fsSL ${window.location.origin}${base}/get | sh`
+  const origin = window.location.origin
+  const auth = meta.protected ? ` -u :'<비밀번호>'` : ''
+  const oneCommand = `curl -fsSL ${origin}${base}/get | sh`
   const curl =
     meta.type === 'folder'
-      ? `mkdir -p '${meta.name}' && curl -fL ${window.location.origin}${base}/tar | tar xzf - -C '${meta.name}'`
-      : `curl -fLOJ ${window.location.origin}${base}/download`
+      ? `mkdir -p '${meta.name}' && curl -fL${auth} ${origin}${base}/tar | tar xzf - -C '${meta.name}'`
+      : `curl -fLOJ${auth} ${origin}${base}/download`
 
   return (
     <div className="share-page">
@@ -153,8 +155,9 @@ export default function Share() {
         </button>
         {showAdvanced && (
           <pre className="share-curl">
-            {`# 원커맨드 (다운로드+해제+검증)\n${oneCommand}\n\n# 수동\n${curl}`}
-            {meta.protected ? "\n\n# 비밀번호 링크: SHARE_PW='<비밀번호>' 를 앞에 붙이거나 curl -u :'<비밀번호>'" : ''}
+            {`# 원커맨드 (다운로드+해제+검증)\n${oneCommand}`}
+            {meta.protected ? '\n# 🔒 실행하면 비밀번호를 물어봅니다 (또는 끝에  | SHARE_PW=<비번> sh)' : ''}
+            {`\n\n# 수동\n${curl}`}
           </pre>
         )}
       </main>
