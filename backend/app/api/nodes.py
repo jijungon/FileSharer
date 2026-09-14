@@ -23,6 +23,30 @@ from ..services.tar_stream import stream_tar_gz
 
 router = APIRouter(prefix="/api", tags=["files"])
 
+# mimetypes가 기본으로 모르는 웹 재생 형식 보강 (영상·음성 미리보기)
+_EXTRA_MIME = {
+    ".webm": "video/webm",
+    ".m4v": "video/mp4",
+    ".mkv": "video/x-matroska",
+    ".ogv": "video/ogg",
+    ".m4a": "audio/mp4",
+    ".oga": "audio/ogg",
+    ".weba": "audio/webm",
+    ".flac": "audio/flac",
+    ".md": "text/markdown",
+}
+
+
+def media_type_for(node: Node) -> str:
+    """미리보기용 실제 Content-Type. 저장된 mime이 비었거나 일반적(octet-stream)이면
+    파일 확장자로 다시 추론해 영상·음성·HTML 등이 제대로 렌더되게 한다."""
+    mime = (node.mime or "").strip().lower()
+    if mime and mime != "application/octet-stream":
+        return mime
+    dot = node.name.rfind(".")
+    ext = node.name[dot:].lower() if dot != -1 else ""
+    return _EXTRA_MIME.get(ext) or mimetypes.guess_type(node.name)[0] or "application/octet-stream"
+
 
 def get_storage() -> LocalStorage:
     return LocalStorage(get_settings().data_dir)
@@ -262,11 +286,14 @@ def raw_file(
     path = storage.path_for(node.storage_key)
     if not path.is_file():
         raise HTTPException(status_code=410, detail="파일 본체가 없습니다")
-    return FileResponse(
-        path,
-        media_type=node.mime or "application/octet-stream",
-        headers={"Content-Disposition": _content_disposition("inline", node.name)},
-    )
+    media_type = media_type_for(node)
+    headers = {"Content-Disposition": _content_disposition("inline", node.name)}
+    if media_type in ("text/html", "application/xhtml+xml"):
+        # 업로드된 HTML의 스크립트가 앱 오리진에서 실행돼 세션을 탈취하지 못하게
+        # 격리(sandbox)해서 내려준다. iframe sandbox와 이중 방어.
+        headers["Content-Security-Policy"] = "sandbox"
+        headers["X-Content-Type-Options"] = "nosniff"
+    return FileResponse(path, media_type=media_type, headers=headers)
 
 
 def collect_tar_entries(db: Session, storage: LocalStorage, root: Node):

@@ -625,6 +625,54 @@ button:focus-visible {
   flex: 1;
   border: none;
   min-height: 0;
+  background: #fff; /* sandbox HTML이 투명 배경일 때 대비 */
+}
+
+/* --- 영상/음성 미리보기 --- */
+.media-preview {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: auto;
+  background: #000;
+  min-height: 0;
+}
+
+.media-preview video {
+  max-width: 100%;
+  max-height: 100%;
+}
+
+.media-preview.audio {
+  background: var(--canvas-parchment);
+}
+
+.media-preview.audio audio {
+  width: min(560px, 90%);
+}
+
+/* --- 다운로드 카드: 지원 형식 안내 --- */
+.viewer-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.supported-formats {
+  margin-top: var(--sp-sm);
+  font-size: 13px;
+}
+
+.supported-formats summary {
+  cursor: pointer;
+  color: var(--accent);
+}
+
+.supported-formats ul {
+  margin: var(--sp-sm) 0 0;
+  padding-left: 1.1em;
+  line-height: 1.7;
 }
 
 /* --- 공유 팝오버 & 공유 페이지 --- */

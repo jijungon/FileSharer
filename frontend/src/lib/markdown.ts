@@ -43,3 +43,33 @@ export function isPdf(node: NodeInfo): boolean {
   if (node.type !== 'file') return false
   return node.mime === 'application/pdf' || extOf(node.name) === 'pdf'
 }
+
+const VIDEO_EXTS = ['mp4', 'webm', 'ogv', 'mov', 'm4v', 'mkv']
+const AUDIO_EXTS = ['mp3', 'wav', 'ogg', 'oga', 'm4a', 'aac', 'flac', 'weba']
+const HTML_EXTS = ['html', 'htm']
+
+export function isVideo(node: NodeInfo): boolean {
+  if (node.type !== 'file') return false
+  return node.mime.startsWith('video/') || VIDEO_EXTS.includes(extOf(node.name))
+}
+
+export function isAudio(node: NodeInfo): boolean {
+  if (node.type !== 'file') return false
+  return node.mime.startsWith('audio/') || AUDIO_EXTS.includes(extOf(node.name))
+}
+
+export function isHtml(node: NodeInfo): boolean {
+  if (node.type !== 'file') return false
+  return node.mime === 'text/html' || HTML_EXTS.includes(extOf(node.name))
+}
+
+/** 사용자 안내용 — 미리보기(뷰어)가 지원하는 형식 요약 */
+export const SUPPORTED_PREVIEW: { label: string; exts: string }[] = [
+  { label: '마크다운', exts: '.md .markdown' },
+  { label: '텍스트·코드', exts: '.txt .log .json .yml .yaml .csv' },
+  { label: '이미지', exts: '.png .jpg .gif .webp .svg .bmp .avif' },
+  { label: 'PDF', exts: '.pdf' },
+  { label: '영상', exts: '.mp4 .webm .mov .m4v .ogv' },
+  { label: '음성', exts: '.mp3 .wav .ogg .m4a .aac .flac' },
+  { label: 'HTML', exts: '.html .htm (스크립트 미실행)' },
+]

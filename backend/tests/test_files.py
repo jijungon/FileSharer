@@ -54,6 +54,28 @@ def test_upload_download_roundtrip(admin_client):
     assert "inline" in raw.headers["content-disposition"]
 
 
+def test_raw_reinfers_content_type_from_extension(admin_client):
+    """브라우저가 generic mime으로 올려도 raw는 확장자로 재추론해 렌더 가능하게 한다."""
+    sp = spaces_of(admin_client)
+    base = f"/api/spaces/{sp['personal']['id']}/files"
+    mp4 = upload(admin_client, base, "클립.mp4", b"\x00\x00\x00", "application/octet-stream").json()
+    raw = admin_client.get(f"/api/files/{mp4['id']}/raw")
+    assert raw.headers["content-type"].startswith("video/mp4")
+
+
+def test_raw_html_is_sandboxed(admin_client):
+    """업로드된 HTML은 앱 오리진에서 스크립트가 실행되지 않도록 sandbox로 내려준다."""
+    sp = spaces_of(admin_client)
+    base = f"/api/spaces/{sp['personal']['id']}/files"
+    html = upload(
+        admin_client, base, "page.html", b"<script>alert(1)</script>", "text/html"
+    ).json()
+    raw = admin_client.get(f"/api/files/{html['id']}/raw")
+    assert raw.headers["content-type"].startswith("text/html")
+    assert raw.headers.get("content-security-policy") == "sandbox"
+    assert raw.headers.get("x-content-type-options") == "nosniff"
+
+
 def test_upload_size_limit(app_factory):
     from fastapi.testclient import TestClient
 

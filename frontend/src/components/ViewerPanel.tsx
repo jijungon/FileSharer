@@ -4,7 +4,18 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { ApiError } from '../lib/api'
 import { downloadUrl, NodeInfo } from '../lib/files'
 import { formatBytes } from '../lib/format'
-import { fetchText, isImage, isMarkdown, isPdf, isTextFile, saveContent } from '../lib/markdown'
+import {
+  fetchText,
+  isAudio,
+  isHtml,
+  isImage,
+  isMarkdown,
+  isPdf,
+  isTextFile,
+  isVideo,
+  saveContent,
+  SUPPORTED_PREVIEW,
+} from '../lib/markdown'
 import MarkdownPreview from './MarkdownPreview'
 
 const AUTOSAVE_KEY = 'filesharer.autosave'
@@ -19,19 +30,34 @@ interface Props {
 }
 
 export default function ViewerPanel(props: Props) {
+  // HTML은 text/*라 편집기보다 먼저 잡아 렌더한다 (소스가 아닌 보기 모드)
+  if (isHtml(props.node)) return <MediaPreview {...props} kind="html" key={props.node.id} />
   if (isTextFile(props.node)) return <TextEditor {...props} key={props.node.id} />
   if (isImage(props.node)) return <MediaPreview {...props} kind="image" key={props.node.id} />
   if (isPdf(props.node)) return <MediaPreview {...props} kind="pdf" key={props.node.id} />
+  if (isVideo(props.node)) return <MediaPreview {...props} kind="video" key={props.node.id} />
+  if (isAudio(props.node)) return <MediaPreview {...props} kind="audio" key={props.node.id} />
   return <DownloadCard {...props} />
 }
 
-function MediaPreview({ node, onClose, kind }: Props & { kind: 'image' | 'pdf' }) {
+type MediaKind = 'image' | 'pdf' | 'video' | 'audio' | 'html'
+
+function MediaPreview({ node, onClose, kind }: Props & { kind: MediaKind }) {
+  const raw = `/api/files/${node.id}/raw`
   return (
     <div className="editor-shell">
       <div className="editor-toolbar">
         <span className="editor-name">{node.name}</span>
         <span className="editor-status">{formatBytes(node.size)}</span>
+        {kind === 'html' && (
+          <span className="editor-status" title="업로드된 HTML은 보안을 위해 스크립트 없이 표시됩니다">
+            HTML · 스크립트 미실행
+          </span>
+        )}
         <span className="toolbar-spacer" />
+        <a href={raw} target="_blank" rel="noreferrer">
+          <button className="btn-utility">새 탭</button>
+        </a>
         <a href={downloadUrl(node)}>
           <button className="btn-utility">다운로드</button>
         </a>
@@ -41,12 +67,50 @@ function MediaPreview({ node, onClose, kind }: Props & { kind: 'image' | 'pdf' }
       </div>
       {kind === 'image' ? (
         <div className="image-preview">
-          <img src={`/api/files/${node.id}/raw`} alt={node.name} />
+          <img src={raw} alt={node.name} />
         </div>
+      ) : kind === 'video' ? (
+        <div className="media-preview">
+          <video src={raw} controls preload="metadata" />
+        </div>
+      ) : kind === 'audio' ? (
+        <div className="media-preview audio">
+          <audio src={raw} controls preload="metadata" />
+        </div>
+      ) : kind === 'html' ? (
+        <HtmlFrame node={node} />
       ) : (
-        <iframe className="pdf-frame" src={`/api/files/${node.id}/raw`} title={node.name} />
+        <iframe className="pdf-frame" src={raw} title={node.name} />
       )}
     </div>
+  )
+}
+
+/** HTML 미리보기 — 원본을 받아 srcdoc으로 격리(sandbox) 렌더한다.
+ * 인증된 URL을 iframe src로 바로 여는 방식은 프레임 요청이 차단될 수 있어,
+ * 텍스트로 받아 srcdoc에 넣는다(스크립트 미실행, 동일출처 접근 차단). */
+function HtmlFrame({ node }: { node: NodeInfo }) {
+  const [html, setHtml] = useState<string | null>(null)
+  const [err, setErr] = useState('')
+  useEffect(() => {
+    let alive = true
+    fetchText(node.id)
+      .then((t) => alive && setHtml(t))
+      .catch((e) => alive && setErr(e instanceof Error ? e.message : '불러오기 실패'))
+    return () => {
+      alive = false
+    }
+  }, [node.id])
+  if (err) return <div className="viewer-card-wrap"><p className="muted">{err}</p></div>
+  if (html === null) return <div className="viewer-card-wrap"><p className="muted">불러오는 중…</p></div>
+  return (
+    <iframe
+      className="pdf-frame"
+      title={node.name}
+      sandbox=""
+      referrerPolicy="no-referrer"
+      srcDoc={html}
+    />
   )
 }
 
@@ -55,11 +119,24 @@ function DownloadCard({ node, onClose }: Props) {
     <div className="viewer-card-wrap">
       <div className="viewer-card">
         <div className="viewer-card-icon">📄</div>
-        <div>
+        <div className="viewer-card-body">
           <div className="viewer-card-name">{node.name}</div>
           <div className="muted">
             {formatBytes(node.size)} · 미리보기를 지원하지 않는 형식입니다
           </div>
+          <details className="supported-formats">
+            <summary>미리보기 지원 형식 보기</summary>
+            <ul>
+              {SUPPORTED_PREVIEW.map((f) => (
+                <li key={f.label}>
+                  <b>{f.label}</b> <span className="muted">{f.exts}</span>
+                </li>
+              ))}
+            </ul>
+            <p className="muted">
+              PPT·워드·엑셀 등 오피스 문서 미리보기는 준비 중입니다.
+            </p>
+          </details>
         </div>
         <a href={downloadUrl(node)}>
           <button className="btn-primary">다운로드</button>
