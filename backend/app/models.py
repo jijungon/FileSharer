@@ -86,6 +86,8 @@ class Node(Base):
     size: Mapped[int] = mapped_column(Integer, default=0)
     mime: Mapped[str] = mapped_column(String(127), default="")
     storage_key: Mapped[str] = mapped_column(String(64), default="")
+    # 업로드 때 저장 — 원격 스토리지에서 체크섬 재다운로드 방지
+    sha256: Mapped[str] = mapped_column(String(64), default="")
     created_by: Mapped[str] = mapped_column(ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)

@@ -1,9 +1,8 @@
 import mimetypes
 import unicodedata
-import urllib.parse
 from pathlib import Path, PurePosixPath
 
-from fastapi import APIRouter, Depends, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy import select
@@ -19,6 +18,8 @@ from ..services.permissions import (
     get_space_checked,
     is_descendant,
 )
+from ..services.serving import content_disposition as _content_disposition
+from ..services.serving import serve_blob
 from ..services.storage import FileTooLargeError, LocalStorage
 from ..services.tar_stream import stream_tar_gz
 
@@ -236,7 +237,7 @@ def _do_upload(
     settings = get_settings()
     storage = LocalStorage(settings.data_dir)
     try:
-        key, size, _sha = storage.put_stream(
+        key, size, sha = storage.put_stream(
             upload.file, settings.max_upload_mb * 1024 * 1024
         )
     except FileTooLargeError:
@@ -253,6 +254,7 @@ def _do_upload(
         size=size,
         mime=mime,
         storage_key=key,
+        sha256=sha,
         created_by=user.id,
     )
     db.add(node)
@@ -287,15 +289,15 @@ def upload_to_folder(
     space = db.get(Space, parent.space_id)
     return _do_upload(db, user, space, parent.id, file, rel_path)
 
-
-def _content_disposition(kind: str, filename: str) -> str:
-    quoted = urllib.parse.quote(filename)
-    return f"{kind}; filename*=UTF-8''{quoted}"
+def _node_sha256(storage: LocalStorage, node: Node) -> str:
+    """업로드 때 저장한 sha가 있으면 그걸, 없으면(구 데이터) 계산."""
+    return node.sha256 or storage.sha256(node.storage_key)
 
 
 @router.get("/files/{node_id}")
 def download_file(
     node_id: str,
+    request: Request,
     user: User = Depends(current_user),
     db: Session = Depends(get_db),
     storage: LocalStorage = Depends(get_storage),
@@ -303,23 +305,22 @@ def download_file(
     node = get_node_checked(db, user, node_id)
     if node.type != "file":
         raise HTTPException(status_code=400, detail="파일이 아닙니다")
-    path = storage.path_for(node.storage_key)
-    if not path.is_file():
-        raise HTTPException(status_code=410, detail="파일 본체가 없습니다")
     audit.log(db, "download", user_id=user.id, node_id=node.id, detail=node.name)
-    return FileResponse(
-        path,
+    return serve_blob(
+        storage,
+        node.storage_key,
+        filename=node.name,
         media_type=node.mime or "application/octet-stream",
-        headers={
-            "Content-Disposition": _content_disposition("attachment", node.name),
-            "X-Checksum-SHA256": storage.sha256(node.storage_key),
-        },
+        disposition="attachment",
+        request=request,
+        extra_headers={"X-Checksum-SHA256": _node_sha256(storage, node)},
     )
 
 
 @router.get("/files/{node_id}/raw")
 def raw_file(
     node_id: str,
+    request: Request,
     user: User = Depends(current_user),
     db: Session = Depends(get_db),
     storage: LocalStorage = Depends(get_storage),
@@ -327,17 +328,21 @@ def raw_file(
     node = get_node_checked(db, user, node_id)
     if node.type != "file":
         raise HTTPException(status_code=400, detail="파일이 아닙니다")
-    path = storage.path_for(node.storage_key)
-    if not path.is_file():
-        raise HTTPException(status_code=410, detail="파일 본체가 없습니다")
     media_type = media_type_for(node)
-    headers = {"Content-Disposition": _content_disposition("inline", node.name)}
+    extra: dict[str, str] = {}
     if media_type in ("text/html", "application/xhtml+xml"):
         # 업로드된 HTML의 스크립트가 앱 오리진에서 실행돼 세션을 탈취하지 못하게
         # 격리(sandbox)해서 내려준다. iframe sandbox와 이중 방어.
-        headers["Content-Security-Policy"] = "sandbox"
-        headers["X-Content-Type-Options"] = "nosniff"
-    return FileResponse(path, media_type=media_type, headers=headers)
+        extra = {"Content-Security-Policy": "sandbox", "X-Content-Type-Options": "nosniff"}
+    return serve_blob(
+        storage,
+        node.storage_key,
+        filename=node.name,
+        media_type=media_type,
+        disposition="inline",
+        request=request,
+        extra_headers=extra,
+    )
 
 
 @router.get("/files/{node_id}/preview.pdf")
@@ -351,12 +356,17 @@ def office_preview(
     node = get_node_checked(db, user, node_id)
     if node.type != "file" or not is_office(node.name):
         raise HTTPException(status_code=400, detail="오피스 문서가 아닙니다")
-    src = storage.path_for(node.storage_key)
-    if not src.is_file():
+    if not storage.exists(node.storage_key):
         raise HTTPException(status_code=410, detail="파일 본체가 없습니다")
     cache_dir = Path(get_settings().data_dir) / "preview_cache"
+    cached = cache_dir / f"{node.storage_key}.pdf"
     try:
-        pdf = convert_to_pdf(src, cache_dir, node.storage_key)
+        if cached.is_file():
+            pdf = cached
+        else:
+            # 원격 스토리지면 원본을 임시파일로 받아 변환 (로컬이면 원본 경로 그대로)
+            with storage.local_copy(node.storage_key) as src:
+                pdf = convert_to_pdf(src, cache_dir, node.storage_key)
     except OfficeConvertError as exc:
         raise HTTPException(status_code=503, detail=f"미리보기를 만들 수 없습니다: {exc}") from exc
     return FileResponse(
@@ -484,6 +494,7 @@ def _copy_node(
         size=src.size,
         mime=src.mime,
         storage_key=new_key,
+        sha256=src.sha256,  # 내용 동일 → 체크섬 그대로
         created_by=user.id,
     )
     db.add(copy)
@@ -608,13 +619,14 @@ def save_content(
     settings = get_settings()
     data = body.content.encode("utf-8")
     try:
-        key, size, _sha = storage.put_bytes(data, settings.max_upload_mb * 1024 * 1024)
+        key, size, sha = storage.put_bytes(data, settings.max_upload_mb * 1024 * 1024)
     except FileTooLargeError:
         raise HTTPException(status_code=413, detail="문서가 너무 큽니다") from None
 
     old_key = node.storage_key
     node.storage_key = key
     node.size = size
+    node.sha256 = sha
     node.updated_at = utcnow()
     db.flush()
     storage.delete(old_key)

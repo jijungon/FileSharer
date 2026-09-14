@@ -11,10 +11,12 @@ from sqlalchemy.orm import Session
 
 from ..deps import get_db
 from ..services import audit
+from ..services.serving import content_disposition as _content_disposition
+from ..services.serving import serve_blob
 from ..services.shares import check_password, consume_download, resolve_share
 from ..services.storage import LocalStorage
 from ..services.tar_stream import stream_tar_gz
-from .nodes import _content_disposition, collect_tar_entries, get_storage
+from .nodes import collect_tar_entries, get_storage
 
 router = APIRouter(tags=["public"])
 
@@ -59,13 +61,13 @@ def share_raw(
     check_password(request, share)
     if node.type != "file":
         raise HTTPException(status_code=400, detail="파일이 아닙니다")
-    path = storage.path_for(node.storage_key)
-    if not path.is_file():
-        raise HTTPException(status_code=410, detail="파일 본체가 없습니다")
-    return FileResponse(
-        path,
+    return serve_blob(
+        storage,
+        node.storage_key,
+        filename=node.name,
         media_type=node.mime or "application/octet-stream",
-        headers={"Content-Disposition": _content_disposition("inline", node.name)},
+        disposition="inline",
+        request=request,
     )
 
 
@@ -80,18 +82,18 @@ def share_download(
     check_password(request, share)
     if node.type == "folder":
         return RedirectResponse(f"/s/{token}/tar", status_code=302)
-    path = storage.path_for(node.storage_key)
-    if not path.is_file():
+    if not storage.exists(node.storage_key):
         raise HTTPException(status_code=410, detail="파일 본체가 없습니다")
     consume_download(db, share, request)
     audit.log(db, "share_download", node_id=node.id, detail=node.name)
-    return FileResponse(
-        path,
+    return serve_blob(
+        storage,
+        node.storage_key,
+        filename=node.name,
         media_type=node.mime or "application/octet-stream",
-        headers={
-            "Content-Disposition": _content_disposition("attachment", node.name),
-            "X-Checksum-SHA256": storage.sha256(node.storage_key),
-        },
+        disposition="attachment",
+        request=request,
+        extra_headers={"X-Checksum-SHA256": node.sha256 or storage.sha256(node.storage_key)},
     )
 
 
@@ -142,8 +144,8 @@ def share_get_script(
         base = origin
 
     sha = ""
-    if node.type == "file" and storage.path_for(node.storage_key).is_file():
-        sha = storage.sha256(node.storage_key)
+    if node.type == "file" and storage.exists(node.storage_key):
+        sha = node.sha256 or storage.sha256(node.storage_key)
 
     with open(_TEMPLATE_PATH, encoding="utf-8") as fh:
         script = fh.read()
