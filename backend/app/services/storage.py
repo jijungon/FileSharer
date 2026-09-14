@@ -44,6 +44,15 @@ class LocalStorage:
 
         return self.put_stream(io.BytesIO(data), max_bytes)
 
+    def copy_blob(self, key: str) -> str:
+        """기존 blob을 새 키로 복제하고 새 키를 돌려준다 (파일 복사용)."""
+        import shutil
+        import uuid
+
+        new_key = uuid.uuid4().hex
+        shutil.copyfile(self.path_for(key), self.path_for(new_key))
+        return new_key
+
     def delete(self, key: str) -> None:
         if key:
             self.path_for(key).unlink(missing_ok=True)

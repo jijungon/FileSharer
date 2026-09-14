@@ -351,6 +351,70 @@ def _move_subtree_space(db: Session, node: Node, space_id: str) -> None:
             _move_subtree_space(db, child, space_id)
 
 
+def _copy_node(
+    db: Session,
+    storage: LocalStorage,
+    user: User,
+    src: Node,
+    target_space_id: str,
+    parent_id: str | None,
+    name: str | None = None,
+) -> Node:
+    """src(파일/폴더)를 target 공간의 parent 아래로 복사(재귀). 파일은 blob도 복제."""
+    new_name = name or unique_name(db, target_space_id, parent_id, src.name)
+    new_key = ""
+    if src.type == "file" and src.storage_key:
+        new_key = storage.copy_blob(src.storage_key)
+    copy = Node(
+        space_id=target_space_id,
+        parent_id=parent_id,
+        type=src.type,
+        name=new_name,
+        size=src.size,
+        mime=src.mime,
+        storage_key=new_key,
+        created_by=user.id,
+    )
+    db.add(copy)
+    db.flush()
+    if src.type == "folder":
+        children = db.scalars(
+            select(Node).where(Node.parent_id == src.id, Node.deleted_at.is_(None))
+        ).all()
+        for child in children:
+            _copy_node(db, storage, user, child, target_space_id, copy.id)
+    return copy
+
+
+class CopyNodeBody(BaseModel):
+    space_id: str | None = None
+    parent_id: str | None = None
+
+
+@router.post("/nodes/{node_id}/copy", status_code=201)
+def copy_node(
+    node_id: str,
+    body: CopyNodeBody,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+    storage: LocalStorage = Depends(get_storage),
+) -> dict:
+    """노드를 다른 공간(또는 폴더)으로 복사 — 원본은 그대로. 출발·도착 공간 모두 접근 가능해야."""
+    src = get_node_checked(db, user, node_id)  # 출발 공간 접근 확인 포함
+    if body.parent_id:
+        target_parent = get_node_checked(db, user, body.parent_id)
+        if target_parent.type != "folder":
+            raise HTTPException(status_code=422, detail="대상이 폴더가 아닙니다")
+        target_space = get_space_checked(db, user, target_parent.space_id)
+        parent_id = target_parent.id
+    else:
+        target_space = get_space_checked(db, user, body.space_id or src.space_id)
+        parent_id = None
+    copy = _copy_node(db, storage, user, src, target_space.id, parent_id)
+    audit.log(db, "copy", user_id=user.id, node_id=copy.id, detail=copy.name)
+    return node_out(copy)
+
+
 @router.delete("/nodes/{node_id}")
 def soft_delete(
     node_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)

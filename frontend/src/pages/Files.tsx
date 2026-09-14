@@ -13,6 +13,7 @@ import {
   listNodeChildren,
   listSpaceChildren,
   listTrash,
+  copyNode,
   moveNode,
   NodeInfo,
   renameNode,
@@ -240,13 +241,11 @@ export default function Files() {
     )
   }
 
-  async function moveToSpace(draggedId: string, targetSpaceId: string, spaceName: string) {
-    if (draggedId === targetSpaceId) return
-    const ok = await guard(() => moveNode(draggedId, { spaceId: targetSpaceId }))
-    if (ok) {
-      flash(`${spaceName}(으)로 이동했습니다`)
-      if (selected?.id === draggedId) setSelected(null)
-    }
+  async function copyToSpace(draggedId: string, targetSpaceId: string, spaceName: string) {
+    if (draggedId === targetSpaceId || targetSpaceId === spaceId) return
+    // 공간 간 전송은 복사 — 원본은 그대로 두고 대상 공간에 복사본을 만든다.
+    const ok = await guard(() => copyNode(draggedId, { spaceId: targetSpaceId }))
+    if (ok) flash(`${spaceName}(으)로 복사했습니다`)
   }
 
   function viewerDrag(e: React.PointerEvent) {
@@ -339,10 +338,10 @@ export default function Files() {
                 setDragOverSpace(null)
                 if (id && s.id !== spaceId) {
                   e.preventDefault()
-                  moveToSpace(id, s.id, s.name)
+                  copyToSpace(id, s.id, s.name)
                 }
               }}
-              title={s.id !== spaceId ? `여기로 항목을 끌어다 놓으면 ${s.name}(으)로 이동` : undefined}
+              title={s.id !== spaceId ? `여기로 항목을 끌어다 놓으면 ${s.name}(으)로 복사` : undefined}
             >
               {s.type === 'personal' ? '🔒' : s.type === 'team' ? '👥' : '🏢'} {s.name}
             </button>

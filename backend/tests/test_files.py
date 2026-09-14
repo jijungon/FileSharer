@@ -322,3 +322,59 @@ def test_node_out_includes_created_and_updated(admin_client):
     # 목록에서도 created_at이 내려온다
     row = admin_client.get(f"/api/spaces/{sp['personal']['id']}/children").json()[0]
     assert "created_at" in row and "updated_at" in row
+
+
+# ---------- 공간 간 복사 ----------
+
+
+def test_copy_file_to_org_keeps_original(admin_client):
+    sp = spaces_of(admin_client)
+    url = f"/api/spaces/{sp['personal']['id']}/files"
+    src = upload(admin_client, url, "원본.txt", b"DATA").json()
+    res = admin_client.post(f"/api/nodes/{src['id']}/copy", json={"space_id": sp["org"]["id"]})
+    assert res.status_code == 201
+    copy = res.json()
+    assert copy["id"] != src["id"] and copy["space_id"] == sp["org"]["id"]
+    # 원본은 개인 공간에 그대로
+    p_children = admin_client.get(f"/api/spaces/{sp['personal']['id']}/children").json()
+    o_children = admin_client.get(f"/api/spaces/{sp['org']['id']}/children").json()
+    names_personal = [n["name"] for n in p_children]
+    names_org = [n["name"] for n in o_children]
+    assert "원본.txt" in names_personal and "원본.txt" in names_org
+    # 복사본 내용 동일, 별도 blob
+    assert admin_client.get(f"/api/files/{copy['id']}/raw").content == b"DATA"
+    admin_client.delete(f"/api/nodes/{src['id']}")  # 원본 삭제해도
+    assert admin_client.get(f"/api/files/{copy['id']}/raw").content == b"DATA"  # 복사본 살아 있음
+
+
+def test_copy_folder_recursively(admin_client):
+    sp = spaces_of(admin_client)
+    pid = sp["personal"]["id"]
+    folder = admin_client.post("/api/nodes", json={"space_id": pid, "name": "폴더"}).json()
+    sub = admin_client.post(
+        "/api/nodes", json={"space_id": pid, "parent_id": folder["id"], "name": "하위"}
+    ).json()
+    upload(admin_client, f"/api/nodes/{folder['id']}/files", "a.txt", b"A")
+    upload(admin_client, f"/api/nodes/{sub['id']}/files", "b.txt", b"B")
+
+    res = admin_client.post(f"/api/nodes/{folder['id']}/copy", json={"space_id": sp["org"]["id"]})
+    assert res.status_code == 201
+    new_folder = res.json()
+    # 복사본 트리 확인
+    top = admin_client.get(f"/api/nodes/{new_folder['id']}/children").json()
+    assert sorted(n["name"] for n in top) == ["a.txt", "하위"]
+    new_sub = next(n for n in top if n["name"] == "하위")
+    subchildren = admin_client.get(f"/api/nodes/{new_sub['id']}/children").json()
+    assert [n["name"] for n in subchildren] == ["b.txt"]
+
+
+def test_copy_requires_both_spaces_accessible(admin_client, db):
+    setup_people(admin_client, db)
+    # B의 개인 파일을 A의 팀 공간(B 접근 불가)으로 복사 시도 → 403
+    b_spaces = as_user(admin_client, "b@test.local")
+    node = upload(admin_client, f"/api/spaces/{b_spaces['personal']['id']}/files", "x.txt").json()
+    a_spaces = as_user(admin_client, "a@test.local")
+    team_space = a_spaces["team"]["id"]
+    as_user(admin_client, "b@test.local")
+    r = admin_client.post(f"/api/nodes/{node['id']}/copy", json={"space_id": team_space})
+    assert r.status_code == 403

@@ -63,6 +63,15 @@ export const moveNode = (id: string, target: { parentId?: string; spaceId?: stri
     }),
   })
 
+export const copyNode = (id: string, target: { parentId?: string; spaceId?: string }) =>
+  api<NodeInfo>(`/api/nodes/${id}/copy`, {
+    method: 'POST',
+    body: JSON.stringify({
+      parent_id: target.parentId ?? null,
+      space_id: target.spaceId ?? null,
+    }),
+  })
+
 export const deleteNode = (id: string) => api(`/api/nodes/${id}`, { method: 'DELETE' })
 
 export const restoreNode = (id: string) =>
