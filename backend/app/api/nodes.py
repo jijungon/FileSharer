@@ -3,7 +3,7 @@ import unicodedata
 import urllib.parse
 from pathlib import Path, PurePosixPath
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy import select
@@ -185,13 +185,54 @@ def create_folder(
     return node_out(node)
 
 
+def _resolve_upload_parent(
+    db: Session,
+    user: User,
+    space: Space,
+    base_parent_id: str | None,
+    rel_path: str | None,
+) -> str | None:
+    """rel_path(예: 'docs/2026/report.md')의 디렉터리 부분을 base_parent 아래에
+    find-or-create 하고, 파일이 들어갈 최종 폴더 id를 돌려준다. 같은 이름 폴더가
+    이미 있으면 (suffix 없이) 그대로 재사용해 구조를 합친다."""
+    if not rel_path:
+        return base_parent_id
+    parts = [p for p in rel_path.replace("\\", "/").split("/") if p not in ("", ".", "..")]
+    dirs = parts[:-1]  # 마지막 성분은 파일명
+    parent_id = base_parent_id
+    for raw in dirs:
+        name = clean_name(raw)
+        existing = db.scalar(
+            select(Node).where(
+                Node.space_id == space.id,
+                Node.parent_id == parent_id,
+                Node.name == name,
+                Node.type == "folder",
+                Node.deleted_at.is_(None),
+            )
+        )
+        if existing:
+            parent_id = existing.id
+            continue
+        folder = Node(
+            space_id=space.id, parent_id=parent_id, type="folder", name=name, created_by=user.id
+        )
+        db.add(folder)
+        db.flush()
+        audit.log(db, "folder_create", user_id=user.id, node_id=folder.id, detail=name)
+        parent_id = folder.id
+    return parent_id
+
+
 def _do_upload(
     db: Session,
     user: User,
     space: Space,
     parent_id: str | None,
     upload: UploadFile,
+    rel_path: str | None = None,
 ) -> dict:
+    parent_id = _resolve_upload_parent(db, user, space, parent_id, rel_path)
     settings = get_settings()
     storage = LocalStorage(settings.data_dir)
     try:
@@ -224,17 +265,19 @@ def _do_upload(
 def upload_to_space_root(
     space_id: str,
     file: UploadFile,
+    rel_path: str = Form(""),
     user: User = Depends(current_user),
     db: Session = Depends(get_db),
 ) -> dict:
     space = get_space_checked(db, user, space_id)
-    return _do_upload(db, user, space, None, file)
+    return _do_upload(db, user, space, None, file, rel_path)
 
 
 @router.post("/nodes/{node_id}/files", status_code=201)
 def upload_to_folder(
     node_id: str,
     file: UploadFile,
+    rel_path: str = Form(""),
     user: User = Depends(current_user),
     db: Session = Depends(get_db),
 ) -> dict:
@@ -242,7 +285,7 @@ def upload_to_folder(
     if parent.type != "folder":
         raise HTTPException(status_code=400, detail="폴더가 아닙니다")
     space = db.get(Space, parent.space_id)
-    return _do_upload(db, user, space, parent.id, file)
+    return _do_upload(db, user, space, parent.id, file, rel_path)
 
 
 def _content_disposition(kind: str, filename: str) -> str:
