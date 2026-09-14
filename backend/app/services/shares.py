@@ -2,6 +2,7 @@
 
 import base64
 import hashlib
+import re
 import secrets
 from datetime import timedelta
 
@@ -98,8 +99,21 @@ def check_password(request: Request, share: ShareLink) -> None:
         )
 
 
-def consume_download(db: Session, share: ShareLink) -> None:
-    """다운로드 카운트 증가 — 한도 초과면 410."""
+def is_range_continuation(request: Request) -> bool:
+    """이어받기(Range 조각) 요청인가 — bytes=<0보다 큰 시작>-.
+    브라우저·다운로드 매니저가 한 번의 다운로드를 여러 Range 요청으로 쪼개므로,
+    시작이 0이 아닌 조각은 '새 다운로드'로 세지 않는다(횟수 과소진 방지).
+    """
+    m = re.match(r"\s*bytes=(\d+)-", request.headers.get("range", ""))
+    return bool(m) and int(m.group(1)) > 0
+
+
+def consume_download(db: Session, share: ShareLink, request: Request | None = None) -> None:
+    """다운로드 1회 소비 — 한도 초과면 410.
+    Range 이어받기 조각은 이미 센 다운로드의 연속이므로 세지 않고 통과시킨다.
+    """
+    if request is not None and is_range_continuation(request):
+        return
     if share.max_downloads is not None and share.download_count >= share.max_downloads:
         raise HTTPException(status_code=410, detail="다운로드 횟수를 초과한 링크입니다")
     share.download_count += 1
