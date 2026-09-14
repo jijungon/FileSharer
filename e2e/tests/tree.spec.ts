@@ -31,9 +31,19 @@ test('sidebar folder tree navigates into folders and back to root', async ({ pag
   const child = `트리자식-${Date.now()}`
   page.once('dialog', (d) => d.accept(child))
   await page.getByRole('button', { name: /새 폴더/ }).click()
-  await expect(page.locator('.tree-name', { hasText: child })).toBeVisible()
+  const childInTree = page.locator('.tree-name', { hasText: child })
+  await expect(childInTree).toBeVisible()
 
-  // 트리 루트(🗂 공간명)를 눌러 최상위로 복귀
-  await page.locator('.tree-root .tree-name').click()
+  // 트리에서 자식 폴더로 진입 (경로: 공간 / 부모 / 자식)
+  await childInTree.click()
+  await expect(page.locator('.crumb-current, .crumb', { hasText: child })).toBeVisible()
+
+  // 파일 목록의 '상위 폴더' 행으로 한 단계 위(부모)로 복귀
+  await page.locator('.row-up').click()
+  await expect(page.locator('.crumb-current, .crumb', { hasText: parent })).toBeVisible()
+  await expect(page.locator('.crumb-current', { hasText: child })).toHaveCount(0)
+
+  // 공간 루트(사이드바의 활성 공간)를 눌러 최상위로 복귀
+  await page.locator('.space-item.space-root.active').click()
   await expect(page).toHaveURL(/\/files$/)
 })
