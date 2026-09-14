@@ -37,6 +37,7 @@ export default function Files() {
   const [viewerH, setViewerH] = useState(340)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editingName, setEditingName] = useState('')
+  const [dragOverSpace, setDragOverSpace] = useState<string | null>(null)
   const fileInput = useRef<HTMLInputElement>(null)
   const restoredFromUrl = useRef(false)
 
@@ -209,6 +210,15 @@ export default function Files() {
     )
   }
 
+  async function moveToSpace(draggedId: string, targetSpaceId: string, spaceName: string) {
+    if (draggedId === targetSpaceId) return
+    const ok = await guard(() => moveNode(draggedId, { spaceId: targetSpaceId }))
+    if (ok) {
+      flash(`${spaceName}(으)로 이동했습니다`)
+      if (selected?.id === draggedId) setSelected(null)
+    }
+  }
+
   function viewerDrag(e: React.PointerEvent) {
     e.preventDefault()
     const startY = e.clientY
@@ -282,8 +292,27 @@ export default function Files() {
           {spaces.map((s) => (
             <button
               key={s.id}
-              className={`space-item${s.id === spaceId ? ' active' : ''}`}
+              className={
+                `space-item${s.id === spaceId ? ' active' : ''}` +
+                (dragOverSpace === s.id ? ' drag-over' : '')
+              }
               onClick={() => switchSpace(s.id)}
+              onDragOver={(e) => {
+                if (s.id !== spaceId && e.dataTransfer.types.includes('application/x-node-id')) {
+                  e.preventDefault()
+                  setDragOverSpace(s.id)
+                }
+              }}
+              onDragLeave={() => setDragOverSpace((cur) => (cur === s.id ? null : cur))}
+              onDrop={(e) => {
+                const id = e.dataTransfer.getData('application/x-node-id')
+                setDragOverSpace(null)
+                if (id && s.id !== spaceId) {
+                  e.preventDefault()
+                  moveToSpace(id, s.id, s.name)
+                }
+              }}
+              title={s.id !== spaceId ? `여기로 항목을 끌어다 놓으면 ${s.name}(으)로 이동` : undefined}
             >
               {s.type === 'personal' ? '🔒' : s.type === 'team' ? '👥' : '🏢'} {s.name}
             </button>

@@ -815,3 +815,10 @@ button:focus-visible {
 .node-name {
   cursor: text;
 }
+
+/* 사이드바 공간으로 드래그 이동(전송) 대상 하이라이트 */
+.space-item.drag-over {
+  background: color-mix(in srgb, var(--primary) 14%, var(--canvas));
+  box-shadow: inset 0 0 0 2px var(--primary);
+  font-weight: 600;
+}
