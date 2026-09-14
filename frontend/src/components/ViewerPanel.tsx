@@ -44,7 +44,7 @@ export default function ViewerPanel(props: Props) {
 
 type MediaKind = 'image' | 'pdf' | 'video' | 'audio' | 'html'
 
-function MediaPreview({ node, onClose, kind }: Props & { kind: MediaKind }) {
+function MediaPreview({ node, onClose, kind, fullscreen, onToggleFullscreen }: Props & { kind: MediaKind }) {
   const raw = `/api/files/${node.id}/raw`
   return (
     <div className="editor-shell">
@@ -63,6 +63,9 @@ function MediaPreview({ node, onClose, kind }: Props & { kind: MediaKind }) {
         <a href={downloadUrl(node)}>
           <button className="btn-utility">다운로드</button>
         </a>
+        <button className="btn-utility" onClick={onToggleFullscreen}>
+          {fullscreen ? '분할 보기' : '전체화면'}
+        </button>
         <button className="btn-utility" onClick={onClose}>
           닫기
         </button>
@@ -118,7 +121,7 @@ function HtmlFrame({ node }: { node: NodeInfo }) {
 
 /** 오피스 문서 미리보기 — 서버가 LibreOffice로 변환한 PDF를 받아 보여준다.
  * 변환에 몇 초 걸릴 수 있어 로딩 상태를 표시하고, 실패하면 안내한다. */
-function OfficePreview({ node, onClose }: Props) {
+function OfficePreview({ node, onClose, fullscreen, onToggleFullscreen }: Props) {
   const [state, setState] = useState<'loading' | 'ready' | 'error'>('loading')
   const [pdfUrl, setPdfUrl] = useState('')
   const [err, setErr] = useState('')
@@ -161,6 +164,9 @@ function OfficePreview({ node, onClose }: Props) {
         <a href={downloadUrl(node)}>
           <button className="btn-utility">원본 다운로드</button>
         </a>
+        <button className="btn-utility" onClick={onToggleFullscreen}>
+          {fullscreen ? '분할 보기' : '전체화면'}
+        </button>
         <button className="btn-utility" onClick={onClose}>
           닫기
         </button>
