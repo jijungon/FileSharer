@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import LinkBar from '../components/LinkBar'
 import ViewerPanel from '../components/ViewerPanel'
 import { api, ApiError, Me, SpaceInfo } from '../lib/api'
 import { downloadUrlData, supportsDragOut } from '../lib/dragout'
-import { formatBytes } from '../lib/format'
+import { formatBytes, formatDateTime } from '../lib/format'
 import {
   createFolder,
   deleteNode,
@@ -19,6 +19,20 @@ import {
   restoreNode,
   uploadFile,
 } from '../lib/files'
+
+type SortKey = 'name' | 'size' | 'created' | 'updated'
+type SortDir = 'asc' | 'desc'
+
+function compareNodes(a: NodeInfo, b: NodeInfo, key: SortKey, dir: SortDir): number {
+  // 폴더는 항상 먼저 (그룹 고정) — 정렬 방향과 무관
+  if (a.type !== b.type) return a.type === 'folder' ? -1 : 1
+  let cmp = 0
+  if (key === 'size') cmp = a.size - b.size
+  else if (key === 'created') cmp = (a.created_at ?? '').localeCompare(b.created_at ?? '')
+  else if (key === 'updated') cmp = (a.updated_at ?? '').localeCompare(b.updated_at ?? '')
+  if (cmp === 0) cmp = a.name.localeCompare(b.name, 'ko') // 이름 정렬 + 동점 tie-break
+  return dir === 'asc' ? cmp : -cmp
+}
 
 export default function Files() {
   const navigate = useNavigate()
@@ -37,12 +51,28 @@ export default function Files() {
   const [viewerH, setViewerH] = useState(340)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editingName, setEditingName] = useState('')
+  const [sortKey, setSortKey] = useState<SortKey>('name')
+  const [sortDir, setSortDir] = useState<SortDir>('asc')
   const [dragOverSpace, setDragOverSpace] = useState<string | null>(null)
   const fileInput = useRef<HTMLInputElement>(null)
   const restoredFromUrl = useRef(false)
 
   const space = spaces.find((s) => s.id === spaceId) ?? null
   const currentFolder = path.length > 0 ? path[path.length - 1] : null
+
+  const sortedItems = useMemo(
+    () => [...items].sort((a, b) => compareNodes(a, b, sortKey, sortDir)),
+    [items, sortKey, sortDir],
+  )
+
+  function toggleSort(key: SortKey) {
+    if (sortKey === key) {
+      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))
+    } else {
+      setSortKey(key)
+      setSortDir(key === 'name' ? 'asc' : 'desc') // 날짜·크기는 최신·큰 것부터가 자연스러움
+    }
+  }
 
   // 초기 로드: me + spaces (+ 딥링크 복원)
   useEffect(() => {
@@ -378,13 +408,36 @@ export default function Files() {
           <table className="file-table">
             <thead>
               <tr>
-                <th>이름</th>
-                <th className="col-size">크기</th>
+                <SortTh label="이름" col="name" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
+                <SortTh
+                  label="올린 날짜"
+                  col="created"
+                  cls="col-date"
+                  sortKey={sortKey}
+                  sortDir={sortDir}
+                  onSort={toggleSort}
+                />
+                <SortTh
+                  label="수정한 날짜"
+                  col="updated"
+                  cls="col-date"
+                  sortKey={sortKey}
+                  sortDir={sortDir}
+                  onSort={toggleSort}
+                />
+                <SortTh
+                  label="크기"
+                  col="size"
+                  cls="col-size"
+                  sortKey={sortKey}
+                  sortDir={sortDir}
+                  onSort={toggleSort}
+                />
                 <th className="col-actions"></th>
               </tr>
             </thead>
             <tbody>
-              {items.map((node) => (
+              {sortedItems.map((node) => (
                 <tr
                   key={node.id}
                   className={selected?.id === node.id ? 'row-selected' : ''}
@@ -442,6 +495,8 @@ export default function Files() {
                       </span>
                     )}
                   </td>
+                  <td className="col-date muted">{formatDateTime(node.created_at)}</td>
+                  <td className="col-date muted">{formatDateTime(node.updated_at)}</td>
                   <td className="col-size muted">
                     {node.type === 'file' ? formatBytes(node.size) : '—'}
                   </td>
@@ -481,9 +536,9 @@ export default function Files() {
                   </td>
                 </tr>
               ))}
-              {items.length === 0 && (
+              {sortedItems.length === 0 && (
                 <tr>
-                  <td colSpan={3} className="empty">
+                  <td colSpan={5} className="empty">
                     {trashMode
                       ? '휴지통이 비어 있습니다'
                       : '비어 있습니다 — 파일을 끌어다 놓거나 업로드를 누르세요'}
@@ -520,5 +575,31 @@ export default function Files() {
         </>
       )}
     </div>
+  )
+}
+
+function SortTh({
+  label,
+  col,
+  cls,
+  sortKey,
+  sortDir,
+  onSort,
+}: {
+  label: string
+  col: SortKey
+  cls?: string
+  sortKey: SortKey
+  sortDir: SortDir
+  onSort: (k: SortKey) => void
+}) {
+  const active = sortKey === col
+  return (
+    <th className={`${cls ?? ''} th-sort${active ? ' active' : ''}`}>
+      <button type="button" className="th-sort-btn" onClick={() => onSort(col)}>
+        {label}
+        <span className="sort-caret">{active ? (sortDir === 'asc' ? '▲' : '▼') : ''}</span>
+      </button>
+    </th>
   )
 }

@@ -8,6 +8,7 @@ export interface NodeInfo {
   name: string
   size: number
   mime: string
+  created_at: string | null
   updated_at: string | null
 }
 
