@@ -22,15 +22,16 @@ while [ $# -gt 0 ]; do
 done
 
 # 비밀번호 링크인데 SHARE_PW가 없으면 터미널에서 물어본다 (파이프 실행에서도 /dev/tty로 입력).
-# [ -r /dev/tty ]는 권한 비트만 보므로 신뢰 불가 — 실제로 열어보고 성공할 때만 프롬프트.
+# 주의: 비대화형에서 `exec 3</dev/tty` 실패는 dash 등에서 셸 전체를 즉시 종료시킨다.
+# 그래서 열 수 있는지 검사는 반드시 서브셸 ( ... ) 안에서 하고(부모 셸 안전),
+# 실제 프롬프트는 단순 명령 리다이렉트(< /dev/tty)로만 한다.
 if [ "$PROTECTED" = "1" ] && [ -z "${SHARE_PW:-}" ]; then
-  if { exec 3</dev/tty; } 2>/dev/null; then
+  if (exec 3</dev/tty) 2>/dev/null; then
     printf '비밀번호: ' > /dev/tty
     stty -echo < /dev/tty 2>/dev/null || true
-    IFS= read -r SHARE_PW <&3
+    read -r SHARE_PW < /dev/tty
     stty echo < /dev/tty 2>/dev/null || true
     printf '\n' > /dev/tty
-    exec 3<&-
   else
     echo "이 링크는 비밀번호가 필요합니다. 예: curl -fsSL .../get | SHARE_PW=<pw> sh" >&2
     exit 3
