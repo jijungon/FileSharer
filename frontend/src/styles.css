@@ -792,3 +792,26 @@ button:focus-visible {
 .disk-fill.warn {
   background: #d70015;
 }
+
+/* --- 인라인 이름 편집 --- */
+.name-input {
+  font: inherit;
+  font-size: 15px;
+  padding: 3px 8px;
+  min-width: 240px;
+  width: min(60vw, 520px);
+  border: 1px solid var(--primary);
+  border-radius: var(--radius-sm);
+  background: var(--canvas);
+  color: var(--ink);
+  outline: none;
+}
+
+.name-input:focus-visible {
+  outline: 2px solid var(--primary-focus);
+  outline-offset: 0;
+}
+
+.node-name {
+  cursor: text;
+}

@@ -35,6 +35,8 @@ export default function Files() {
   const [fullscreen, setFullscreen] = useState(false)
   const [bootError, setBootError] = useState('')
   const [viewerH, setViewerH] = useState(340)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editingName, setEditingName] = useState('')
   const fileInput = useRef<HTMLInputElement>(null)
   const restoredFromUrl = useRef(false)
 
@@ -177,8 +179,19 @@ export default function Files() {
     flash('업로드 완료')
   }
 
-  async function onRename(node: NodeInfo) {
-    const name = window.prompt('새 이름', node.name)
+  function startRename(node: NodeInfo) {
+    setEditingId(node.id)
+    setEditingName(node.name)
+  }
+
+  function cancelRename() {
+    setEditingId(null)
+    setEditingName('')
+  }
+
+  async function commitRename(node: NodeInfo) {
+    const name = editingName.trim()
+    setEditingId(null)
     if (!name || name === node.name) return
     await guard(() => renameNode(node.id, name))
   }
@@ -362,12 +375,43 @@ export default function Files() {
                       onMove(id, node.id)
                     }
                   }}
-                  onClick={() => !trashMode && selectNode(node)}
+                  onClick={() => !trashMode && editingId !== node.id && selectNode(node)}
                   onDoubleClick={() => !trashMode && node.type === 'folder' && openFolder(node)}
                 >
                   <td>
                     <span className="node-icon">{node.type === 'folder' ? '📁' : '📄'}</span>{' '}
-                    {node.name}
+                    {editingId === node.id ? (
+                      <input
+                        className="name-input"
+                        autoFocus
+                        value={editingName}
+                        onChange={(e) => setEditingName(e.target.value)}
+                        onClick={(e) => e.stopPropagation()}
+                        onFocus={(e) => e.currentTarget.select()}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault()
+                            commitRename(node)
+                          } else if (e.key === 'Escape') {
+                            e.preventDefault()
+                            cancelRename()
+                          }
+                        }}
+                        onBlur={() => commitRename(node)}
+                      />
+                    ) : (
+                      <span
+                        className="node-name"
+                        onDoubleClick={(e) => {
+                          if (!trashMode) {
+                            e.stopPropagation()
+                            startRename(node)
+                          }
+                        }}
+                      >
+                        {node.name}
+                      </span>
+                    )}
                   </td>
                   <td className="col-size muted">
                     {node.type === 'file' ? formatBytes(node.size) : '—'}
@@ -389,7 +433,7 @@ export default function Files() {
                           className="row-action"
                           onClick={(e) => {
                             e.stopPropagation()
-                            onRename(node)
+                            startRename(node)
                           }}
                         >
                           이름
