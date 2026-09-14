@@ -1,6 +1,15 @@
 import { describe, expect, it } from 'vitest'
 import { NodeInfo } from './files'
-import { isAudio, isHtml, isImage, isMarkdown, isPdf, isTextFile, isVideo } from './markdown'
+import {
+  isAudio,
+  isHtml,
+  isImage,
+  isMarkdown,
+  isOffice,
+  isPdf,
+  isTextFile,
+  isVideo,
+} from './markdown'
 
 const node = (name: string, mime = ''): NodeInfo => ({
   id: 'x',
@@ -65,5 +74,14 @@ describe('isVideo / isAudio / isHtml', () => {
     // text/html도 텍스트지만 뷰어는 isHtml을 먼저 확인해 렌더한다
     expect(isTextFile(node('page.html', 'text/html'))).toBe(true)
     expect(isHtml(node('노트.md'))).toBe(false)
+  })
+
+  it('detects office documents by extension', () => {
+    expect(isOffice(node('발표.pptx'))).toBe(true)
+    expect(isOffice(node('보고서.docx'))).toBe(true)
+    expect(isOffice(node('표.xlsx'))).toBe(true)
+    expect(isOffice(node('구형.ppt'))).toBe(true)
+    expect(isOffice(node('노트.md'))).toBe(false)
+    expect(isOffice(node('문서.pdf'))).toBe(false)
   })
 })

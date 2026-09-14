@@ -10,6 +10,7 @@ import {
   isHtml,
   isImage,
   isMarkdown,
+  isOffice,
   isPdf,
   isTextFile,
   isVideo,
@@ -37,6 +38,7 @@ export default function ViewerPanel(props: Props) {
   if (isPdf(props.node)) return <MediaPreview {...props} kind="pdf" key={props.node.id} />
   if (isVideo(props.node)) return <MediaPreview {...props} kind="video" key={props.node.id} />
   if (isAudio(props.node)) return <MediaPreview {...props} kind="audio" key={props.node.id} />
+  if (isOffice(props.node)) return <OfficePreview {...props} key={props.node.id} />
   return <DownloadCard {...props} />
 }
 
@@ -114,6 +116,79 @@ function HtmlFrame({ node }: { node: NodeInfo }) {
   )
 }
 
+/** 오피스 문서 미리보기 — 서버가 LibreOffice로 변환한 PDF를 받아 보여준다.
+ * 변환에 몇 초 걸릴 수 있어 로딩 상태를 표시하고, 실패하면 안내한다. */
+function OfficePreview({ node, onClose }: Props) {
+  const [state, setState] = useState<'loading' | 'ready' | 'error'>('loading')
+  const [pdfUrl, setPdfUrl] = useState('')
+  const [err, setErr] = useState('')
+  useEffect(() => {
+    let alive = true
+    let objUrl = ''
+    setState('loading')
+    fetch(`/api/files/${node.id}/preview.pdf`)
+      .then(async (r) => {
+        if (!r.ok) {
+          const body = (await r.json().catch(() => null)) as { detail?: string } | null
+          throw new Error(body?.detail ?? `미리보기 변환 실패 (${r.status})`)
+        }
+        return r.blob()
+      })
+      .then((blob) => {
+        if (!alive) return
+        objUrl = URL.createObjectURL(blob)
+        setPdfUrl(objUrl)
+        setState('ready')
+      })
+      .catch((e) => {
+        if (!alive) return
+        setErr(e instanceof Error ? e.message : '미리보기 변환 실패')
+        setState('error')
+      })
+    return () => {
+      alive = false
+      if (objUrl) URL.revokeObjectURL(objUrl)
+    }
+  }, [node.id])
+
+  return (
+    <div className="editor-shell">
+      <div className="editor-toolbar">
+        <span className="editor-name">{node.name}</span>
+        <span className="editor-status">{formatBytes(node.size)}</span>
+        <span className="editor-status">PDF로 변환됨</span>
+        <span className="toolbar-spacer" />
+        <a href={downloadUrl(node)}>
+          <button className="btn-utility">원본 다운로드</button>
+        </a>
+        <button className="btn-utility" onClick={onClose}>
+          닫기
+        </button>
+      </div>
+      {state === 'loading' ? (
+        <div className="viewer-card-wrap">
+          <p className="muted">PDF로 변환하는 중… (처음 한 번은 몇 초 걸릴 수 있어요)</p>
+        </div>
+      ) : state === 'error' ? (
+        <div className="viewer-card-wrap">
+          <div className="viewer-card">
+            <div className="viewer-card-icon">📄</div>
+            <div className="viewer-card-body">
+              <div className="viewer-card-name">{node.name}</div>
+              <div className="muted">{err}</div>
+            </div>
+            <a href={downloadUrl(node)}>
+              <button className="btn-primary">원본 다운로드</button>
+            </a>
+          </div>
+        </div>
+      ) : (
+        <iframe className="pdf-frame" src={pdfUrl} title={node.name} />
+      )}
+    </div>
+  )
+}
+
 function DownloadCard({ node, onClose }: Props) {
   return (
     <div className="viewer-card-wrap">
@@ -133,9 +208,6 @@ function DownloadCard({ node, onClose }: Props) {
                 </li>
               ))}
             </ul>
-            <p className="muted">
-              PPT·워드·엑셀 등 오피스 문서 미리보기는 준비 중입니다.
-            </p>
           </details>
         </div>
         <a href={downloadUrl(node)}>

@@ -1,7 +1,7 @@
 import mimetypes
 import unicodedata
 import urllib.parse
-from pathlib import PurePosixPath
+from pathlib import Path, PurePosixPath
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile
 from fastapi.responses import FileResponse, StreamingResponse
@@ -13,6 +13,7 @@ from ..config import get_settings
 from ..deps import current_user, get_db
 from ..models import Node, Space, User, utcnow
 from ..services import audit
+from ..services.office import OfficeConvertError, convert_to_pdf, is_office
 from ..services.permissions import (
     get_node_checked,
     get_space_checked,
@@ -294,6 +295,32 @@ def raw_file(
         headers["Content-Security-Policy"] = "sandbox"
         headers["X-Content-Type-Options"] = "nosniff"
     return FileResponse(path, media_type=media_type, headers=headers)
+
+
+@router.get("/files/{node_id}/preview.pdf")
+def office_preview(
+    node_id: str,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+    storage: LocalStorage = Depends(get_storage),
+):
+    """오피스 문서(PPT·워드·엑셀 등)를 PDF로 변환해 미리보기용으로 내려준다."""
+    node = get_node_checked(db, user, node_id)
+    if node.type != "file" or not is_office(node.name):
+        raise HTTPException(status_code=400, detail="오피스 문서가 아닙니다")
+    src = storage.path_for(node.storage_key)
+    if not src.is_file():
+        raise HTTPException(status_code=410, detail="파일 본체가 없습니다")
+    cache_dir = Path(get_settings().data_dir) / "preview_cache"
+    try:
+        pdf = convert_to_pdf(src, cache_dir, node.storage_key)
+    except OfficeConvertError as exc:
+        raise HTTPException(status_code=503, detail=f"미리보기를 만들 수 없습니다: {exc}") from exc
+    return FileResponse(
+        pdf,
+        media_type="application/pdf",
+        headers={"Content-Disposition": _content_disposition("inline", f"{node.name}.pdf")},
+    )
 
 
 def collect_tar_entries(db: Session, storage: LocalStorage, root: Node):
