@@ -101,14 +101,13 @@ export default function FolderTree({
     }
   }
 
-  function renderNode(node: TreeNode, depth: number) {
+  function renderNode(node: TreeNode) {
     const isOpen = expanded.has(node.id)
     const hasChildren = node.children.length > 0
     return (
-      <div key={node.id}>
+      <li key={node.id} className="tree-li">
         <div
           className={`tree-row${node.id === currentFolderId ? ' active' : ''}`}
-          style={{ paddingLeft: 8 + depth * 14 }}
           {...dropHandlers(node.id)}
         >
           <button
@@ -123,16 +122,14 @@ export default function FolderTree({
             {node.name}
           </button>
         </div>
-        {isOpen && node.children.map((c) => renderNode(c, depth + 1))}
-      </div>
+        {isOpen && hasChildren && (
+          <ul className="tree-branch">{node.children.map(renderNode)}</ul>
+        )}
+      </li>
     )
   }
 
   if (tree.length === 0) return null
 
-  return (
-    <div className="folder-tree">
-      {tree.map((n) => renderNode(n, 0))}
-    </div>
-  )
+  return <ul className="folder-tree tree-branch">{tree.map(renderNode)}</ul>
 }
