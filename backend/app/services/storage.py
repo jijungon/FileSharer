@@ -135,3 +135,114 @@ class LocalStorage(StorageBackend):
             while chunk := fh.read(CHUNK):
                 digest.update(chunk)
         return digest.hexdigest()
+
+
+class R2Storage(StorageBackend):
+    """Cloudflare R2 (S3 호환) 백엔드. local_path=None이라 서빙은 스트리밍 경로를 탄다."""
+
+    def __init__(
+        self,
+        *,
+        endpoint_url: str | None,
+        access_key_id: str,
+        secret_access_key: str,
+        bucket: str,
+        region: str = "auto",
+    ):
+        import boto3
+        from botocore.config import Config as BotoConfig
+
+        self.bucket = bucket
+        self._client = boto3.client(
+            "s3",
+            endpoint_url=endpoint_url or None,
+            aws_access_key_id=access_key_id,
+            aws_secret_access_key=secret_access_key,
+            region_name=region,
+            config=BotoConfig(signature_version="s3v4", retries={"max_attempts": 3}),
+        )
+
+    @staticmethod
+    def _is_not_found(err) -> bool:  # noqa: ANN001
+        code = str(err.response.get("Error", {}).get("Code", ""))
+        return code in ("404", "NoSuchKey", "NotFound")
+
+    def put_stream(self, stream: BinaryIO, max_bytes: int) -> tuple[str, int, str]:
+        key = uuid.uuid4().hex
+        digest = hashlib.sha256()
+        size = 0
+        # sha·크기·용량제한을 위해 스풀에 담아(작으면 메모리, 크면 임시파일) 한 번에 업로드
+        with tempfile.SpooledTemporaryFile(max_size=8 * CHUNK) as spool:
+            while chunk := stream.read(CHUNK):
+                size += len(chunk)
+                if size > max_bytes:
+                    raise FileTooLargeError(f"limit {max_bytes} bytes")
+                digest.update(chunk)
+                spool.write(chunk)
+            spool.seek(0)
+            self._client.upload_fileobj(spool, self.bucket, key)
+        return key, size, digest.hexdigest()
+
+    def exists(self, key: str) -> bool:
+        from botocore.exceptions import ClientError
+
+        if not key:
+            return False
+        try:
+            self._client.head_object(Bucket=self.bucket, Key=key)
+            return True
+        except ClientError as err:
+            if self._is_not_found(err):
+                return False
+            raise
+
+    def size(self, key: str) -> int:
+        return int(self._client.head_object(Bucket=self.bucket, Key=key)["ContentLength"])
+
+    def open_stream(self, key: str) -> BinaryIO:
+        return self._client.get_object(Bucket=self.bucket, Key=key)["Body"]
+
+    def open_range(self, key: str, start: int, length: int) -> BinaryIO:
+        end = start + length - 1
+        resp = self._client.get_object(
+            Bucket=self.bucket, Key=key, Range=f"bytes={start}-{end}"
+        )
+        return resp["Body"]
+
+    def copy_blob(self, key: str) -> str:
+        new_key = uuid.uuid4().hex
+        self._client.copy_object(
+            Bucket=self.bucket,
+            Key=new_key,
+            CopySource={"Bucket": self.bucket, "Key": key},
+        )
+        return new_key
+
+    def delete(self, key: str) -> None:
+        if key:
+            self._client.delete_object(Bucket=self.bucket, Key=key)
+
+    def sha256(self, key: str) -> str:
+        digest = hashlib.sha256()
+        body = self.open_stream(key)
+        try:
+            for chunk in iter(lambda: body.read(CHUNK), b""):
+                digest.update(chunk)
+        finally:
+            body.close()
+        return digest.hexdigest()
+
+
+def build_storage(settings) -> StorageBackend:  # noqa: ANN001
+    """설정의 STORAGE_BACKEND에 따라 로컬/R2 백엔드를 만든다."""
+    if getattr(settings, "storage_backend", "local") == "r2":
+        endpoint = settings.r2_endpoint or (
+            f"https://{settings.r2_account_id}.r2.cloudflarestorage.com"
+        )
+        return R2Storage(
+            endpoint_url=endpoint,
+            access_key_id=settings.r2_access_key_id,
+            secret_access_key=settings.r2_secret_access_key,
+            bucket=settings.r2_bucket,
+        )
+    return LocalStorage(settings.data_dir)
