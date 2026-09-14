@@ -177,6 +177,11 @@ export default function Files() {
     }
   }
 
+  // 파일 목록에서 상위 폴더로 (path 마지막 바로 앞; 없으면 공간 루트)
+  function goUp() {
+    crumbNavigate(path.length <= 1 ? null : path.length - 2)
+  }
+
   async function guard<T>(action: () => Promise<T>): Promise<T | undefined> {
     try {
       return await action()
@@ -338,12 +343,12 @@ export default function Files() {
             <div key={s.id}>
               <button
                 className={
-                  `space-item${s.id === spaceId ? ' active' : ''}` +
+                  `space-item space-root${s.id === spaceId ? ' active' : ''}` +
                   (dragOverSpace === s.id ? ' drag-over' : '')
                 }
                 onClick={() => switchSpace(s.id)}
                 onDragOver={(e) => {
-                  if (s.id !== spaceId && e.dataTransfer.types.includes('application/x-node-id')) {
+                  if (e.dataTransfer.types.includes('application/x-node-id')) {
                     e.preventDefault()
                     setDragOverSpace(s.id)
                   }
@@ -352,22 +357,25 @@ export default function Files() {
                 onDrop={(e) => {
                   const id = e.dataTransfer.getData('application/x-node-id')
                   setDragOverSpace(null)
-                  if (id && s.id !== spaceId) {
-                    e.preventDefault()
-                    copyToSpace(id, s.id, s.name)
-                  }
+                  if (!id) return
+                  e.preventDefault()
+                  // 활성 공간 위에 놓으면 그 공간 최상위로 이동, 다른 공간이면 복사
+                  if (s.id === spaceId) onMove(id, null)
+                  else copyToSpace(id, s.id, s.name)
                 }}
-                title={s.id !== spaceId ? `여기로 항목을 끌어다 놓으면 ${s.name}(으)로 복사` : undefined}
+                title={
+                  s.id === spaceId
+                    ? '여기로 놓으면 이 공간 최상위로 이동'
+                    : `여기로 항목을 끌어다 놓으면 ${s.name}(으)로 복사`
+                }
               >
-                {s.type === 'personal' ? '🔒' : s.type === 'team' ? '👥' : '🏢'} {s.name}
+                {s.name}
               </button>
               {s.id === spaceId && !trashMode && (
                 <FolderTree
                   spaceId={s.id}
-                  spaceName={s.name}
                   currentFolderId={currentFolder?.id ?? null}
                   version={treeVersion}
-                  onOpenRoot={() => switchSpace(s.id)}
                   onOpenFolder={openFolderById}
                   onDropToFolder={(id, target) => onMove(id, target)}
                 />
@@ -382,7 +390,7 @@ export default function Files() {
                 setSelected(null)
               }}
             >
-              🗑 휴지통
+              휴지통
             </button>
           </div>
         </aside>
@@ -464,6 +472,31 @@ export default function Files() {
               </tr>
             </thead>
             <tbody>
+              {!trashMode && currentFolder && (
+                <tr
+                  className="row-up"
+                  onClick={goUp}
+                  title="상위 폴더로"
+                  onDragOver={(e) => {
+                    if (e.dataTransfer.types.includes('application/x-node-id')) e.preventDefault()
+                  }}
+                  onDrop={(e) => {
+                    const id = e.dataTransfer.getData('application/x-node-id')
+                    if (id) {
+                      e.preventDefault()
+                      onMove(id, currentFolder.parent_id ?? null)
+                    }
+                  }}
+                >
+                  <td>
+                    <span className="node-icon">↑</span> <span className="node-name">상위 폴더</span>
+                  </td>
+                  <td className="col-date"></td>
+                  <td className="col-date"></td>
+                  <td className="col-size"></td>
+                  <td className="col-actions"></td>
+                </tr>
+              )}
               {sortedItems.map((node) => (
                 <tr
                   key={node.id}

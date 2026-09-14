@@ -24,20 +24,16 @@ function buildTree(rows: FolderRow[]): TreeNode[] {
 
 interface Props {
   spaceId: string
-  spaceName: string
   currentFolderId: string | null // null = 공간 루트
   version: number // 구조 변경 시 증가 → 다시 로드
-  onOpenRoot: () => void
   onOpenFolder: (folderId: string) => void
   onDropToFolder?: (draggedId: string, targetFolderId: string | null) => void
 }
 
 export default function FolderTree({
   spaceId,
-  spaceName,
   currentFolderId,
   version,
-  onOpenRoot,
   onOpenFolder,
   onDropToFolder,
 }: Props) {
@@ -124,7 +120,7 @@ export default function FolderTree({
             {isOpen ? '▾' : '▸'}
           </button>
           <button className="tree-name" onClick={() => onOpenFolder(node.id)} title={node.name}>
-            📁 {node.name}
+            {node.name}
           </button>
         </div>
         {isOpen && node.children.map((c) => renderNode(c, depth + 1))}
@@ -132,17 +128,10 @@ export default function FolderTree({
     )
   }
 
+  if (tree.length === 0) return null
+
   return (
     <div className="folder-tree">
-      <div
-        className={`tree-row tree-root${currentFolderId === null ? ' active' : ''}`}
-        {...dropHandlers(null)}
-      >
-        <span className="tree-caret" />
-        <button className="tree-name" onClick={onOpenRoot} title={spaceName}>
-          🗂 {spaceName}
-        </button>
-      </div>
       {tree.map((n) => renderNode(n, 0))}
     </div>
   )

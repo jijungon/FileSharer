@@ -974,9 +974,11 @@ button:focus-visible {
   background: color-mix(in srgb, var(--primary) 7%, var(--surface-pearl));
 }
 
-/* --- 사이드바 폴더 트리 --- */
+/* --- 사이드바 폴더 트리 (공간 루트 아래로 들여쓰기 + 가이드선) --- */
 .folder-tree {
-  margin: 2px 0 6px;
+  margin: 2px 0 6px 16px;
+  padding-left: 6px;
+  border-left: 1px solid var(--divider-soft);
   display: flex;
   flex-direction: column;
 }
@@ -1024,6 +1026,20 @@ button:focus-visible {
   text-overflow: ellipsis;
 }
 
-.tree-root .tree-name {
-  font-weight: 600;
+/* --- 파일 목록: 상위 폴더(..) 행 --- */
+.row-up {
+  cursor: pointer;
+  color: var(--ink-muted-48);
+}
+
+.row-up:hover {
+  background: var(--divider-soft);
+}
+
+.row-up td {
+  white-space: nowrap;
+}
+
+.row-up .node-name {
+  color: var(--ink-muted-48);
 }
