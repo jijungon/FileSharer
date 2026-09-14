@@ -121,13 +121,28 @@ def test_one_command_in_bare_alpine(tmp_path):
                 files={"file": ("config.yml", io.BytesIO(b"k: v"), "text/plain")},
             )
             dshare = c.post(f"/api/nodes/{folder['id']}/shares", json={}).json()
+            # 비밀번호 걸린 파일 공유 — 원커맨드+비번 조합(사용자 실경로)
+            pnode = c.post(
+                f"/api/spaces/{sp['id']}/files",
+                files={"file": ("비밀.txt", io.BytesIO(b"SECRET-BYTES"), "text/plain")},
+            ).json()
+            pshare = c.post(
+                f"/api/nodes/{pnode['id']}/shares", json={"password": "opensesame"}
+            ).json()
 
         work = tmp_path / "work"
         work.mkdir()
+        get = f"http://127.0.0.1:{port}/s"
         script = (
             "apk add -q curl >/dev/null && cd /work && "
-            f"curl -fsSL http://127.0.0.1:{port}/s/{fshare['token']}/get | sh && "
-            f"curl -fsSL http://127.0.0.1:{port}/s/{dshare['token']}/get | sh -s -- -C 받은폴더"
+            f"curl -fsSL {get}/{fshare['token']}/get | sh && "
+            f"curl -fsSL {get}/{dshare['token']}/get | sh -s -- -C 받은폴더 && "
+            # 비번 없이 실행하면 실패해야 정상(비대화형 → exit 3)
+            f"! (curl -fsSL {get}/{pshare['token']}/get | sh) && "
+            # 틀린 비번도 실패해야 정상(401)
+            f"! (curl -fsSL {get}/{pshare['token']}/get | SHARE_PW=nope sh) && "
+            # 올바른 형태: 파이프 오른쪽 sh에 SHARE_PW 전달
+            f"curl -fsSL {get}/{pshare['token']}/get | SHARE_PW=opensesame sh -s -- -C 비번폴더"
         )
         run = subprocess.run(
             [
@@ -141,6 +156,8 @@ def test_one_command_in_bare_alpine(tmp_path):
         assert run.returncode == 0, f"stdout={run.stdout}\nstderr={run.stderr}"
         assert (work / "모델.bin").read_bytes() == b"MODEL-BYTES"
         assert (work / "받은폴더" / "배포셋" / "config.yml").read_bytes() == b"k: v"
+        # 비번 공유가 SHARE_PW로 실제 받아졌는지 (원커맨드+비번 회귀 방지)
+        assert (work / "비번폴더" / "비밀.txt").read_bytes() == b"SECRET-BYTES"
         assert "ok: sha256" in run.stdout
     finally:
         server.terminate()

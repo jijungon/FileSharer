@@ -22,13 +22,15 @@ while [ $# -gt 0 ]; do
 done
 
 # 비밀번호 링크인데 SHARE_PW가 없으면 터미널에서 물어본다 (파이프 실행에서도 /dev/tty로 입력).
+# [ -r /dev/tty ]는 권한 비트만 보므로 신뢰 불가 — 실제로 열어보고 성공할 때만 프롬프트.
 if [ "$PROTECTED" = "1" ] && [ -z "${SHARE_PW:-}" ]; then
-  if [ -r /dev/tty ]; then
+  if { exec 3</dev/tty; } 2>/dev/null; then
     printf '비밀번호: ' > /dev/tty
     stty -echo < /dev/tty 2>/dev/null || true
-    read -r SHARE_PW < /dev/tty
+    IFS= read -r SHARE_PW <&3
     stty echo < /dev/tty 2>/dev/null || true
     printf '\n' > /dev/tty
+    exec 3<&-
   else
     echo "이 링크는 비밀번호가 필요합니다. 예: curl -fsSL .../get | SHARE_PW=<pw> sh" >&2
     exit 3
