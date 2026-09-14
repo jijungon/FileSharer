@@ -58,7 +58,7 @@ export default function Files() {
   const [dragOverSpace, setDragOverSpace] = useState<string | null>(null)
   const [treeVersion, setTreeVersion] = useState(0)
   const fileInput = useRef<HTMLInputElement>(null)
-  const folderInput = useRef<HTMLInputElement>(null)
+  const folderInput = useRef<HTMLInputElement | null>(null)
   const restoredFromUrl = useRef(false)
   const navSynced = useRef(false) // 부팅 완료 후 브라우저 뒤로/앞으로(URL) 동기화 활성화
 
@@ -516,17 +516,7 @@ export default function Files() {
                 <button className="btn-utility" onClick={() => fileInput.current?.click()}>
                   ↑ 업로드
                 </button>
-                <button
-                  className="btn-utility"
-                  onClick={() => {
-                    const el = folderInput.current
-                    if (!el) return
-                    // webkitdirectory는 React 타입에 없어 직접 세팅 (Chrome·Safari·Edge)
-                    el.setAttribute('webkitdirectory', '')
-                    el.setAttribute('directory', '')
-                    el.click()
-                  }}
-                >
+                <button className="btn-utility" onClick={() => folderInput.current?.click()}>
                   ↑ 폴더 업로드
                 </button>
                 <button className="btn-utility" onClick={onNewMd}>
@@ -543,7 +533,14 @@ export default function Files() {
                   }}
                 />
                 <input
-                  ref={folderInput}
+                  ref={(el) => {
+                    folderInput.current = el
+                    // webkitdirectory는 React 타입에 없어 마운트 시 직접 세팅 → 폴더 선택창
+                    if (el) {
+                      el.setAttribute('webkitdirectory', '')
+                      el.setAttribute('directory', '')
+                    }
+                  }}
                   type="file"
                   multiple
                   hidden
