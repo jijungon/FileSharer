@@ -179,10 +179,13 @@ def remove_member(
 @router.delete("/teams/{team_id}")
 def delete_team(
     team_id: str,
+    force: bool = False,
     admin: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ) -> dict:
-    """팀 삭제 — 팀 공간에 활성 파일이 있으면 거부(먼저 비우게). 빈 팀이면 공간·멤버십까지 정리."""
+    """팀 삭제 — 기본은 팀 공간에 활성 파일이 있으면 거부(먼저 비우게).
+    force=true면 안의 파일까지 전부 삭제(purge)하고 팀을 지운다.
+    """
     team = db.get(Team, team_id)
     if team is None:
         raise HTTPException(status_code=404, detail="팀이 없습니다")
@@ -191,14 +194,15 @@ def delete_team(
     space = db.scalar(select(Space).where(Space.type == "team", Space.team_id == team_id))
 
     if space is not None:
-        active = db.scalar(
-            select(Node).where(Node.space_id == space.id, Node.deleted_at.is_(None)).limit(1)
-        )
-        if active is not None:
-            raise HTTPException(
-                status_code=409,
-                detail="팀 공간에 파일이 남아 있어 삭제할 수 없습니다. 먼저 비워 주세요",
+        if not force:
+            active = db.scalar(
+                select(Node).where(Node.space_id == space.id, Node.deleted_at.is_(None)).limit(1)
             )
+            if active is not None:
+                raise HTTPException(
+                    status_code=409,
+                    detail="팀 공간에 파일이 남아 있어 삭제할 수 없습니다. 먼저 비워 주세요",
+                )
 
         # 남은(휴지통) 노드의 blob·공유 링크·행 정리
         node_ids = list(db.scalars(select(Node.id).where(Node.space_id == space.id)))
@@ -215,7 +219,8 @@ def delete_team(
 
     db.execute(sql_delete(TeamMember).where(TeamMember.team_id == team_id))
     db.delete(team)
-    audit.log(db, "team_delete", user_id=admin.id, detail=team_name)
+    detail = f"{team_name} (force)" if force else team_name
+    audit.log(db, "team_delete", user_id=admin.id, detail=detail)
     return {"ok": True}
 
 

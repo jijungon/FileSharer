@@ -279,8 +279,24 @@ function TeamsTab({
               className="btn-utility"
               style={{ background: '#d70015' }}
               onClick={() => {
-                if (window.confirm(`팀 "${team.name}"을(를) 삭제할까요? (팀 공간이 비어 있어야 합니다)`))
-                  onAction(() => api(`/api/teams/${team.id}`, { method: 'DELETE' }))
+                if (!window.confirm(`팀 "${team.name}"을(를) 삭제할까요?`)) return
+                onAction(async () => {
+                  try {
+                    await api(`/api/teams/${team.id}`, { method: 'DELETE' })
+                  } catch (err) {
+                    // 팀 공간에 파일이 남아 있으면 409 → 강제 삭제로 승격(확인 후)
+                    if (err instanceof ApiError && err.status === 409) {
+                      const ok = window.confirm(
+                        `"${team.name}" 팀 공간에 파일이 남아 있습니다.\n` +
+                          `파일까지 전부 삭제하고 팀을 지울까요? (되돌릴 수 없습니다)`,
+                      )
+                      if (!ok) return
+                      await api(`/api/teams/${team.id}?force=true`, { method: 'DELETE' })
+                    } else {
+                      throw err
+                    }
+                  }
+                })
               }}
             >
               팀 삭제
