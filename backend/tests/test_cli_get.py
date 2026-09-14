@@ -1,6 +1,7 @@
 """원커맨드(/get) — 스크립트 렌더 검증 + (리눅스 CI) alpine 컨테이너 실전 스모크."""
 
 import io
+import os
 import shutil
 import socket
 import subprocess
@@ -61,11 +62,13 @@ def test_get_script_gone_when_expired(admin_client, db):
     assert admin_client.get(f"/s/{share['token']}/get").status_code == 410
 
 
-# ---------- alpine 컨테이너 실전 스모크 (완료 기준: 깡통 VM에서 한 줄) ----------
+# ---------- 원커맨드 실전 스모크 (curl·tar·sh만으로 — 완료 기준: VM에서 한 줄) ----------
+# docker 없이 로컬 sh로 실제 /get 스크립트를 실행한다. curl/tar/sh만 있으면 되며
+# (mac·linux 공통), --network host 같은 불안정 요소가 없어 flaky하지 않다.
 
-pytestmark_docker = pytest.mark.skipif(
-    sys.platform == "darwin" or shutil.which("docker") is None,
-    reason="linux + docker 환경에서만 (CI에서 실행)",
+pytestmark_cli = pytest.mark.skipif(
+    shutil.which("curl") is None or shutil.which("tar") is None,
+    reason="curl·tar 필요",
 )
 
 
@@ -75,90 +78,124 @@ def _free_port() -> int:
         return s.getsockname()[1]
 
 
-@pytestmark_docker
-def test_one_command_in_bare_alpine(tmp_path):
+def _wait_healthy(base: str, timeout: float = 30.0) -> None:
+    """서버가 실제로 200을 줄 때까지 대기(항상 sleep). 시간 초과면 명확히 실패."""
+    deadline = time.monotonic() + timeout
+    last = ""
+    with httpx.Client(base_url=base, timeout=3) as c:
+        while time.monotonic() < deadline:
+            try:
+                if c.get("/api/health").status_code == 200:
+                    return
+                last = "non-200"
+            except httpx.HTTPError as e:
+                last = repr(e)
+            time.sleep(0.25)
+    raise AssertionError(f"server not healthy within {timeout}s ({last})")
+
+
+@pytestmark_cli
+def test_one_command_end_to_end(tmp_path):
+    """실제 uvicorn + 렌더된 /get 스크립트를 sh로 실행 — 파일/폴더/비밀번호 전 분기."""
     port = _free_port()
+    base = f"http://127.0.0.1:{port}"
     env = {
-        "PATH": "/usr/bin:/bin:/usr/local/bin",
+        **os.environ,
         "APP_ENV": "test",
         "SECRET_KEY": "cli-smoke-secret",
         "DATA_DIR": str(tmp_path / "data"),
         "DATABASE_URL": f"sqlite:///{tmp_path / 'cli.db'}",
-        "BASE_URL": f"http://127.0.0.1:{port}",
+        "BASE_URL": base,
+        "FRONTEND_URL": "",
         "ADMIN_EMAIL": "cli@test.local",
         "ADMIN_PASSWORD": "cli-pass-123",
+        "GOOGLE_CLIENT_ID": "",
+        "GOOGLE_CLIENT_SECRET": "",
+        "FILESHARER_ENV_FILE": str(tmp_path / "none.env"),
     }
     backend_dir = Path(__file__).resolve().parent.parent
     server = subprocess.Popen(
-        [sys.executable, "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", str(port)],
+        [sys.executable, "-m", "uvicorn", "app.main:app", "--port", str(port)],
         cwd=backend_dir,
         env=env,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.STDOUT,
     )
     try:
-        with httpx.Client(base_url=f"http://127.0.0.1:{port}", timeout=10) as c:
-            for _ in range(50):
-                try:
-                    if c.get("/api/health").status_code == 200:
-                        break
-                except httpx.HTTPError:
-                    time.sleep(0.2)
+        _wait_healthy(base)
+        with httpx.Client(base_url=base, timeout=10) as c:
             c.post(
                 "/api/auth/login",
                 json={"email": "cli@test.local", "password": "cli-pass-123"},
             ).raise_for_status()
             sp = next(s for s in c.get("/api/spaces").json() if s["type"] == "personal")
-            # 파일 + 폴더(하위 파일 포함) 공유 준비
-            payload = ("모델.bin", io.BytesIO(b"MODEL-BYTES"), "application/octet-stream")
-            fnode = c.post(
-                f"/api/spaces/{sp['id']}/files", files={"file": payload}
-            ).json()
-            fshare = c.post(f"/api/nodes/{fnode['id']}/shares", json={}).json()
-            folder = c.post("/api/nodes", json={"space_id": sp["id"], "name": "배포셋"}).json()
+
+            bin_payload = ("모델.bin", io.BytesIO(b"MODEL-BYTES"), "application/octet-stream")
+            r = c.post(f"/api/spaces/{sp['id']}/files", files={"file": bin_payload})
+            r.raise_for_status()
+            fshare = c.post(f"/api/nodes/{r.json()['id']}/shares", json={})
+            fshare.raise_for_status()
+            ftok = fshare.json()["token"]
+
+            folder = c.post("/api/nodes", json={"space_id": sp["id"], "name": "배포셋"})
+            folder.raise_for_status()
             c.post(
-                f"/api/nodes/{folder['id']}/files",
+                f"/api/nodes/{folder.json()['id']}/files",
                 files={"file": ("config.yml", io.BytesIO(b"k: v"), "text/plain")},
-            )
-            dshare = c.post(f"/api/nodes/{folder['id']}/shares", json={}).json()
-            # 비밀번호 걸린 파일 공유 — 원커맨드+비번 조합(사용자 실경로)
+            ).raise_for_status()
+            dshare = c.post(f"/api/nodes/{folder.json()['id']}/shares", json={})
+            dshare.raise_for_status()
+            dtok = dshare.json()["token"]
+
             pnode = c.post(
                 f"/api/spaces/{sp['id']}/files",
                 files={"file": ("비밀.txt", io.BytesIO(b"SECRET-BYTES"), "text/plain")},
-            ).json()
+            )
+            pnode.raise_for_status()
             pshare = c.post(
-                f"/api/nodes/{pnode['id']}/shares", json={"password": "opensesame"}
-            ).json()
+                f"/api/nodes/{pnode.json()['id']}/shares", json={"password": "opensesame"}
+            )
+            pshare.raise_for_status()
+            ptok = pshare.json()["token"]
 
         work = tmp_path / "work"
         work.mkdir()
-        get = f"http://127.0.0.1:{port}/s"
-        script = (
-            "apk add -q curl >/dev/null && cd /work && "
-            f"curl -fsSL {get}/{fshare['token']}/get | sh && "
-            f"curl -fsSL {get}/{dshare['token']}/get | sh -s -- -C 받은폴더 && "
-            # 비번 없이 실행하면 실패해야 정상(비대화형 → exit 3)
-            f"! (curl -fsSL {get}/{pshare['token']}/get | sh) && "
-            # 틀린 비번도 실패해야 정상(401)
-            f"! (curl -fsSL {get}/{pshare['token']}/get | SHARE_PW=nope sh) && "
-            # 올바른 형태: 파이프 오른쪽 sh에 SHARE_PW 전달
-            f"curl -fsSL {get}/{pshare['token']}/get | SHARE_PW=opensesame sh -s -- -C 비번폴더"
-        )
-        run = subprocess.run(
-            [
-                "docker", "run", "--rm", "--network", "host",
-                "-v", f"{work}:/work", "alpine:3.20", "sh", "-c", script,
-            ],
-            capture_output=True,
-            text=True,
-            timeout=180,
-        )
-        assert run.returncode == 0, f"stdout={run.stdout}\nstderr={run.stderr}"
+
+        def run_get(token, *extra, share_pw=None):
+            # curl <base>/s/<token>/get | [SHARE_PW=..] sh -s -- <extra>  를 sh로 실행
+            pw = f"SHARE_PW={share_pw} " if share_pw is not None else ""
+            cmd = f"curl -fsSL {base}/s/{token}/get | {pw}sh -s -- {' '.join(extra)}"
+            return subprocess.run(
+                ["sh", "-c", cmd],
+                cwd=work,
+                capture_output=True,
+                text=True,
+                timeout=60,
+                stdin=subprocess.DEVNULL,
+                start_new_session=True,  # 제어 터미널 분리 → /dev/tty 못 열어 프롬프트로 안 멈춤
+            )
+
+        # 1) 파일: 그냥 받기
+        assert run_get(ftok).returncode == 0
         assert (work / "모델.bin").read_bytes() == b"MODEL-BYTES"
+
+        # 2) 폴더: -C 대상 디렉토리로 tar 해제
+        assert run_get(dtok, "-C", "받은폴더").returncode == 0
         assert (work / "받은폴더" / "배포셋" / "config.yml").read_bytes() == b"k: v"
-        # 비번 공유가 SHARE_PW로 실제 받아졌는지 (원커맨드+비번 회귀 방지)
+
+        # 3) 비번 링크, 비번 없이(비대화형) → 실패 + 안내
+        no_pw = run_get(ptok)
+        assert no_pw.returncode != 0
+        assert "비밀번호" in (no_pw.stdout + no_pw.stderr)
+
+        # 4) 비번 링크, 틀린 비번 → 실패(401)
+        assert run_get(ptok, "-C", "틀림", share_pw="nope").returncode != 0
+
+        # 5) 비번 링크, 올바른 SHARE_PW(sh쪽) → 수신
+        ok = run_get(ptok, "-C", "비번폴더", share_pw="opensesame")
+        assert ok.returncode == 0, f"stdout={ok.stdout}\nstderr={ok.stderr}"
         assert (work / "비번폴더" / "비밀.txt").read_bytes() == b"SECRET-BYTES"
-        assert "ok: sha256" in run.stdout
+        assert "ok: sha256" in ok.stdout
     finally:
         server.terminate()
         server.wait(timeout=10)
