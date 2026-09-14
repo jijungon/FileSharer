@@ -309,10 +309,17 @@ export default function Files() {
     e.preventDefault()
     const startY = e.clientY
     const startH = viewerH
+    // 드래그 중 아래쪽 iframe(PDF·HTML·오피스)이 pointermove를 가로채면 드래그가 멈춘다.
+    // 전체화면 투명 오버레이로 덮어 이벤트를 부모 문서에서 계속 받게 한다.
+    // (아래로 빠르게 끌 때 뷰어가 안 따라오던 버그 수정)
+    const overlay = document.createElement('div')
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;cursor:row-resize'
+    document.body.appendChild(overlay)
     function move(ev: PointerEvent) {
       setViewerH(Math.min(window.innerHeight * 0.75, Math.max(180, startH + (startY - ev.clientY))))
     }
     function up() {
+      overlay.remove()
       window.removeEventListener('pointermove', move)
       window.removeEventListener('pointerup', up)
     }
