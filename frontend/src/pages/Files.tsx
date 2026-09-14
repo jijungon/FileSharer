@@ -59,6 +59,7 @@ export default function Files() {
   const [treeVersion, setTreeVersion] = useState(0)
   const fileInput = useRef<HTMLInputElement>(null)
   const restoredFromUrl = useRef(false)
+  const navSynced = useRef(false) // 부팅 완료 후 브라우저 뒤로/앞으로(URL) 동기화 활성화
 
   const space = spaces.find((s) => s.id === spaceId) ?? null
   const currentFolder = path.length > 0 ? path[path.length - 1] : null
@@ -99,12 +100,14 @@ export default function Files() {
               setPath(found.ancestors)
               setSelected(found.node)
             }
+            navSynced.current = true
             return
           } catch {
             setNotice('링크의 항목을 찾을 수 없습니다')
           }
         }
         setSpaceId((prev) => prev ?? spacesRes[0]?.id ?? null)
+        navSynced.current = true
       } catch (err) {
         if (err instanceof ApiError && err.status === 401) {
           navigate('/login', { replace: true })
@@ -119,6 +122,39 @@ export default function Files() {
     boot()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // 브라우저 뒤로/앞으로: URL(nodeId)이 화면 상태와 어긋나면 URL을 기준으로 복원.
+  // 앞으로 이동(폴더 열기 등)은 상태를 먼저 세팅하므로 currentId === nodeId라 건너뛴다.
+  useEffect(() => {
+    if (!navSynced.current) return
+    const currentId = selected?.id ?? currentFolder?.id ?? null
+    if ((nodeId ?? null) === currentId) return
+    setFullscreen(false)
+    setTrashMode(false)
+    if (!nodeId) {
+      setPath([])
+      setSelected(null)
+      return
+    }
+    let alive = true
+    getNodePath(nodeId)
+      .then((found) => {
+        if (!alive) return
+        setSpaceId(found.space_id)
+        if (found.node.type === 'folder') {
+          setPath([...found.ancestors, found.node])
+          setSelected(null)
+        } else {
+          setPath(found.ancestors)
+          setSelected(found.node)
+        }
+      })
+      .catch(() => setNotice('항목을 찾을 수 없습니다'))
+    return () => {
+      alive = false
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nodeId])
 
   const reload = useCallback(async () => {
     if (!spaceId) return

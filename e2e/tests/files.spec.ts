@@ -58,3 +58,30 @@ test('non-text viewer (image/pdf) can maximize and restore', async ({ page }) =>
   await page.getByRole('button', { name: '분할 보기' }).click()
   await expect(page.locator('.workspace')).toBeVisible()
 })
+
+test('browser back/forward syncs the folder view', async ({ page }) => {
+  await page.goto('/login')
+  await page.getByRole('button', { name: /로컬 계정으로 로그인/ }).click()
+  await page.getByPlaceholder('이메일').fill(EMAIL)
+  await page.getByPlaceholder('비밀번호').fill(PASSWORD)
+  await page.getByRole('button', { name: '로컬 계정으로 로그인' }).click()
+  await expect(page).toHaveURL(/\/files/)
+
+  // 루트에 폴더 생성 → 사이드바 트리에서 클릭해 진입(SPA 이동)
+  const folder = `뒤로폴더-${Date.now()}`
+  page.once('dialog', (d) => d.accept(folder))
+  await page.getByRole('button', { name: /새 폴더/ }).click()
+  await page.locator('.tree-name', { hasText: folder }).click()
+  await expect(page.locator('.crumb-current, .crumb', { hasText: folder })).toBeVisible()
+  await expect(page).toHaveURL(/\/files\/.+/)
+
+  // 브라우저 뒤로가기 → URL도 화면 상태도 루트로 (예전엔 URL만 바뀌고 화면은 안 바뀜)
+  await page.goBack()
+  await expect(page).toHaveURL(/\/files$/)
+  await expect(page.locator('.crumb-current, .crumb', { hasText: folder })).toHaveCount(0)
+
+  // 앞으로가기 → 다시 폴더 안
+  await page.goForward()
+  await expect(page).toHaveURL(/\/files\/.+/)
+  await expect(page.locator('.crumb-current, .crumb', { hasText: folder })).toBeVisible()
+})
