@@ -141,3 +141,24 @@ def test_share_requires_space_permission(admin_client, db):
     login(admin_client, "other@test.local", "pw-123456")
     res = admin_client.post(f"/api/nodes/{node['id']}/shares", json={})
     assert res.status_code == 403
+
+
+def test_share_url_uses_frontend_url_when_set(app_factory):
+    """dev처럼 FRONTEND_URL이 설정되면 공유 URL이 그 오리진(프론트)을 쓴다."""
+    from fastapi.testclient import TestClient
+
+    from tests.conftest import ADMIN_EMAIL, ADMIN_PASSWORD
+
+    app = app_factory(
+        ADMIN_EMAIL=ADMIN_EMAIL,
+        ADMIN_PASSWORD=ADMIN_PASSWORD,
+        BASE_URL="http://localhost:8642",
+        FRONTEND_URL="http://localhost:5173",
+    )
+    with TestClient(app) as c:
+        login(c, ADMIN_EMAIL, ADMIN_PASSWORD)
+        sp = personal_space(c)
+        node = upload(c, f"/api/spaces/{sp['id']}/files", "f.txt").json()
+        body = c.post(f"/api/nodes/{node['id']}/shares", json={}).json()
+        assert body["url"].startswith("http://localhost:5173/s/")
+        assert body["get_command"].startswith("curl -fsSL http://localhost:5173/s/")
