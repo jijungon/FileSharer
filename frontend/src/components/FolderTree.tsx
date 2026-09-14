@@ -65,6 +65,8 @@ export default function FolderTree({
     if (!currentFolderId) return
     setExpanded((prev) => {
       const next = new Set(prev)
+      // 현재 폴더 자신도 펼쳐서 그 안의 하위 폴더가 트리에 보이도록
+      next.add(currentFolderId)
       let cur: string | null | undefined = parentOf.get(currentFolderId)
       let hops = 0
       while (cur && hops < 100) {
