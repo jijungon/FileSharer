@@ -100,6 +100,27 @@ def test_build_storage_selects_backend_and_endpoint():
 
 
 @mock_aws
+def test_stream_tar_gz_reads_from_r2():
+    """폴더 tar 다운로드가 R2 백엔드에서도 각 blob을 스트리밍해 담는지."""
+    import tarfile
+
+    from app.models import Node
+    from app.services.tar_stream import stream_tar_gz
+
+    st = _make_r2()
+    k1, *_ = st.put_stream(io.BytesIO(b"file-one"), 10_000)
+    k2, *_ = st.put_stream(io.BytesIO(b"two"), 10_000)
+    n1 = Node(type="file", name="a.txt", size=8, storage_key=k1)
+    n2 = Node(type="file", name="b.txt", size=3, storage_key=k2)
+    entries = [(None, "root"), (n1, "root/a.txt"), (n2, "root/b.txt")]
+
+    data = b"".join(stream_tar_gz(st, entries))
+    with tarfile.open(fileobj=io.BytesIO(data), mode="r:gz") as tar:
+        assert tar.extractfile("root/a.txt").read() == b"file-one"
+        assert tar.extractfile("root/b.txt").read() == b"two"
+
+
+@mock_aws
 def test_serve_blob_streams_r2_with_range():
     """serve_blob이 R2 백엔드(StreamingBody)로 전체·부분전송을 제대로 하는지."""
     from fastapi import FastAPI, Request

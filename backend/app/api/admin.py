@@ -9,7 +9,7 @@ from ..config import get_settings
 from ..deps import current_user, get_db, require_admin
 from ..models import Node, ShareLink, Space, Team, TeamMember, User, utcnow
 from ..services import audit
-from ..services.storage import LocalStorage
+from ..services.storage import build_storage
 
 router = APIRouter(prefix="/api", tags=["admin"])
 
@@ -207,7 +207,7 @@ def delete_team(
         # 남은(휴지통) 노드의 blob·공유 링크·행 정리
         node_ids = list(db.scalars(select(Node.id).where(Node.space_id == space.id)))
         if node_ids:
-            storage = LocalStorage(get_settings().data_dir)
+            storage = build_storage(get_settings())
             for node in db.scalars(select(Node).where(Node.id.in_(node_ids))):
                 if node.type == "file" and node.storage_key:
                     storage.delete(node.storage_key)

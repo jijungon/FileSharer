@@ -14,7 +14,7 @@ from ..services import audit
 from ..services.serving import content_disposition as _content_disposition
 from ..services.serving import serve_blob
 from ..services.shares import check_password, consume_download, resolve_share
-from ..services.storage import LocalStorage
+from ..services.storage import StorageBackend
 from ..services.tar_stream import stream_tar_gz
 from .nodes import collect_tar_entries, get_storage
 
@@ -54,7 +54,7 @@ def share_raw(
     token: str,
     request: Request,
     db: Session = Depends(get_db),
-    storage: LocalStorage = Depends(get_storage),
+    storage: StorageBackend = Depends(get_storage),
 ):
     """공유 페이지의 미리보기용 (다운로드 카운트 미증가)."""
     share, node = resolve_share(db, token)
@@ -76,7 +76,7 @@ def share_download(
     token: str,
     request: Request,
     db: Session = Depends(get_db),
-    storage: LocalStorage = Depends(get_storage),
+    storage: StorageBackend = Depends(get_storage),
 ):
     share, node = resolve_share(db, token)
     check_password(request, share)
@@ -102,7 +102,7 @@ def share_tar(
     token: str,
     request: Request,
     db: Session = Depends(get_db),
-    storage: LocalStorage = Depends(get_storage),
+    storage: StorageBackend = Depends(get_storage),
 ):
     share, node = resolve_share(db, token)
     check_password(request, share)
@@ -110,9 +110,9 @@ def share_tar(
         raise HTTPException(status_code=400, detail="폴더가 아닙니다")
     consume_download(db, share, request)
     audit.log(db, "share_download", node_id=node.id, detail=f"{node.name} (tar)")
-    entries = list(collect_tar_entries(db, storage, node))
+    entries = list(collect_tar_entries(db, node))
     return StreamingResponse(
-        stream_tar_gz(entries),
+        stream_tar_gz(storage, entries),
         media_type="application/gzip",
         headers={"Content-Disposition": _content_disposition("attachment", f"{node.name}.tar.gz")},
     )
@@ -131,7 +131,7 @@ def share_get_script(
     token: str,
     request: Request,
     db: Session = Depends(get_db),
-    storage: LocalStorage = Depends(get_storage),
+    storage: StorageBackend = Depends(get_storage),
 ) -> PlainTextResponse:
     """원커맨드 POSIX sh 스크립트 — 파일/폴더 자동 판별, 다운로드+해제+체크섬."""
     share, node = resolve_share(db, token)
