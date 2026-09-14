@@ -18,8 +18,17 @@ export interface NodePath {
   space_id: string
 }
 
+export interface FolderRow {
+  id: string
+  name: string
+  parent_id: string | null
+}
+
 export const listSpaceChildren = (spaceId: string) =>
   api<NodeInfo[]>(`/api/spaces/${spaceId}/children`)
+
+export const listSpaceFolders = (spaceId: string) =>
+  api<FolderRow[]>(`/api/spaces/${spaceId}/folders`)
 
 export const listNodeChildren = (nodeId: string) => api<NodeInfo[]>(`/api/nodes/${nodeId}/children`)
 

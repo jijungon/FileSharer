@@ -378,3 +378,18 @@ def test_copy_requires_both_spaces_accessible(admin_client, db):
     as_user(admin_client, "b@test.local")
     r = admin_client.post(f"/api/nodes/{node['id']}/copy", json={"space_id": team_space})
     assert r.status_code == 403
+
+
+def test_space_folders_flat_list(admin_client):
+    sp = spaces_of(admin_client)
+    pid = sp["personal"]["id"]
+    a = admin_client.post("/api/nodes", json={"space_id": pid, "name": "A"}).json()
+    admin_client.post("/api/nodes", json={"space_id": pid, "parent_id": a["id"], "name": "B"})
+    admin_client.post("/api/nodes", json={"space_id": pid, "name": "C"})
+    upload(admin_client, f"/api/spaces/{pid}/files", "file.txt")  # 파일은 제외돼야
+
+    folders = admin_client.get(f"/api/spaces/{pid}/folders").json()
+    names = {f["name"] for f in folders}
+    assert names == {"A", "B", "C"}  # 파일 file.txt 없음
+    b_row = next(f for f in folders if f["name"] == "B")
+    assert b_row["parent_id"] == a["id"]  # 계층(parent_id) 포함

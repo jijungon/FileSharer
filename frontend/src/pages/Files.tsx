@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
+import FolderTree from '../components/FolderTree'
 import LinkBar from '../components/LinkBar'
 import ViewerPanel from '../components/ViewerPanel'
 import { api, ApiError, Me, SpaceInfo } from '../lib/api'
@@ -55,6 +56,7 @@ export default function Files() {
   const [sortKey, setSortKey] = useState<SortKey>('name')
   const [sortDir, setSortDir] = useState<SortDir>('asc')
   const [dragOverSpace, setDragOverSpace] = useState<string | null>(null)
+  const [treeVersion, setTreeVersion] = useState(0)
   const fileInput = useRef<HTMLInputElement>(null)
   const restoredFromUrl = useRef(false)
 
@@ -182,6 +184,20 @@ export default function Files() {
       flash(err instanceof Error ? err.message : '요청에 실패했습니다')
     } finally {
       reload()
+      setTreeVersion((v) => v + 1) // 폴더 구조 변경 반영 → 사이드바 트리 갱신
+    }
+  }
+
+  async function openFolderById(id: string) {
+    try {
+      const found = await getNodePath(id)
+      setSelected(null)
+      setFullscreen(false)
+      setTrashMode(false)
+      setPath(found.node.type === 'folder' ? [...found.ancestors, found.node] : found.ancestors)
+      navigate(`/files/${id}`)
+    } catch {
+      flash('폴더를 열 수 없습니다')
     }
   }
 
@@ -319,32 +335,44 @@ export default function Files() {
       <div className="workspace" style={{ display: fullscreen && selected ? 'none' : undefined }}>
         <aside className="sidebar">
           {spaces.map((s) => (
-            <button
-              key={s.id}
-              className={
-                `space-item${s.id === spaceId ? ' active' : ''}` +
-                (dragOverSpace === s.id ? ' drag-over' : '')
-              }
-              onClick={() => switchSpace(s.id)}
-              onDragOver={(e) => {
-                if (s.id !== spaceId && e.dataTransfer.types.includes('application/x-node-id')) {
-                  e.preventDefault()
-                  setDragOverSpace(s.id)
+            <div key={s.id}>
+              <button
+                className={
+                  `space-item${s.id === spaceId ? ' active' : ''}` +
+                  (dragOverSpace === s.id ? ' drag-over' : '')
                 }
-              }}
-              onDragLeave={() => setDragOverSpace((cur) => (cur === s.id ? null : cur))}
-              onDrop={(e) => {
-                const id = e.dataTransfer.getData('application/x-node-id')
-                setDragOverSpace(null)
-                if (id && s.id !== spaceId) {
-                  e.preventDefault()
-                  copyToSpace(id, s.id, s.name)
-                }
-              }}
-              title={s.id !== spaceId ? `여기로 항목을 끌어다 놓으면 ${s.name}(으)로 복사` : undefined}
-            >
-              {s.type === 'personal' ? '🔒' : s.type === 'team' ? '👥' : '🏢'} {s.name}
-            </button>
+                onClick={() => switchSpace(s.id)}
+                onDragOver={(e) => {
+                  if (s.id !== spaceId && e.dataTransfer.types.includes('application/x-node-id')) {
+                    e.preventDefault()
+                    setDragOverSpace(s.id)
+                  }
+                }}
+                onDragLeave={() => setDragOverSpace((cur) => (cur === s.id ? null : cur))}
+                onDrop={(e) => {
+                  const id = e.dataTransfer.getData('application/x-node-id')
+                  setDragOverSpace(null)
+                  if (id && s.id !== spaceId) {
+                    e.preventDefault()
+                    copyToSpace(id, s.id, s.name)
+                  }
+                }}
+                title={s.id !== spaceId ? `여기로 항목을 끌어다 놓으면 ${s.name}(으)로 복사` : undefined}
+              >
+                {s.type === 'personal' ? '🔒' : s.type === 'team' ? '👥' : '🏢'} {s.name}
+              </button>
+              {s.id === spaceId && !trashMode && (
+                <FolderTree
+                  spaceId={s.id}
+                  spaceName={s.name}
+                  currentFolderId={currentFolder?.id ?? null}
+                  version={treeVersion}
+                  onOpenRoot={() => switchSpace(s.id)}
+                  onOpenFolder={openFolderById}
+                  onDropToFolder={(id, target) => onMove(id, target)}
+                />
+              )}
+            </div>
           ))}
           <div className="sidebar-foot">
             <button
