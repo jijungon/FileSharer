@@ -3,6 +3,7 @@ from pathlib import Path
 from alembic.config import Config
 from sqlalchemy import Engine, create_engine
 from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.pool import NullPool
 
 from alembic import command
 
@@ -11,9 +12,13 @@ BACKEND_DIR = Path(__file__).resolve().parent.parent
 
 def build_engine(database_url: str) -> Engine:
     connect_args = {}
+    engine_kwargs = {}
     if database_url.startswith("sqlite"):
         connect_args["check_same_thread"] = False
-    engine = create_engine(database_url, connect_args=connect_args)
+        # NullPool: 요청마다 새 커넥션. 풀에 남은 커넥션의 오래된 WAL 스냅샷 때문에
+        # "방금 만든 노드가 다음 요청에서 404" 나던 read-after-write 불일치를 없앤다.
+        engine_kwargs["poolclass"] = NullPool
+    engine = create_engine(database_url, connect_args=connect_args, **engine_kwargs)
     if database_url.startswith("sqlite"):
         from sqlalchemy import event
 
@@ -22,6 +27,7 @@ def build_engine(database_url: str) -> Engine:
             cur = dbapi_conn.cursor()
             cur.execute("PRAGMA journal_mode=WAL")
             cur.execute("PRAGMA foreign_keys=ON")
+            cur.execute("PRAGMA busy_timeout=5000")  # 쓰기 경합 시 최대 5초 대기(SQLITE_BUSY 방지)
             cur.close()
 
     return engine
