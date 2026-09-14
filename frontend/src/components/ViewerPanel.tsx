@@ -207,7 +207,7 @@ function TextEditor({ node, fullscreen, onToggleFullscreen, onNodeUpdated, onClo
           : '저장됨'
 
   return (
-    <div className="editor-shell">
+    <div className={`editor-shell${autosave ? ' autosave-on' : ''}`}>
       <div className="editor-toolbar">
         <span className="editor-name">{node.name}</span>
         <span className={`editor-status${dirty && !saving ? ' dirty' : ''}`}>{status}</span>
