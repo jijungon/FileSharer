@@ -313,3 +313,12 @@ def test_save_content_requires_space_permission(admin_client, db):
         f"/api/files/{node['id']}/content", json={"content": "해킹", "base_updated_at": None}
     )
     assert res.status_code == 403
+
+
+def test_node_out_includes_created_and_updated(admin_client):
+    sp = spaces_of(admin_client)
+    node = upload(admin_client, f"/api/spaces/{sp['personal']['id']}/files", "t.md").json()
+    assert node["created_at"] and node["updated_at"]
+    # 목록에서도 created_at이 내려온다
+    row = admin_client.get(f"/api/spaces/{sp['personal']['id']}/children").json()[0]
+    assert "created_at" in row and "updated_at" in row

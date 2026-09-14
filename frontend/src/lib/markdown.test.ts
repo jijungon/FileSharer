@@ -10,6 +10,7 @@ const node = (name: string, mime = ''): NodeInfo => ({
   name,
   size: 1,
   mime,
+  created_at: null,
   updated_at: null,
 })
 

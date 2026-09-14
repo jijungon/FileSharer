@@ -822,3 +822,45 @@ button:focus-visible {
   box-shadow: inset 0 0 0 2px var(--primary);
   font-weight: 600;
 }
+
+/* --- 정렬 가능한 컬럼 헤더 & 날짜 컬럼 --- */
+.col-date {
+  width: 150px;
+  white-space: nowrap;
+}
+
+.th-sort {
+  padding: 0 !important;
+}
+
+.th-sort-btn {
+  width: 100%;
+  text-align: left;
+  background: none;
+  color: var(--ink-muted-48);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 6px 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border-radius: var(--radius-sm);
+}
+
+.th-sort-btn:hover {
+  background: var(--divider-soft);
+  color: var(--ink);
+}
+
+.th-sort.active .th-sort-btn {
+  color: var(--primary);
+}
+
+.col-size.th-sort .th-sort-btn,
+.col-date.th-sort .th-sort-btn {
+  justify-content: flex-start;
+}
+
+.sort-caret {
+  font-size: 9px;
+}

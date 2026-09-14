@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { formatBytes, normalizeFileName } from './format'
+import { formatBytes, formatDateTime, normalizeFileName } from './format'
 
 describe('formatBytes', () => {
   it('formats byte ranges', () => {
@@ -21,5 +21,16 @@ describe('normalizeFileName', () => {
     const nfd = '한글파일.md'.normalize('NFD')
     expect(nfd).not.toBe('한글파일.md')
     expect(normalizeFileName(nfd)).toBe('한글파일.md')
+  })
+})
+
+describe('formatDateTime', () => {
+  it('formats naive-UTC iso to local YYYY-MM-DD HH:mm', () => {
+    // 입력은 서버의 naive UTC. 로컬 타임존에 의존하지 않도록 형식만 검증
+    expect(formatDateTime('2026-09-14T01:05:00')).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/)
+  })
+  it('handles null/invalid', () => {
+    expect(formatDateTime(null)).toBe('—')
+    expect(formatDateTime('nope')).toBe('—')
   })
 })

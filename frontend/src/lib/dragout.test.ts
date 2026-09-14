@@ -10,6 +10,7 @@ const base: NodeInfo = {
   name: '보고서.pdf',
   size: 10,
   mime: 'application/pdf',
+  created_at: null,
   updated_at: null,
 }
 

@@ -82,6 +82,7 @@ def node_out(node: Node) -> dict:
         "name": node.name,
         "size": node.size,
         "mime": node.mime,
+        "created_at": _stamp(node.created_at),
         "updated_at": _stamp(node.updated_at),
     }
 
