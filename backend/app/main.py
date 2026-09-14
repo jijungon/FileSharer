@@ -34,6 +34,20 @@ def create_app() -> FastAPI:
 
     app = FastAPI(title="FileSharer", docs_url=None, redoc_url=None)
     app.state.sessionmaker = SessionLocal
+
+    @app.middleware("http")
+    async def commit_db_middleware(request, call_next):
+        # 요청 세션이 있으면 응답을 돌려보내기 '전에' 커밋한다 → 다음 요청이 방금 만든
+        # 자원을 확실히 보게 된다(get_db teardown-after-response 경합 제거).
+        response = await call_next(request)
+        db = getattr(request.state, "db", None)
+        if db is not None:
+            try:
+                db.commit()
+            finally:
+                db.close()
+        return response
+
     app.add_middleware(
         SessionMiddleware,
         secret_key=settings.secret_key,
