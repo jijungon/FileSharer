@@ -339,11 +339,16 @@ function TextEditor({ node, fullscreen, onToggleFullscreen, onNodeUpdated, onClo
     e.preventDefault()
     const container = (e.currentTarget as HTMLElement).parentElement!
     const rect = container.getBoundingClientRect()
+    // 드래그 중 에디터/프리뷰가 pointermove를 가로채지 못하게 투명 오버레이를 덮는다.
+    const overlay = document.createElement('div')
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;cursor:col-resize'
+    document.body.appendChild(overlay)
     function move(ev: PointerEvent) {
       const pct = ((ev.clientX - rect.left) / rect.width) * 100
       setSplit(Math.min(80, Math.max(20, pct)))
     }
     function up() {
+      overlay.remove()
       window.removeEventListener('pointermove', move)
       window.removeEventListener('pointerup', up)
     }

@@ -85,3 +85,35 @@ test('browser back/forward syncs the folder view', async ({ page }) => {
   await expect(page).toHaveURL(/\/files\/.+/)
   await expect(page.locator('.crumb-current, .crumb', { hasText: folder })).toBeVisible()
 })
+
+test('viewer resize handle works when dragging down over an iframe preview', async ({ page }) => {
+  await page.goto('/login')
+  await page.getByRole('button', { name: /로컬 계정으로 로그인/ }).click()
+  await page.getByPlaceholder('이메일').fill(EMAIL)
+  await page.getByPlaceholder('비밀번호').fill(PASSWORD)
+  await page.getByRole('button', { name: '로컬 계정으로 로그인' }).click()
+  await expect(page).toHaveURL(/\/files/)
+
+  // HTML 파일 = iframe 뷰어 (핸들 아래로 끌면 커서가 iframe 위를 지나감)
+  await page.locator('input[type="file"]').setInputFiles({
+    name: '리사이즈.html',
+    mimeType: 'text/html',
+    buffer: Buffer.from('<h1>resize drag test</h1>'),
+  })
+  await page.getByRole('cell', { name: /리사이즈\.html/ }).click()
+
+  const viewer = page.locator('.viewer-area')
+  await expect(viewer).toBeVisible()
+  const before = (await viewer.boundingBox())!.height
+
+  // 핸들을 아래로 끌면 뷰어가 작아져야 한다. iframe이 이벤트를 가로채면 안 움직임(버그).
+  const handle = page.locator('.vsplit-handle')
+  const hb = (await handle.boundingBox())!
+  await page.mouse.move(hb.x + hb.width / 2, hb.y + hb.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(hb.x + hb.width / 2, hb.y + 160, { steps: 12 })
+  await page.mouse.up()
+
+  const after = (await viewer.boundingBox())!.height
+  expect(after).toBeLessThan(before - 40)
+})
