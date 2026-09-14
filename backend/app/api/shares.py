@@ -36,7 +36,11 @@ def make_share(
         max_downloads=body.max_downloads,
     )
     audit.log(db, "share_create", user_id=user.id, node_id=node.id, detail=node.name)
-    base = get_settings().base_url.rstrip("/")
+    settings = get_settings()
+    # 공유 링크는 사람이 브라우저로 여는 주소다. dev는 SPA가 프론트 오리진(5173)에만 있으므로
+    # FRONTEND_URL을 우선 사용하고(그 오리진의 vite가 /s 하위 액션을 백엔드로 프록시),
+    # prod는 FRONTEND_URL이 비어 있어 BASE_URL(동일 오리진)을 쓴다.
+    base = (settings.frontend_url or settings.base_url).rstrip("/")
     # 토큰은 이 응답에서 단 한 번만 노출된다 (DB에는 해시만 저장)
     return {
         **share_out(share),
