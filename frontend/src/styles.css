@@ -982,13 +982,48 @@ button:focus-visible {
   background: color-mix(in srgb, var(--primary) 7%, var(--surface-pearl));
 }
 
-/* --- 사이드바 폴더 트리 (공간 루트 아래로 들여쓰기 + 가이드선) --- */
+/* --- 사이드바 폴더 트리 (dirtree식 연결선 ├── └── │) --- */
 .folder-tree {
-  margin: 2px 0 6px 16px;
-  padding-left: 6px;
-  border-left: 1px solid var(--divider-soft);
-  display: flex;
-  flex-direction: column;
+  margin: 2px 0 6px 10px;
+}
+.folder-tree,
+.tree-branch {
+  list-style: none;
+  padding: 0;
+  margin-top: 0;
+  margin-bottom: 0;
+}
+.tree-branch {
+  padding-left: 14px; /* 하위 레벨 들여쓰기(연결선 폭) */
+}
+.tree-li {
+  position: relative;
+  padding-left: 14px; /* 노드 앞 연결선(엘보) 자리 */
+}
+/* 형제를 잇는 세로선 │ */
+.tree-li::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  border-left: 1px solid var(--hairline);
+  pointer-events: none;
+}
+/* 노드로 가는 가로 엘보 ── (├/└의 가로획) */
+.tree-li::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 13px;
+  width: 10px;
+  border-top: 1px solid var(--hairline);
+  pointer-events: none;
+}
+/* 마지막 자식은 세로선을 엘보까지만 → └ */
+.tree-li:last-child::before {
+  bottom: auto;
+  height: 13px;
 }
 
 .tree-row {
