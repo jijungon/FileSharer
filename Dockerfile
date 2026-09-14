@@ -9,6 +9,14 @@ RUN npm run build
 # ── Stage 2: 백엔드 + 정적파일 → 단일 이미지 ───────────────
 FROM python:3.13-slim AS app
 ENV PIP_NO_CACHE_DIR=1 PYTHONUNBUFFERED=1
+# 오피스 문서(PPT·워드·엑셀) 미리보기용 PDF 변환기 + 한글 폰트.
+# --no-install-recommends로 최소 구성, JRE는 제외(PDF 내보내기엔 불필요).
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      libreoffice-impress \
+      libreoffice-writer \
+      libreoffice-calc \
+      fonts-noto-cjk \
+    && rm -rf /var/lib/apt/lists/*
 RUN useradd --create-home --uid 1000 app \
     && mkdir /data && chown app:app /data
 WORKDIR /srv/backend

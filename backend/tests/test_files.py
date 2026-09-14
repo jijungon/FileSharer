@@ -76,6 +76,54 @@ def test_raw_html_is_sandboxed(admin_client):
     assert raw.headers.get("x-content-type-options") == "nosniff"
 
 
+def test_is_office_detection():
+    from app.services.office import is_office
+
+    assert is_office("발표.pptx")
+    assert is_office("보고서.DOCX")  # 대소문자 무시
+    assert is_office("표.xls")
+    assert not is_office("노트.md")
+    assert not is_office("사진.png")
+
+
+def test_office_preview_returns_pdf(admin_client, monkeypatch):
+    """오피스 문서 → 변환기(LibreOffice)를 목킹해 preview.pdf가 PDF로 내려오는지 검증."""
+
+    def fake_convert(src, cache_dir, cache_key):
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        out = cache_dir / f"{cache_key}.pdf"
+        out.write_bytes(b"%PDF-1.4 fake preview")
+        return out
+
+    monkeypatch.setattr("app.api.nodes.convert_to_pdf", fake_convert)
+    sp = spaces_of(admin_client)
+    base = f"/api/spaces/{sp['personal']['id']}/files"
+    doc = upload(admin_client, base, "발표.pptx", b"PPTX-bytes", "application/octet-stream").json()
+
+    res = admin_client.get(f"/api/files/{doc['id']}/preview.pdf")
+    assert res.status_code == 200
+    assert res.headers["content-type"].startswith("application/pdf")
+    assert "inline" in res.headers["content-disposition"]
+    assert res.content.startswith(b"%PDF")
+
+
+def test_office_preview_rejects_non_office(admin_client):
+    sp = spaces_of(admin_client)
+    base = f"/api/spaces/{sp['personal']['id']}/files"
+    txt = upload(admin_client, base, "노트.txt", b"hello", "text/plain").json()
+    assert admin_client.get(f"/api/files/{txt['id']}/preview.pdf").status_code == 400
+
+
+def test_office_preview_503_when_converter_missing(admin_client, monkeypatch):
+    """LibreOffice 미설치 환경에서는 503으로 명확히 안내한다."""
+    monkeypatch.setattr("app.services.office.soffice_bin", lambda: None)
+    sp = spaces_of(admin_client)
+    base = f"/api/spaces/{sp['personal']['id']}/files"
+    doc = upload(admin_client, base, "표.xlsx", b"XLSX", "application/octet-stream").json()
+    res = admin_client.get(f"/api/files/{doc['id']}/preview.pdf")
+    assert res.status_code == 503
+
+
 def test_upload_size_limit(app_factory):
     from fastapi.testclient import TestClient
 

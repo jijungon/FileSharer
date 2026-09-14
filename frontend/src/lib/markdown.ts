@@ -63,6 +63,14 @@ export function isHtml(node: NodeInfo): boolean {
   return node.mime === 'text/html' || HTML_EXTS.includes(extOf(node.name))
 }
 
+const OFFICE_EXTS = ['ppt', 'pptx', 'doc', 'docx', 'xls', 'xlsx', 'odp', 'ods', 'odt']
+
+/** PPT·워드·엑셀 등 — 서버에서 PDF로 변환해 미리보기 */
+export function isOffice(node: NodeInfo): boolean {
+  if (node.type !== 'file') return false
+  return OFFICE_EXTS.includes(extOf(node.name))
+}
+
 /** 사용자 안내용 — 미리보기(뷰어)가 지원하는 형식 요약 */
 export const SUPPORTED_PREVIEW: { label: string; exts: string }[] = [
   { label: '마크다운', exts: '.md .markdown' },
@@ -72,4 +80,5 @@ export const SUPPORTED_PREVIEW: { label: string; exts: string }[] = [
   { label: '영상', exts: '.mp4 .webm .mov .m4v .ogv' },
   { label: '음성', exts: '.mp3 .wav .ogg .m4a .aac .flac' },
   { label: 'HTML', exts: '.html .htm (스크립트 미실행)' },
+  { label: '오피스', exts: '.ppt .pptx .doc .docx .xls .xlsx (PDF로 변환)' },
 ]
