@@ -104,16 +104,28 @@ test('viewer resize handle works when dragging down over an iframe preview', asy
 
   const viewer = page.locator('.viewer-area')
   await expect(viewer).toBeVisible()
-  const before = (await viewer.boundingBox())!.height
+  // HTML 프리뷰 iframe이 로드·배치될 때까지 대기(레이아웃 안정화)
+  await expect(page.locator('.viewer-area iframe')).toBeVisible()
 
   // 핸들을 아래로 끌면 뷰어가 작아져야 한다. iframe이 이벤트를 가로채면 안 움직임(버그).
+  // 앞선 테스트들이 파일을 쌓아 목록이 길어지면 핸들이 뷰포트(720) 밖으로 밀려
+  // 마우스 좌표가 아무것도 못 눌러 드래그가 무시된다(=CI 플레이크의 실제 원인).
+  // → 먼저 핸들을 뷰포트 중앙으로 스크롤해 드래그 좌표를 유효화한다.
   const handle = page.locator('.vsplit-handle')
+  await handle.evaluate((el) => el.scrollIntoView({ block: 'center' }))
+  await expect(handle).toBeVisible()
+  const before = (await viewer.boundingBox())!.height
   const hb = (await handle.boundingBox())!
-  await page.mouse.move(hb.x + hb.width / 2, hb.y + hb.height / 2)
+  const cx = hb.x + hb.width / 2
+  const cy = hb.y + hb.height / 2
+  await page.mouse.move(cx, cy)
   await page.mouse.down()
-  await page.mouse.move(hb.x + hb.width / 2, hb.y + 160, { steps: 12 })
+  await page.mouse.move(cx, cy + 12) // 작은 이동으로 드래그(오버레이) 먼저 활성화
+  await page.mouse.move(cx, cy + 120, { steps: 10 }) // 아래로 → 뷰어 축소(뷰포트 내 유지)
   await page.mouse.up()
 
-  const after = (await viewer.boundingBox())!.height
-  expect(after).toBeLessThan(before - 40)
+  // mouse.up 직후 1회 측정은 레이아웃 갱신 전일 수 있어 폴링으로 대기(플레이크 방지)
+  await expect
+    .poll(async () => (await viewer.boundingBox())!.height, { timeout: 5000 })
+    .toBeLessThan(before - 40)
 })
