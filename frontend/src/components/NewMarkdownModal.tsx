@@ -1,6 +1,7 @@
 import { markdown } from '@codemirror/lang-markdown'
 import CodeMirror from '@uiw/react-codemirror'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { useScrollSync } from '../lib/scrollsync'
 import MarkdownPreview from './MarkdownPreview'
 
 /** '새 MD' 편집 모달. 저장 전까지 파일을 만들지 않고, 저장/취소를 선택한다. */
@@ -16,6 +17,9 @@ export default function NewMarkdownModal({
   const title = name.replace(/\.md$/i, '')
   const [text, setText] = useState(`# ${title}\n\n`)
   const [saving, setSaving] = useState(false)
+  const editorPaneRef = useRef<HTMLDivElement>(null)
+  const previewRef = useRef<HTMLDivElement>(null)
+  useScrollSync(editorPaneRef, previewRef) // 에디터 ↔ 프리뷰 동시 스크롤(main과 동일)
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -55,7 +59,7 @@ export default function NewMarkdownModal({
           </div>
         </div>
         <div className="editor-split new-md-body">
-          <div className="editor-pane" style={{ width: '50%' }}>
+          <div className="editor-pane" ref={editorPaneRef} style={{ width: '50%' }}>
             <CodeMirror
               value={text}
               height="100%"
@@ -65,7 +69,7 @@ export default function NewMarkdownModal({
               basicSetup={{ lineNumbers: true, foldGutter: false }}
             />
           </div>
-          <div className="preview-pane" style={{ width: '50%' }}>
+          <div className="preview-pane" ref={previewRef} style={{ width: '50%' }}>
             <MarkdownPreview text={text} />
           </div>
         </div>
