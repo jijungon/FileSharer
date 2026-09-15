@@ -26,6 +26,7 @@ from ..services.storage import (
     build_storage,
 )
 from ..services.tar_stream import stream_tar_gz
+from ..services.trash import purge_subtree
 
 router = APIRouter(prefix="/api", tags=["files"])
 
@@ -576,6 +577,24 @@ def restore_node(
     node.deleted_at = None
     audit.log(db, "restore", user_id=user.id, node_id=node.id, detail=node.name)
     return node_out(node)
+
+
+@router.delete("/nodes/{node_id}/purge")
+def purge_own_node(
+    node_id: str,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+    storage: StorageBackend = Depends(get_storage),
+) -> dict:
+    """휴지통 항목을 영구 삭제(본인). get_node_checked가 공간 접근 권한을 검사하므로
+    자기가 접근 가능한 공간의 항목만 지울 수 있고, 휴지통에 있는 것만 가능하다."""
+    node = get_node_checked(db, user, node_id, include_deleted=True)
+    if node.deleted_at is None:
+        raise HTTPException(status_code=400, detail="휴지통에 있는 항목만 영구 삭제할 수 있습니다")
+    removed = purge_subtree(db, storage, node)
+    audit.log(db, "purge", user_id=user.id, node_id=node_id, detail=f"{node.name} ({removed})")
+    return {"ok": True, "removed": removed}
+
 
 @router.get("/nodes/{node_id}/path")
 def node_path(

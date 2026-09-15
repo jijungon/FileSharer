@@ -19,6 +19,7 @@ import {
   copyNode,
   moveNode,
   NodeInfo,
+  purgeNode,
   renameNode,
   restoreNode,
   uploadFile,
@@ -709,12 +710,27 @@ export default function Files() {
                   </td>
                   <td className="col-actions">
                     {trashMode ? (
-                      <button
-                        className="row-action"
-                        onClick={() => guard(() => restoreNode(node.id))}
-                      >
-                        복원
-                      </button>
+                      <>
+                        <button
+                          className="row-action"
+                          onClick={() => guard(() => restoreNode(node.id))}
+                        >
+                          복원
+                        </button>
+                        <button
+                          className="row-action danger"
+                          onClick={() => {
+                            if (
+                              window.confirm(
+                                `"${node.name}"을(를) 완전히 삭제할까요? 되돌릴 수 없습니다.`,
+                              )
+                            )
+                              guard(() => purgeNode(node.id))
+                          }}
+                        >
+                          완전 삭제
+                        </button>
+                      </>
                     ) : (
                       <>
                         <a href={downloadUrl(node)} onClick={(e) => e.stopPropagation()}>

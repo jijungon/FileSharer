@@ -1191,3 +1191,12 @@ button:focus-visible {
   flex: 1;
   min-height: 0;
 }
+
+/* 휴지통 완전 삭제 등 위험 액션 */
+.row-action.danger {
+  color: #c0392b;
+}
+.row-action.danger:hover {
+  color: #a93226;
+  text-decoration: underline;
+}
