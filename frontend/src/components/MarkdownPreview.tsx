@@ -2,7 +2,9 @@ import { useEffect, useRef, useState } from 'react'
 import Markdown from 'react-markdown'
 import rehypeHighlight from 'rehype-highlight'
 import remarkGfm from 'remark-gfm'
-import 'highlight.js/styles/github.css'
+// 코드블록 타일은 어둡게 설계됨(styles.css: .md-preview pre = --surface-tile 배경 + --on-dark 글자).
+// 라이트 테마(github.css)는 토큰을 어두운색으로 칠해 어두운 배경에 묻혀 안 보였음 → 다크 테마 사용.
+import 'highlight.js/styles/github-dark.css'
 
 let mermaidSeq = 0
 
