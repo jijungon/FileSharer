@@ -25,7 +25,8 @@ OFFICE_EXTS = {
     ".odp",
     ".ods",
     ".odt",
-    ".hwp",  # 한글(구형 v5) — LibreOffice hwp 필터(libhwplo). .hwpx(신형 XML)는 미지원이라 제외.
+    ".hwp",  # 한글 구형(v5) — LibreOffice 기본 hwp 필터(libhwplo)
+    ".hwpx",  # 한글 신형(OWPML) — libreoffice-h2orestart 확장 필요(Dockerfile에 설치)
 }
 
 
