@@ -39,6 +39,8 @@ htmlcov/
 # --- 5) Node / Vite (frontend) ---
 node_modules
 frontend/dist/
+# 로컬 e2e 하니스가 frontend/dist를 여기로 복사(빌드 산출물) — 이미지 빌드가 따로 하므로 커밋 금지
+backend/static/
 .vite/
 .eslintcache
 npm-debug.log*
