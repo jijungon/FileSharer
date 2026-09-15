@@ -24,15 +24,19 @@ def test_google_login_returns_503_when_not_configured(client):
 
 
 def test_auth_config_reports_google_disabled(client):
-    assert client.get("/api/auth/config").json() == {"google_enabled": False}
+    cfg = client.get("/api/auth/config").json()
+    assert cfg["google_enabled"] is False
+    assert cfg["max_upload_mb"] == 1024  # 기본값
 
 
 def test_auth_config_reports_google_enabled(app_factory):
     from fastapi.testclient import TestClient
 
-    app = app_factory(GOOGLE_CLIENT_ID="cid", GOOGLE_CLIENT_SECRET="sec")
+    app = app_factory(GOOGLE_CLIENT_ID="cid", GOOGLE_CLIENT_SECRET="sec", MAX_UPLOAD_MB="500")
     with TestClient(app) as c:
-        assert c.get("/api/auth/config").json() == {"google_enabled": True}
+        cfg = c.get("/api/auth/config").json()
+        assert cfg["google_enabled"] is True
+        assert cfg["max_upload_mb"] == 500  # 설정값 노출
 
 
 def test_wrong_domain_rejected(client, db):
