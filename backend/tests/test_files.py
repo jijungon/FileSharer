@@ -536,8 +536,9 @@ def test_search_escapes_like_wildcards(admin_client):
     upload(admin_client, f"/api/spaces/{pid}/files", "a_b.txt")
     upload(admin_client, f"/api/spaces/{pid}/files", "axb.txt")
 
-    names = {r["name"] for r in admin_client.get(f"/api/spaces/{pid}/search", params={"q": "a_b"}).json()}
-    assert names == {"a_b.txt"}  # axb.txt 는 매칭 안 됨(_ 가 임의문자로 동작하면 매칭됐을 것)
+    res = admin_client.get(f"/api/spaces/{pid}/search", params={"q": "a_b"}).json()
+    names = {r["name"] for r in res}
+    assert names == {"a_b.txt"}  # axb.txt 는 매칭 안 됨(_ 가 임의문자면 매칭됐을 것)
 
 
 def test_search_denied_in_others_personal_space(admin_client, db):
@@ -552,4 +553,5 @@ def test_search_denied_in_others_personal_space(admin_client, db):
     # admin으로 복귀 (admin 비밀번호는 pw-123456이 아니므로 as_user 못 씀)
     admin_client.post("/api/auth/logout")
     login(admin_client, ADMIN_EMAIL, ADMIN_PASSWORD)
-    assert admin_client.get(f"/api/spaces/{other_pid}/search", params={"q": "x"}).status_code in (403, 404)
+    res = admin_client.get(f"/api/spaces/{other_pid}/search", params={"q": "x"})
+    assert res.status_code in (403, 404)
