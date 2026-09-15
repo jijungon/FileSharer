@@ -77,7 +77,8 @@ def test_trash_swept_on_app_start(app_factory):
 
     SessionLocal = app.state.sessionmaker
     with SessionLocal() as db:
-        db.get(Node, node["id"]).deleted_at = utcnow() - timedelta(days=3)
+        # 기본 보존기간(7일)보다 확실히 과거로 back-date → 기동 스위프가 purge
+        db.get(Node, node["id"]).deleted_at = utcnow() - timedelta(days=8)
         db.commit()
 
     # 같은 DB로 재기동 → lifespan startup 스위프가 purge
