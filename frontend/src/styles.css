@@ -413,6 +413,20 @@ button:focus-visible {
   visibility: visible;
 }
 
+/* 다중선택 체크박스 열 */
+.col-check {
+  width: 34px;
+  text-align: center;
+  padding-right: 0 !important;
+}
+.col-check input {
+  cursor: pointer;
+  vertical-align: middle;
+}
+.row-checked {
+  background: color-mix(in srgb, var(--primary) 12%, var(--canvas)) !important;
+}
+
 .node-icon {
   margin-right: 4px;
 }
@@ -1145,6 +1159,73 @@ button:focus-visible {
 .upload-progress-bar::-moz-progress-bar {
   background: var(--primary);
   border-radius: var(--radius-pill);
+}
+
+/* 다중선택 하단 바 (뷰어 자리에 도킹) */
+.bulk-bar {
+  flex-shrink: 0;
+  max-height: 40vh;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-xs);
+  padding: var(--sp-sm) var(--sp-md);
+  background: var(--canvas);
+  border-top: 1px solid var(--hairline);
+}
+.bulk-bar-head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-md);
+  flex-wrap: wrap;
+}
+.bulk-bar-head strong {
+  font-size: 0.95em;
+}
+.bulk-bar-actions {
+  margin-left: auto;
+  display: flex;
+  gap: var(--sp-sm);
+}
+.btn-utility.danger {
+  color: var(--danger, #c0392b);
+  border-color: color-mix(in srgb, var(--danger, #c0392b) 40%, transparent);
+}
+.bulk-bar-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-xs);
+}
+.bulk-bar-list li {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 240px;
+  padding: 2px 6px 2px 8px;
+  background: var(--surface-pearl);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-pill);
+  font-size: 0.82em;
+}
+.bulk-bar-list .node-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.bulk-remove {
+  background: none;
+  border: none;
+  color: var(--ink-muted-48);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  padding: 0 2px;
+}
+.bulk-remove:hover {
+  color: var(--danger, #c0392b);
 }
 
 /* 새 MD 편집 모달 */

@@ -63,6 +63,7 @@ export default function Files() {
   const [sortDir, setSortDir] = useState<SortDir>('asc')
   const [dragOverSpace, setDragOverSpace] = useState<string | null>(null)
   const [treeVersion, setTreeVersion] = useState(0)
+  const [checked, setChecked] = useState<Set<string>>(new Set()) // 다중선택된 노드 id
   const fileInput = useRef<HTMLInputElement>(null)
   const folderInput = useRef<HTMLInputElement | null>(null)
   const restoredFromUrl = useRef(false)
@@ -183,6 +184,11 @@ export default function Files() {
   useEffect(() => {
     reload()
   }, [reload])
+
+  // 공간·폴더 이동이나 휴지통 토글 시 다중선택 해제(다른 목록의 id가 남지 않게)
+  useEffect(() => {
+    setChecked(new Set())
+  }, [spaceId, currentFolder?.id, trashMode])
 
   function flash(msg: string) {
     setNotice(msg)
@@ -402,12 +408,95 @@ export default function Files() {
     window.addEventListener('pointerup', up)
   }
 
+  // 드래그 시작: 이 행이 체크돼 있고 여러 개 선택됐으면 선택 전체를, 아니면 이 항목만.
   function rowDragStart(e: React.DragEvent, node: NodeInfo) {
-    e.dataTransfer.setData('application/x-node-id', node.id)
+    const ids = checked.has(node.id) && checked.size > 1 ? [...checked] : [node.id]
+    e.dataTransfer.setData('application/x-node-id', node.id) // 단일(드래그아웃 호환)
+    e.dataTransfer.setData('application/x-node-ids', JSON.stringify(ids))
     if (supportsDragOut()) {
       e.dataTransfer.setData('DownloadURL', downloadUrlData(node, window.location.origin))
     }
     e.dataTransfer.effectAllowed = 'copyMove'
+  }
+
+  function draggedIds(e: React.DragEvent): string[] {
+    const many = e.dataTransfer.getData('application/x-node-ids')
+    if (many) {
+      try {
+        return JSON.parse(many) as string[]
+      } catch {
+        /* 단일로 폴백 */
+      }
+    }
+    const one = e.dataTransfer.getData('application/x-node-id')
+    return one ? [one] : []
+  }
+
+  // ── 다중선택 ──
+  function toggleChecked(id: string) {
+    setChecked((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+  function clearChecked() {
+    setChecked(new Set())
+  }
+  const allChecked = sortedItems.length > 0 && sortedItems.every((n) => checked.has(n.id))
+  function toggleAll() {
+    setChecked(allChecked ? new Set() : new Set(sortedItems.map((n) => n.id)))
+  }
+
+  async function onMoveMany(ids: string[], targetFolderId: string | null) {
+    if (!spaceId) return
+    try {
+      for (const id of ids) {
+        if (id !== targetFolderId) {
+          await moveNode(id, targetFolderId ? { parentId: targetFolderId } : { spaceId })
+        }
+      }
+    } catch (err) {
+      flash(err instanceof Error ? err.message : '이동에 실패했습니다')
+    } finally {
+      clearChecked()
+      reload()
+      setTreeVersion((v) => v + 1)
+    }
+  }
+
+  async function copyManyToSpace(ids: string[], targetSpaceId: string, spaceName: string) {
+    if (targetSpaceId === spaceId) return
+    let done = 0
+    try {
+      for (const id of ids) {
+        if (id !== targetSpaceId) {
+          await copyNode(id, { spaceId: targetSpaceId })
+          done += 1
+        }
+      }
+      if (done) flash(`${spaceName}(으)로 ${done}개 복사했습니다`)
+    } catch (err) {
+      flash(err instanceof Error ? err.message : '복사에 실패했습니다')
+    } finally {
+      clearChecked()
+    }
+  }
+
+  async function bulkDelete() {
+    const ids = [...checked]
+    if (ids.length === 0) return
+    if (!window.confirm(`선택한 ${ids.length}개를 휴지통으로 이동할까요?`)) return
+    try {
+      for (const id of ids) await deleteNode(id)
+    } catch (err) {
+      flash(err instanceof Error ? err.message : '삭제에 실패했습니다')
+    } finally {
+      clearChecked()
+      reload()
+      setTreeVersion((v) => v + 1)
+    }
   }
 
   if (bootError)
@@ -473,13 +562,16 @@ export default function Files() {
                 }}
                 onDragLeave={() => setDragOverSpace((cur) => (cur === s.id ? null : cur))}
                 onDrop={(e) => {
-                  const id = e.dataTransfer.getData('application/x-node-id')
+                  const ids = draggedIds(e)
                   setDragOverSpace(null)
-                  if (!id) return
+                  if (ids.length === 0) return
                   e.preventDefault()
                   // 활성 공간 위에 놓으면 그 공간 최상위로 이동, 다른 공간이면 복사
-                  if (s.id === spaceId) onMove(id, null)
-                  else copyToSpace(id, s.id, s.name)
+                  if (s.id === spaceId) {
+                    if (ids.length > 1) onMoveMany(ids, null)
+                    else onMove(ids[0], null)
+                  } else if (ids.length > 1) copyManyToSpace(ids, s.id, s.name)
+                  else copyToSpace(ids[0], s.id, s.name)
                 }}
                 title={
                   s.id === spaceId
@@ -591,6 +683,16 @@ export default function Files() {
           <table className="file-table">
             <thead>
               <tr>
+                <th className="col-check">
+                  {!trashMode && (
+                    <input
+                      type="checkbox"
+                      aria-label="전체 선택"
+                      checked={allChecked}
+                      onChange={toggleAll}
+                    />
+                  )}
+                </th>
                 <SortTh label="이름" col="name" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
                 <SortTh
                   label="올린 날짜"
@@ -629,13 +731,16 @@ export default function Files() {
                     if (e.dataTransfer.types.includes('application/x-node-id')) e.preventDefault()
                   }}
                   onDrop={(e) => {
-                    const id = e.dataTransfer.getData('application/x-node-id')
-                    if (id) {
+                    const ids = draggedIds(e)
+                    if (ids.length > 0) {
                       e.preventDefault()
-                      onMove(id, currentFolder.parent_id ?? null)
+                      const target = currentFolder.parent_id ?? null
+                      if (ids.length > 1) onMoveMany(ids, target)
+                      else onMove(ids[0], target)
                     }
                   }}
                 >
+                  <td className="col-check"></td>
                   <td>
                     <span className="node-icon">↑</span> <span className="node-name">상위 폴더</span>
                   </td>
@@ -648,7 +753,10 @@ export default function Files() {
               {sortedItems.map((node) => (
                 <tr
                   key={node.id}
-                  className={selected?.id === node.id ? 'row-selected' : ''}
+                  className={
+                    (selected?.id === node.id ? 'row-selected' : '') +
+                    (checked.has(node.id) ? ' row-checked' : '')
+                  }
                   draggable={!trashMode}
                   onDragStart={(e) => rowDragStart(e, node)}
                   onDragOver={(e) => {
@@ -659,15 +767,34 @@ export default function Files() {
                       e.preventDefault()
                   }}
                   onDrop={(e) => {
-                    const id = e.dataTransfer.getData('application/x-node-id')
-                    if (id && node.type === 'folder') {
+                    const ids = draggedIds(e)
+                    if (ids.length > 0 && node.type === 'folder') {
                       e.preventDefault()
-                      onMove(id, node.id)
+                      if (ids.length > 1) onMoveMany(ids, node.id)
+                      else onMove(ids[0], node.id)
                     }
                   }}
-                  onClick={() => !trashMode && editingId !== node.id && selectNode(node)}
+                  onClick={() => {
+                    if (trashMode || editingId === node.id) return
+                    // 이미 선택 모드면 행 클릭이 체크 토글, 아니면 뷰어로 열기
+                    if (checked.size > 0) toggleChecked(node.id)
+                    else selectNode(node)
+                  }}
                   onDoubleClick={() => !trashMode && node.type === 'folder' && openFolder(node)}
                 >
+                  <td className="col-check">
+                    {!trashMode && (
+                      <input
+                        type="checkbox"
+                        // 라벨에 파일명을 넣지 않는다 — 넣으면 이 셀의 접근성 이름이
+                        // "파일명 선택"이 되어 이름으로 셀/행을 찾는 기존 테스트와 충돌한다.
+                        aria-label="행 선택"
+                        checked={checked.has(node.id)}
+                        onClick={(e) => e.stopPropagation()}
+                        onChange={() => toggleChecked(node.id)}
+                      />
+                    )}
+                  </td>
                   <td>
                     <span className="node-icon">{node.type === 'folder' ? '📁' : '📄'}</span>{' '}
                     {editingId === node.id ? (
@@ -761,7 +888,7 @@ export default function Files() {
               ))}
               {sortedItems.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="empty">
+                  <td colSpan={6} className="empty">
                     {trashMode
                       ? '휴지통이 비어 있습니다'
                       : '비어 있습니다 — 파일을 끌어다 놓거나 업로드를 누르세요'}
@@ -773,7 +900,7 @@ export default function Files() {
         </main>
       </div>
 
-      {selected && selected.type === 'file' && !trashMode && (
+      {selected && selected.type === 'file' && !trashMode && checked.size === 0 && (
         <>
           {!fullscreen && <div className="vsplit-handle" onPointerDown={viewerDrag} />}
           <div
@@ -796,6 +923,41 @@ export default function Files() {
             />
           </div>
         </>
+      )}
+      {!trashMode && checked.size > 0 && (
+        <div className="bulk-bar" aria-label="선택 항목">
+          <div className="bulk-bar-head">
+            <strong>{checked.size}개 선택됨</strong>
+            <span className="muted">
+              폴더 행이나 왼쪽 공간으로 끌어다 놓으면 이동·복사됩니다
+            </span>
+            <div className="bulk-bar-actions">
+              <button className="btn-utility danger" onClick={bulkDelete}>
+                🗑 선택 삭제
+              </button>
+              <button className="btn-utility" onClick={clearChecked}>
+                선택 해제
+              </button>
+            </div>
+          </div>
+          <ul className="bulk-bar-list">
+            {sortedItems
+              .filter((n) => checked.has(n.id))
+              .map((n) => (
+                <li key={n.id}>
+                  <span className="node-icon">{n.type === 'folder' ? '📁' : '📄'}</span>
+                  <span className="node-name">{n.name}</span>
+                  <button
+                    className="bulk-remove"
+                    title="목록에서 빼기"
+                    onClick={() => toggleChecked(n.id)}
+                  >
+                    ×
+                  </button>
+                </li>
+              ))}
+          </ul>
+        </div>
       )}
       {uploads.length > 0 && (
         <div className="upload-progress" aria-label="업로드 진행">
