@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { partitionBySize } from './upload'
+import { dropUpload, partitionBySize, percent, setProgress, UploadItem } from './upload'
 
 const f = (name: string, mb: number) => ({ name, size: mb * 1024 * 1024 })
 
@@ -22,5 +22,30 @@ describe('partitionBySize', () => {
     const { ok, tooBig } = partitionBySize(items, 500, (c) => c.file.size)
     expect(ok).toHaveLength(1)
     expect(tooBig[0].file.name).toBe('x')
+  })
+})
+
+describe('업로드 진행 상태 헬퍼', () => {
+  const base: UploadItem[] = [
+    { id: 'a', name: 'a.txt', loaded: 0, total: 100 },
+    { id: 'b', name: 'b.txt', loaded: 10, total: 200 },
+  ]
+
+  it('setProgress는 해당 id만 갱신(불변)', () => {
+    const next = setProgress(base, 'a', 50, 100)
+    expect(next[0]).toEqual({ id: 'a', name: 'a.txt', loaded: 50, total: 100 })
+    expect(next[1]).toBe(base[1]) // 나머지는 그대로
+    expect(next).not.toBe(base)
+    expect(setProgress(base, 'zzz', 1, 1)).toEqual(base) // 없는 id는 무변화
+  })
+
+  it('dropUpload는 해당 id 제거', () => {
+    expect(dropUpload(base, 'a').map((u) => u.id)).toEqual(['b'])
+  })
+
+  it('percent는 0~100 정수, total 0이면 0', () => {
+    expect(percent({ loaded: 50, total: 200 })).toBe(25)
+    expect(percent({ loaded: 999, total: 100 })).toBe(100) // 상한
+    expect(percent({ loaded: 5, total: 0 })).toBe(0)
   })
 })

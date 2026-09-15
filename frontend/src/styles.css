@@ -1086,3 +1086,63 @@ button:focus-visible {
 .row-up .node-name {
   color: var(--ink-muted-48);
 }
+
+/* 업로드 진행바 — 우하단 플로팅 패널 */
+.upload-progress {
+  position: fixed;
+  right: var(--sp-md);
+  bottom: var(--sp-md);
+  width: min(360px, 90vw);
+  max-height: 40vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-xs);
+  padding: var(--sp-sm) var(--sp-md);
+  background: var(--surface-pearl);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  z-index: 60;
+}
+.upload-progress-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-areas: 'name pct' 'bar bar';
+  column-gap: var(--sp-sm);
+  align-items: center;
+  font-size: 0.85em;
+}
+.upload-progress-name {
+  grid-area: name;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.upload-progress-pct {
+  grid-area: pct;
+  color: var(--ink);
+  opacity: 0.6;
+  font-variant-numeric: tabular-nums;
+}
+.upload-progress-bar {
+  grid-area: bar;
+  width: 100%;
+  height: 6px;
+  margin-top: 2px;
+  appearance: none;
+  border: none;
+  background: var(--divider-soft);
+  border-radius: var(--radius-pill);
+  overflow: hidden;
+}
+.upload-progress-bar::-webkit-progress-bar {
+  background: var(--divider-soft);
+}
+.upload-progress-bar::-webkit-progress-value {
+  background: var(--primary);
+  border-radius: var(--radius-pill);
+}
+.upload-progress-bar::-moz-progress-bar {
+  background: var(--primary);
+  border-radius: var(--radius-pill);
+}
