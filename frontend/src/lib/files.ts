@@ -13,6 +13,8 @@ export interface NodeInfo {
   // 휴지통 목록에서만 채워짐: 삭제 시각과 자동 완전삭제 예정 시각(서버 계산)
   deleted_at?: string | null
   purge_at?: string | null
+  // 검색 결과에만 채워짐: 상위 폴더 경로(공간 루트 기준 'a/b/c', 루트면 '')
+  path?: string
 }
 
 export interface NodePath {
@@ -36,6 +38,10 @@ export const listSpaceFolders = (spaceId: string) =>
 export const listNodeChildren = (nodeId: string) => api<NodeInfo[]>(`/api/nodes/${nodeId}/children`)
 
 export const listTrash = (spaceId: string) => api<NodeInfo[]>(`/api/spaces/${spaceId}/trash`)
+
+/** 공간 안에서 이름으로 검색(재귀). 결과 각 항목엔 상위 경로(path)가 담긴다. */
+export const searchNodes = (spaceId: string, q: string) =>
+  api<NodeInfo[]>(`/api/spaces/${spaceId}/search?q=${encodeURIComponent(q)}`)
 
 export const getNodePath = (nodeId: string) => api<NodePath>(`/api/nodes/${nodeId}/path`)
 

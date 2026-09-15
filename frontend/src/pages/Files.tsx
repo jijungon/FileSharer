@@ -31,6 +31,7 @@ import {
   purgeNode,
   renameNode,
   restoreNode,
+  searchNodes,
   uploadFile,
 } from '../lib/files'
 
@@ -65,6 +66,8 @@ export default function Files() {
   const [maxUploadMb, setMaxUploadMb] = useState(0)
   const [uploads, setUploads] = useState<UploadItem[]>([])
   const [newMdName, setNewMdName] = useState<string | null>(null)
+  const [searchQ, setSearchQ] = useState('')
+  const [searchResults, setSearchResults] = useState<NodeInfo[] | null>(null) // null=검색 안 함
   const [dropActive, setDropActive] = useState(false)
   const [fullscreen, setFullscreen] = useState(false)
   const [bootError, setBootError] = useState('')
@@ -199,10 +202,31 @@ export default function Files() {
     reload()
   }, [reload])
 
-  // 공간·폴더 이동이나 휴지통 토글 시 다중선택 해제(다른 목록의 id가 남지 않게)
+  // 공간·폴더 이동이나 휴지통 토글 시 다중선택·검색 해제(다른 목록의 잔상 방지)
   useEffect(() => {
     setChecked(new Set())
+    setSearchQ('')
   }, [spaceId, currentFolder?.id, trashMode])
+
+  // 검색어 디바운스 → 현재 공간에서 이름 검색. 빈 문자열이면 검색 모드 해제.
+  useEffect(() => {
+    if (!spaceId) return
+    const q = searchQ.trim()
+    if (!q) {
+      setSearchResults(null)
+      return
+    }
+    let alive = true
+    const timer = setTimeout(() => {
+      searchNodes(spaceId, q)
+        .then((rows) => alive && setSearchResults(rows))
+        .catch(() => alive && setSearchResults([]))
+    }, 300)
+    return () => {
+      alive = false
+      clearTimeout(timer)
+    }
+  }, [searchQ, spaceId])
 
   function flash(msg: string) {
     setNotice(msg)
@@ -269,6 +293,13 @@ export default function Files() {
     } catch {
       flash('폴더를 열 수 없습니다')
     }
+  }
+
+  // 검색 결과 클릭: 폴더면 그 폴더로, 파일이면 경로 복원 후 뷰어로 연다.
+  function openSearchResult(node: NodeInfo) {
+    setSearchQ('') // 검색 모드 종료
+    if (node.type === 'folder') openFolderById(node.id)
+    else navigate(`/files/${node.id}`) // nav 이펙트가 경로 복원 + 뷰어 오픈
   }
 
   async function onNewFolder() {
@@ -721,8 +752,47 @@ export default function Files() {
             )}
             {trashMode && <span className="muted">휴지통 — 복원하면 원래 위치로 돌아갑니다</span>}
             <span className="toolbar-notice">{notice}</span>
+            {!trashMode && (
+              <div className="toolbar-search">
+                <input
+                  type="search"
+                  className="search-input"
+                  placeholder="이 공간에서 검색"
+                  value={searchQ}
+                  onChange={(e) => setSearchQ(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Escape') setSearchQ('')
+                  }}
+                  aria-label="이 공간에서 검색"
+                />
+              </div>
+            )}
           </div>
 
+          {searchResults !== null ? (
+            <div className="search-results">
+              <div className="search-results-head muted">
+                {searchResults.length > 0
+                  ? `"${searchQ.trim()}" 검색 결과 ${searchResults.length}개`
+                  : `"${searchQ.trim()}"에 대한 결과가 없습니다`}
+              </div>
+              <ul className="search-results-list">
+                {searchResults.map((node) => (
+                  <li
+                    key={node.id}
+                    className="search-result"
+                    onClick={() => openSearchResult(node)}
+                  >
+                    <span className="node-icon">{node.type === 'folder' ? '📁' : '📄'}</span>
+                    <span className="search-result-name">{node.name}</span>
+                    <span className="search-result-path muted">
+                      {node.path ? node.path : '(루트)'}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : (
           <table className="file-table">
             <thead>
               <tr>
@@ -951,6 +1021,7 @@ export default function Files() {
               )}
             </tbody>
           </table>
+          )}
         </main>
       </div>
 
