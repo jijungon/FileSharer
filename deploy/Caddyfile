@@ -1,8 +1,17 @@
-# 로컬/사내 HTTP 구성. 사내 VM에 도메인이 생기면 ":80" 대신 도메인을 적으면
-# Caddy가 자동으로 HTTPS 인증서를 발급한다 (Phase 4에서 전환).
+# Cloudflare가 오리진 앞에서 TLS를 종단하는 구성(Flexible/Full 공통).
+#   브라우저 ─HTTPS→ Cloudflare ─HTTP:80→ Caddy ─HTTP→ uvicorn(app:8000)
+# Cloudflare는 원래 스킴을 X-Forwarded-Proto: https 로 실어 보내지만, Caddy는
+# 신뢰하지 않는 피어가 보낸 X-Forwarded-* 를 기본적으로 자신이 받은 스킴(http)으로
+# 덮어쓴다. 그러면 앱의 request.base_url 이 http 가 되어
+#   - 로그인 후 http 오리진으로 리다이렉트 → Secure 세션 쿠키 미전송 → 로그인 풀림
+#   - 공유용 원커맨드 스크립트의 다운로드 URL 이 http 로 생성
+# 같은 버그가 난다. 엣지가 항상 HTTPS 이므로 업스트림 스킴을 https 로 고정한다.
+# (나중에 Caddy 가 도메인 인증서를 직접 관리하는 구성으로 가면 이 header_up 을 제거)
 :80 {
 	request_body {
 		max_size 1GB
 	}
-	reverse_proxy app:8000
+	reverse_proxy app:8000 {
+		header_up X-Forwarded-Proto https
+	}
 }
