@@ -1,6 +1,6 @@
 import { markdown } from '@codemirror/lang-markdown'
 import CodeMirror from '@uiw/react-codemirror'
-import { mappedScrollTop } from '../lib/scrollsync'
+import { useScrollSync } from '../lib/scrollsync'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ApiError } from '../lib/api'
 import { downloadUrl, NodeInfo } from '../lib/files'
@@ -339,30 +339,8 @@ function TextEditor({ node, fullscreen, onToggleFullscreen, onNodeUpdated, onClo
   }
 
   // 에디터 ↔ 프리뷰 스크롤 동기화(양방향, 비율 기준). 한쪽을 움직이면 반대쪽도 따라온다.
-  // 실제 스크롤 컨테이너는 .editor-pane / .preview-pane (둘 다 overflow:auto).
-  const editorReady = text !== null
-  useEffect(() => {
-    const ed = editorPaneRef.current
-    const pv = previewRef.current
-    if (!ed || !pv) return
-    let lock = false
-    const make = (src: HTMLElement, tgt: HTMLElement) => () => {
-      if (lock) return
-      lock = true
-      tgt.scrollTop = mappedScrollTop(src, tgt)
-      requestAnimationFrame(() => {
-        lock = false
-      })
-    }
-    const onEd = make(ed, pv)
-    const onPv = make(pv, ed)
-    ed.addEventListener('scroll', onEd, { passive: true })
-    pv.addEventListener('scroll', onPv, { passive: true })
-    return () => {
-      ed.removeEventListener('scroll', onEd)
-      pv.removeEventListener('scroll', onPv)
-    }
-  }, [editorReady])
+  // 에디터 ↔ 프리뷰 스크롤 동기화. 실제 스크롤 컨테이너는 .editor-pane/.preview-pane.
+  useScrollSync(editorPaneRef, previewRef, text !== null)
 
   function splitDrag(e: React.PointerEvent) {
     e.preventDefault()
