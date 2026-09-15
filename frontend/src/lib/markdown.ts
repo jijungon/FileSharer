@@ -63,7 +63,8 @@ export function isHtml(node: NodeInfo): boolean {
   return node.mime === 'text/html' || HTML_EXTS.includes(extOf(node.name))
 }
 
-const OFFICE_EXTS = ['ppt', 'pptx', 'doc', 'docx', 'xls', 'xlsx', 'odp', 'ods', 'odt']
+// hwp = 한글(구형 v5). hwpx(신형)는 LibreOffice가 로드 못 해 제외.
+const OFFICE_EXTS = ['ppt', 'pptx', 'doc', 'docx', 'xls', 'xlsx', 'odp', 'ods', 'odt', 'hwp']
 
 /** PPT·워드·엑셀 등 — 서버에서 PDF로 변환해 미리보기 */
 export function isOffice(node: NodeInfo): boolean {
@@ -80,5 +81,5 @@ export const SUPPORTED_PREVIEW: { label: string; exts: string }[] = [
   { label: '영상', exts: '.mp4 .webm .mov .m4v .ogv' },
   { label: '음성', exts: '.mp3 .wav .ogg .m4a .aac .flac' },
   { label: 'HTML', exts: '.html .htm (스크립트 미실행)' },
-  { label: '오피스', exts: '.ppt .pptx .doc .docx .xls .xlsx (PDF로 변환)' },
+  { label: '오피스·한글', exts: '.ppt .pptx .doc .docx .xls .xlsx .hwp (PDF로 변환)' },
 ]

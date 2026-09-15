@@ -70,3 +70,10 @@ def test_convert_uses_cache(monkeypatch, tmp_path):
     src.write_bytes(b"x")
     out = office.convert_to_pdf(src, cache, "k1")
     assert out == cache / "k1.pdf"
+
+
+def test_hwp_is_office_but_hwpx_is_not():
+    # 한글 구형(.hwp)은 LibreOffice로 변환 가능 → 오피스 취급. 신형(.hwpx)은 미지원 → 제외.
+    assert office.is_office("현장점검.hwp") is True
+    assert office.is_office("현장점검.hwpx") is False
+    assert office.is_office("발표.pptx") is True
