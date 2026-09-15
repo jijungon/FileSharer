@@ -6,6 +6,7 @@ import ViewerPanel from '../components/ViewerPanel'
 import { api, ApiError, Me, SpaceInfo } from '../lib/api'
 import { downloadUrlData, supportsDragOut } from '../lib/dragout'
 import { formatBytes, formatDateTime } from '../lib/format'
+import { partitionBySize } from '../lib/upload'
 import {
   createFolder,
   deleteNode,
@@ -47,6 +48,7 @@ export default function Files() {
   const [selected, setSelected] = useState<NodeInfo | null>(null)
   const [trashMode, setTrashMode] = useState(false)
   const [notice, setNotice] = useState('')
+  const [maxUploadMb, setMaxUploadMb] = useState(0)
   const [dropActive, setDropActive] = useState(false)
   const [fullscreen, setFullscreen] = useState(false)
   const [bootError, setBootError] = useState('')
@@ -83,12 +85,14 @@ export default function Files() {
   useEffect(() => {
     async function boot() {
       try {
-        const [meRes, spacesRes] = await Promise.all([
+        const [meRes, spacesRes, cfg] = await Promise.all([
           api<Me>('/api/me'),
           api<SpaceInfo[]>('/api/spaces'),
+          api<{ max_upload_mb: number }>('/api/auth/config'),
         ])
         setMe(meRes)
         setSpaces(spacesRes)
+        setMaxUploadMb(cfg.max_upload_mb)
         if (nodeId && !restoredFromUrl.current) {
           restoredFromUrl.current = true
           try {
@@ -263,12 +267,15 @@ export default function Files() {
 
   async function uploadAll(files: FileList | File[]) {
     if (!spaceId) return
-    for (const file of Array.from(files)) {
+    const { ok, tooBig } = partitionBySize(Array.from(files), maxUploadMb, (f) => f.size)
+    for (const file of ok) {
       // 폴더 선택 업로드면 webkitRelativePath에 'folder/sub/file' 경로가 담긴다
       const relPath = file.webkitRelativePath || undefined
       await guard(() => uploadFile({ spaceId, parentId: currentFolder?.id ?? null }, file, relPath))
     }
-    flash('업로드 완료')
+    if (tooBig.length)
+      flash(`${maxUploadMb}MB 초과로 제외됨: ${tooBig.map((f) => f.name).join(', ')}`)
+    else if (ok.length) flash('업로드 완료')
   }
 
   // 드롭된 폴더를 하위까지 재귀로 읽어 상대경로와 함께 업로드
@@ -304,10 +311,13 @@ export default function Files() {
     if (!spaceId) return
     const collected: { file: File; relPath: string }[] = []
     for (const entry of entries) await walkEntry(entry, '', collected)
-    for (const { file, relPath } of collected) {
+    const { ok, tooBig } = partitionBySize(collected, maxUploadMb, (c) => c.file.size)
+    for (const { file, relPath } of ok) {
       await guard(() => uploadFile({ spaceId, parentId: currentFolder?.id ?? null }, file, relPath))
     }
-    flash('업로드 완료')
+    if (tooBig.length)
+      flash(`${maxUploadMb}MB 초과로 제외됨: ${tooBig.map((c) => c.file.name).join(', ')}`)
+    else if (ok.length) flash('업로드 완료')
   }
 
   function startRename(node: NodeInfo) {
