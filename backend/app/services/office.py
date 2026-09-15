@@ -5,10 +5,15 @@
 캐시해 같은 파일을 다시 열 때 재변환하지 않는다.
 """
 
+import os
 import shutil
 import subprocess
 from pathlib import Path
 from tempfile import TemporaryDirectory
+
+# 신뢰할 수 없는 문서를 파싱하는 LibreOffice에 넘겨줄 최소 환경변수만 골라낸다.
+# (앱 시크릿 R2_*/SECRET_KEY 등이 변환기 프로세스에 노출되지 않게 함)
+_ENV_ALLOW = ("PATH", "LANG", "LANGUAGE", "LC_ALL", "LC_CTYPE", "TZ")
 
 OFFICE_EXTS = {
     ".ppt",
@@ -41,6 +46,19 @@ def soffice_bin() -> str | None:
     return shutil.which("soffice") or shutil.which("libreoffice")
 
 
+def _sandbox_env(home: Path) -> dict[str, str]:
+    """변환기에 넘길 최소 환경. 앱 시크릿을 제거하고 HOME은 임시 프로필로 격리."""
+    env = {k: os.environ[k] for k in _ENV_ALLOW if k in os.environ}
+    env.setdefault("PATH", "/usr/bin:/bin")
+    env["HOME"] = str(home)
+    return env
+
+
+# 자식(soffice)에 걸 자원 상한: 코어덤프 금지(메모리 유출 방지), CPU/출력 크기 상한.
+# preexec_fn은 멀티스레드 앱에서 위험하므로 sh의 ulimit로 exec 직전에 건다.
+_ULIMIT_PREAMBLE = "ulimit -c 0; ulimit -t 130; ulimit -f 1048576; exec \"$@\""
+
+
 def convert_to_pdf(src: Path, cache_dir: Path, cache_key: str) -> Path:
     """src(오피스 문서)를 PDF로 변환해 그 경로를 돌려준다.
 
@@ -60,21 +78,25 @@ def convert_to_pdf(src: Path, cache_dir: Path, cache_key: str) -> Path:
         tmp_path = Path(tmp)
         # 동시 변환 시 공유 프로필 잠금 충돌을 피하려 호출마다 별도 UserInstallation
         profile = f"-env:UserInstallation=file://{tmp_path / 'profile'}"
+        soffice_cmd = [
+            binary,
+            "--headless",
+            profile,
+            "--convert-to",
+            "pdf",
+            "--outdir",
+            str(tmp_path),
+            str(src),
+        ]
         try:
             subprocess.run(
-                [
-                    binary,
-                    "--headless",
-                    profile,
-                    "--convert-to",
-                    "pdf",
-                    "--outdir",
-                    str(tmp_path),
-                    str(src),
-                ],
+                # sh가 ulimit을 건 뒤 exec으로 soffice로 대체(중간 프로세스 없음).
+                # env는 시크릿을 뺀 최소 환경만 전달.
+                ["/bin/sh", "-c", _ULIMIT_PREAMBLE, "sh", *soffice_cmd],
                 check=True,
                 capture_output=True,
                 timeout=120,
+                env=_sandbox_env(tmp_path),
             )
         except subprocess.TimeoutExpired as exc:
             raise OfficeConvertError("변환 시간이 초과됐습니다") from exc
