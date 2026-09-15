@@ -53,6 +53,9 @@ test('휴지통 항목에 자동 완전삭제까지 남은 시간이 표시된�
   await expect(row).toBeVisible()
   await row.hover()
   await row.getByRole('button', { name: '삭제', exact: true }).click()
+  // 삭제가 커밋되어 목록에서 빠질 때까지 기다린다 — 이 대기 없이 바로 휴지통을 열면
+  // (느린 CI에서) 삭제 커밋 전에 휴지통 목록을 읽어 항목이 안 보일 수 있다.
+  await expect(page.getByRole('cell', { name: /카운트다운\.txt/ })).toHaveCount(0)
 
   // 휴지통 행에 "N일 … 남음" 칩이 보인다(방금 지웠으니 보존기간에 가깝다)
   await page.getByRole('button', { name: '휴지통' }).click()
