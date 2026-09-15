@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import FolderTree from '../components/FolderTree'
 import LinkBar from '../components/LinkBar'
+import NewMarkdownModal from '../components/NewMarkdownModal'
 import ViewerPanel from '../components/ViewerPanel'
 import { api, ApiError, Me, SpaceInfo } from '../lib/api'
 import { downloadUrlData, supportsDragOut } from '../lib/dragout'
@@ -50,6 +51,7 @@ export default function Files() {
   const [notice, setNotice] = useState('')
   const [maxUploadMb, setMaxUploadMb] = useState(0)
   const [uploads, setUploads] = useState<UploadItem[]>([])
+  const [newMdName, setNewMdName] = useState<string | null>(null)
   const [dropActive, setDropActive] = useState(false)
   const [fullscreen, setFullscreen] = useState(false)
   const [bootError, setBootError] = useState('')
@@ -254,15 +256,20 @@ export default function Files() {
     await guard(() => createFolder(spaceId, currentFolder?.id ?? null, name))
   }
 
-  async function onNewMd() {
+  // '새 MD'는 파일을 바로 만들지 않고 편집 모달을 연다(저장 시 생성, 취소 시 폐기).
+  function onNewMd() {
     const raw = window.prompt('새 MD 문서 이름', '새 문서.md')
     if (!raw || !spaceId) return
-    const name = raw.endsWith('.md') ? raw : `${raw}.md`
-    const title = name.replace(/\.md$/, '')
-    const file = new File([`# ${title}\n\n`], name, { type: 'text/markdown' })
+    setNewMdName(raw.endsWith('.md') ? raw : `${raw}.md`)
+  }
+
+  async function createNewMd(content: string) {
+    if (!spaceId || !newMdName) return
+    const file = new File([content], newMdName, { type: 'text/markdown' })
     const created = await guard(() =>
       uploadFile({ spaceId, parentId: currentFolder?.id ?? null }, file),
     )
+    setNewMdName(null)
     if (created) selectNode(created)
   }
 
@@ -786,6 +793,13 @@ export default function Files() {
             </div>
           ))}
         </div>
+      )}
+      {newMdName && (
+        <NewMarkdownModal
+          name={newMdName}
+          onCancel={() => setNewMdName(null)}
+          onCreate={createNewMd}
+        />
       )}
     </div>
   )
