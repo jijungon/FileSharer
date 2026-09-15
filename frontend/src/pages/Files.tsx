@@ -7,7 +7,16 @@ import ViewerPanel from '../components/ViewerPanel'
 import { api, ApiError, Me, SpaceInfo } from '../lib/api'
 import { downloadUrlData, supportsDragOut } from '../lib/dragout'
 import { formatBytes, formatDateTime, formatTrashRemaining } from '../lib/format'
-import { dropUpload, partitionBySize, percent, setProgress, UploadItem } from '../lib/upload'
+import {
+  dropUploads,
+  markUploadDone,
+  partitionBySize,
+  percent,
+  runWithConcurrency,
+  setProgress,
+  uploadSummary,
+  UploadItem,
+} from '../lib/upload'
 import {
   createFolder,
   deleteNode,
@@ -27,6 +36,9 @@ import {
 
 type SortKey = 'name' | 'size' | 'created' | 'updated'
 type SortDir = 'asc' | 'desc'
+
+// 동시 업로드 개수 상한. 큰 파일(수백 MB)이 대역폭을 나눠 쓰므로 과하지 않게 3.
+const UPLOAD_CONCURRENCY = 3
 
 function compareNodes(a: NodeInfo, b: NodeInfo, key: SortKey, dir: SortDir): number {
   // 폴더는 항상 먼저 (그룹 고정) — 정렬 방향과 무관
@@ -76,6 +88,8 @@ export default function Files() {
     () => [...items].sort((a, b) => compareNodes(a, b, sortKey, sortDir)),
     [items, sortKey, sortDir],
   )
+
+  const uploadStats = useMemo(() => uploadSummary(uploads), [uploads])
 
   function toggleSort(key: SortKey) {
     if (sortKey === key) {
@@ -280,31 +294,50 @@ export default function Files() {
     if (created) selectNode(created)
   }
 
-  // 파일 하나 업로드 + 진행바 표시(시작 시 추가 → onprogress 갱신 → 완료/실패 시 제거)
-  async function runUpload(file: File, relPath?: string) {
-    const id = `${file.name}:${Date.now()}:${Math.random().toString(36).slice(2)}`
-    setUploads((u) => [...u, { id, name: file.name, loaded: 0, total: file.size }])
-    await guard(() =>
-      uploadFile(
-        { spaceId: spaceId!, parentId: currentFolder?.id ?? null },
-        file,
-        relPath,
-        (loaded, total) => setUploads((u) => setProgress(u, id, loaded, total)),
-      ),
-    )
-    setUploads((u) => dropUpload(u, id))
+  // 여러 파일을 최대 UPLOAD_CONCURRENCY개씩 병렬 업로드. 각 항목은 진행 패널에
+  // 추가되고, 완료/실패로 표시된 뒤 배치가 끝나면 잠시 후 패널에서 제거된다.
+  async function runUploads(entries: { file: File; relPath?: string }[]) {
+    if (!spaceId || entries.length === 0) return
+    const items = entries.map((e) => ({
+      id: `${e.file.name}:${Date.now()}:${Math.random().toString(36).slice(2)}`,
+      file: e.file,
+      relPath: e.relPath,
+    }))
+    setUploads((u) => [
+      ...u,
+      ...items.map((it) => ({ id: it.id, name: it.file.name, loaded: 0, total: it.file.size })),
+    ])
+    let failed = 0
+    await runWithConcurrency(items, UPLOAD_CONCURRENCY, async (it) => {
+      try {
+        await uploadFile(
+          { spaceId: spaceId!, parentId: currentFolder?.id ?? null },
+          it.file,
+          it.relPath,
+          (loaded, total) => setUploads((u) => setProgress(u, it.id, loaded, total)),
+        )
+        setUploads((u) => markUploadDone(u, it.id))
+      } catch (err) {
+        failed += 1
+        setUploads((u) => markUploadDone(u, it.id, true))
+        flash(err instanceof Error ? err.message : `${it.file.name} 업로드 실패`)
+      }
+    })
+    reload()
+    setTreeVersion((v) => v + 1) // 폴더가 새로 생겼을 수 있음(폴더 업로드)
+    if (failed === 0) flash(`업로드 완료 (${items.length}개)`)
+    // 완료 상태를 잠깐 보여준 뒤 이 배치 항목들을 패널에서 제거
+    const ids = new Set(items.map((it) => it.id))
+    setTimeout(() => setUploads((u) => dropUploads(u, ids)), 1500)
   }
 
   async function uploadAll(files: FileList | File[]) {
     if (!spaceId) return
     const { ok, tooBig } = partitionBySize(Array.from(files), maxUploadMb, (f) => f.size)
-    for (const file of ok) {
-      // 폴더 선택 업로드면 webkitRelativePath에 'folder/sub/file' 경로가 담긴다
-      await runUpload(file, file.webkitRelativePath || undefined)
-    }
     if (tooBig.length)
       flash(`${maxUploadMb}MB 초과로 제외됨: ${tooBig.map((f) => f.name).join(', ')}`)
-    else if (ok.length) flash('업로드 완료')
+    // 폴더 선택 업로드면 webkitRelativePath에 'folder/sub/file' 경로가 담긴다
+    await runUploads(ok.map((f) => ({ file: f, relPath: f.webkitRelativePath || undefined })))
   }
 
   // 드롭된 폴더를 하위까지 재귀로 읽어 상대경로와 함께 업로드
@@ -341,12 +374,9 @@ export default function Files() {
     const collected: { file: File; relPath: string }[] = []
     for (const entry of entries) await walkEntry(entry, '', collected)
     const { ok, tooBig } = partitionBySize(collected, maxUploadMb, (c) => c.file.size)
-    for (const { file, relPath } of ok) {
-      await runUpload(file, relPath)
-    }
     if (tooBig.length)
       flash(`${maxUploadMb}MB 초과로 제외됨: ${tooBig.map((c) => c.file.name).join(', ')}`)
-    else if (ok.length) flash('업로드 완료')
+    await runUploads(ok.map((c) => ({ file: c.file, relPath: c.relPath })))
   }
 
   function startRename(node: NodeInfo) {
@@ -715,14 +745,19 @@ export default function Files() {
                   sortDir={sortDir}
                   onSort={toggleSort}
                 />
-                <SortTh
-                  label="수정한 날짜"
-                  col="updated"
-                  cls="col-date"
-                  sortKey={sortKey}
-                  sortDir={sortDir}
-                  onSort={toggleSort}
-                />
+                {trashMode ? (
+                  // 휴지통에선 '수정한 날짜' 대신 '삭제 예정' 열(남은 시간 정렬 정돈)
+                  <th className="col-remaining">삭제 예정</th>
+                ) : (
+                  <SortTh
+                    label="수정한 날짜"
+                    col="updated"
+                    cls="col-date"
+                    sortKey={sortKey}
+                    sortDir={sortDir}
+                    onSort={toggleSort}
+                  />
+                )}
                 <SortTh
                   label="크기"
                   col="size"
@@ -842,10 +877,15 @@ export default function Files() {
                         {node.name}
                       </span>
                     )}
-                    {trashMode && <TrashRemaining purgeAt={node.purge_at} />}
                   </td>
                   <td className="col-date muted">{formatDateTime(node.created_at)}</td>
-                  <td className="col-date muted">{formatDateTime(node.updated_at)}</td>
+                  {trashMode ? (
+                    <td className="col-remaining">
+                      <TrashRemaining purgeAt={node.purge_at} />
+                    </td>
+                  ) : (
+                    <td className="col-date muted">{formatDateTime(node.updated_at)}</td>
+                  )}
                   <td className="col-size muted">
                     {node.type === 'file' ? formatBytes(node.size) : '—'}
                   </td>
@@ -975,13 +1015,23 @@ export default function Files() {
       )}
       {uploads.length > 0 && (
         <div className="upload-progress" aria-label="업로드 진행">
+          <div className="upload-progress-head">
+            <span>
+              업로드 {uploadStats.done}/{uploadStats.total}
+              {uploadStats.failed > 0 && ` · 실패 ${uploadStats.failed}`}
+            </span>
+            <span className="upload-progress-pct">{uploadStats.percent}%</span>
+          </div>
           {uploads.map((u) => (
-            <div key={u.id} className="upload-progress-row">
+            <div
+              key={u.id}
+              className={`upload-progress-row${u.error ? ' error' : u.done ? ' done' : ''}`}
+            >
               <span className="upload-progress-name" title={u.name}>
                 {u.name}
               </span>
               <progress className="upload-progress-bar" value={u.loaded} max={u.total || 1} />
-              <span className="upload-progress-pct">{percent(u)}%</span>
+              <span className="upload-progress-pct">{u.error ? '실패' : `${percent(u)}%`}</span>
             </div>
           ))}
         </div>

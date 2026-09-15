@@ -57,9 +57,10 @@ test('휴지통 항목에 자동 완전삭제까지 남은 시간이 표시된�
   // (느린 CI에서) 삭제 커밋 전에 휴지통 목록을 읽어 항목이 안 보일 수 있다.
   await expect(page.getByRole('cell', { name: /카운트다운\.txt/ })).toHaveCount(0)
 
-  // 휴지통 행에 "N일 … 남음" 칩이 보인다(방금 지웠으니 보존기간에 가깝다)
+  // 휴지통엔 전용 '삭제 예정' 열이 있고, 그 칸에 "N일 … 남음" 칩이 보인다
   await page.getByRole('button', { name: '휴지통' }).click()
+  await expect(page.getByRole('columnheader', { name: '삭제 예정' })).toBeVisible()
   const trashRow = page.getByRole('row', { name: /카운트다운\.txt/ }).first()
-  await expect(trashRow.locator('.trash-remaining')).toBeVisible()
-  await expect(trashRow.locator('.trash-remaining')).toContainText('남음')
+  await expect(trashRow.locator('.col-remaining .trash-remaining')).toBeVisible()
+  await expect(trashRow.locator('.col-remaining .trash-remaining')).toContainText('남음')
 })

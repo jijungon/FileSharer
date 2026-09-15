@@ -427,10 +427,13 @@ button:focus-visible {
   background: color-mix(in srgb, var(--primary) 12%, var(--canvas)) !important;
 }
 
-/* 휴지통: 자동 완전삭제까지 남은 시간 칩 */
+/* 휴지통: '삭제 예정' 열 + 남은 시간 칩 */
+.col-remaining {
+  width: 150px;
+  white-space: nowrap;
+}
 .trash-remaining {
   display: inline-block;
-  margin-left: 8px;
   padding: 1px 8px;
   border-radius: var(--radius-pill);
   font-size: 0.75em;
@@ -1141,6 +1144,15 @@ button:focus-visible {
   border-radius: var(--radius-md);
   z-index: 60;
 }
+.upload-progress-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.85em;
+  font-weight: 600;
+  padding-bottom: 2px;
+  border-bottom: 1px solid var(--hairline);
+}
 .upload-progress-row {
   display: grid;
   grid-template-columns: 1fr auto;
@@ -1148,6 +1160,19 @@ button:focus-visible {
   column-gap: var(--sp-sm);
   align-items: center;
   font-size: 0.85em;
+}
+.upload-progress-row.done .upload-progress-name {
+  color: var(--ink-muted-48, #6b6b6b);
+}
+.upload-progress-row.error .upload-progress-pct {
+  color: var(--danger, #c0392b);
+  font-weight: 600;
+}
+.upload-progress-row.error .upload-progress-bar::-webkit-progress-value {
+  background: var(--danger, #c0392b);
+}
+.upload-progress-row.error .upload-progress-bar::-moz-progress-bar {
+  background: var(--danger, #c0392b);
 }
 .upload-progress-name {
   grid-area: name;
