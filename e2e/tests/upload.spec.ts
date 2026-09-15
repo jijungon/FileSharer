@@ -62,3 +62,36 @@ test('여러 파일 업로드 시 진행 패널에 전체 개수가 표시된다
   await expect(panel).toBeHidden({ timeout: 6000 })
   await expect(page.getByRole('cell', { name: /다중2\.txt/ })).toBeVisible()
 })
+
+test('일부 업로드가 실패하면 그 항목만 실패로 표시되고 나머지는 완료된다', async ({ page }) => {
+  await loginAsAdmin(page)
+
+  // multipart 본문의 파일명으로 대상 구분: '실패.txt' 요청만 500, 나머지는 통과
+  await page.route('**/api/spaces/*/files', async (route) => {
+    const body = route.request().postData() ?? ''
+    if (body.includes('실패.txt')) {
+      await route.fulfill({
+        status: 500,
+        contentType: 'application/json',
+        body: JSON.stringify({ detail: '서버 오류' }),
+      })
+    } else {
+      await route.continue()
+    }
+  })
+
+  await page.locator('input[type="file"]:not([webkitdirectory])').setInputFiles([
+    { name: '성공A.txt', mimeType: 'text/plain', buffer: Buffer.from('a') },
+    { name: '실패.txt', mimeType: 'text/plain', buffer: Buffer.from('b') },
+  ])
+
+  const panel = page.locator('.upload-progress')
+  // 실패 행은 error 상태 + '실패' 표기, 헤더에 실패 1
+  const errorRow = panel.locator('.upload-progress-row.error')
+  await expect(errorRow).toContainText('실패.txt')
+  await expect(errorRow.locator('.upload-progress-pct')).toContainText('실패')
+  await expect(panel.locator('.upload-progress-head')).toContainText('실패 1')
+
+  // 실패해도 성공한 파일은 목록에 나타난다
+  await expect(page.getByRole('cell', { name: /성공A\.txt/ })).toBeVisible()
+})
