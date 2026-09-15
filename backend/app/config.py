@@ -36,6 +36,8 @@ class Settings(BaseSettings):
     r2_prefix: str = ""
     share_default_days: int = 7
     share_max_days: int = 30
+    # 휴지통(soft delete) 보존 기간(일). 이보다 오래된 항목은 자동으로 완전삭제(purge).
+    trash_retention_days: int = 2
     disk_warn_ratio: float = 0.8
     admin_email: str = ""
     admin_password: str = ""

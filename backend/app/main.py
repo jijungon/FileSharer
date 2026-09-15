@@ -1,3 +1,6 @@
+import asyncio
+import contextlib
+import logging
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -17,8 +20,12 @@ from .api.system import router as system_router
 from .bootstrap import run_bootstrap
 from .config import get_settings
 from .db import build_engine, make_sessionmaker, run_migrations
+from .services.storage import build_storage
+from .services.trash import purge_expired
 
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
+TRASH_SWEEP_INTERVAL_SECONDS = 6 * 3600
+logger = logging.getLogger("filesharer")
 
 
 def create_app() -> FastAPI:
@@ -32,7 +39,40 @@ def create_app() -> FastAPI:
     with SessionLocal() as db:
         run_bootstrap(db)
 
-    app = FastAPI(title="FileSharer", docs_url=None, redoc_url=None)
+    async def _sweep_trash() -> None:
+        """휴지통 보존기간 지난 항목 자동 완전삭제. blocking I/O라 스레드에서 실행."""
+
+        def work() -> int:
+            with SessionLocal() as db:
+                return purge_expired(
+                    db, build_storage(settings), settings.trash_retention_days
+                )
+
+        try:
+            removed = await asyncio.to_thread(work)
+            if removed:
+                logger.info("휴지통 자동삭제: %d개 행 제거", removed)
+        except Exception:  # 스위퍼 실패가 앱을 죽이면 안 된다
+            logger.exception("휴지통 자동삭제 실패")
+
+    @contextlib.asynccontextmanager
+    async def lifespan(_app: FastAPI):
+        await _sweep_trash()  # 기동 시 1회
+
+        async def _loop() -> None:
+            while True:
+                await asyncio.sleep(TRASH_SWEEP_INTERVAL_SECONDS)
+                await _sweep_trash()
+
+        task = asyncio.create_task(_loop())
+        try:
+            yield
+        finally:
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
+
+    app = FastAPI(title="FileSharer", docs_url=None, redoc_url=None, lifespan=lifespan)
     app.state.sessionmaker = SessionLocal
 
     @app.middleware("http")

@@ -4,16 +4,16 @@ import shutil
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import delete as sql_delete
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..config import get_settings
 from ..deps import get_db, require_admin
-from ..models import AuditLog, Node, ShareLink, User
+from ..models import AuditLog, User
 from ..services import audit
 from ..services.permissions import get_node_checked
-from ..services.storage import StorageBackend, build_storage
+from ..services.storage import build_storage
+from ..services.trash import purge_subtree
 
 router = APIRouter(prefix="/api/system", tags=["system"])
 
@@ -67,19 +67,6 @@ def audit_log(
     ]
 
 
-def _purge_subtree(db: Session, storage: StorageBackend, node: Node) -> int:
-    """노드 서브트리를 영구 삭제 — blob·공유 링크·행 제거. 반환: 삭제 행 수."""
-    count = 0
-    children = db.scalars(select(Node).where(Node.parent_id == node.id)).all()
-    for child in children:
-        count += _purge_subtree(db, storage, child)
-    if node.type == "file" and node.storage_key:
-        storage.delete(node.storage_key)
-    db.execute(sql_delete(ShareLink).where(ShareLink.node_id == node.id))
-    db.delete(node)
-    return count + 1
-
-
 @router.delete("/nodes/{node_id}/purge")
 def purge_node(
     node_id: str,
@@ -91,6 +78,6 @@ def purge_node(
     if node.deleted_at is None:
         raise HTTPException(status_code=400, detail="휴지통에 있는 항목만 영구 삭제할 수 있습니다")
     storage = build_storage(get_settings())
-    removed = _purge_subtree(db, storage, node)
+    removed = purge_subtree(db, storage, node)
     audit.log(db, "purge", user_id=admin.id, node_id=node_id, detail=f"{node.name} ({removed})")
     return {"ok": True, "removed": removed}
