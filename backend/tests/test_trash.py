@@ -91,3 +91,45 @@ def test_trash_swept_on_app_start(app_factory):
         pass
     with app2.state.sessionmaker() as db:
         assert db.get(Node, node["id"]) is None
+
+
+def test_user_purges_own_trashed_node_and_blob(admin_client):
+    """휴지통 항목을 본인이 영구삭제 → DB행+blob 제거. 휴지통 아닌 건 400."""
+    from app.config import get_settings
+    from app.models import Node
+    from app.services.storage import build_storage
+
+    sp = personal_space(admin_client)
+    node = upload(admin_client, f"/api/spaces/{sp['id']}/files", "지울것.txt", b"bye").json()
+    live = upload(admin_client, f"/api/spaces/{sp['id']}/files", "살아있는것.txt").json()
+    admin_client.delete(f"/api/nodes/{node['id']}")  # 휴지통으로
+
+    SessionLocal = admin_client.app.state.sessionmaker
+    with SessionLocal() as db:
+        key = db.get(Node, node["id"]).storage_key
+
+    # 휴지통에 없는 항목 purge는 400
+    assert admin_client.delete(f"/api/nodes/{live['id']}/purge").status_code == 400
+    # 휴지통 항목 영구삭제
+    res = admin_client.delete(f"/api/nodes/{node['id']}/purge")
+    assert res.status_code == 200 and res.json()["removed"] == 1
+    with SessionLocal() as db:
+        assert db.get(Node, node["id"]) is None
+    assert build_storage(get_settings()).exists(key) is False
+
+
+def test_user_cannot_purge_in_others_personal_space(admin_client, db):
+    """프라이버시: 남의 개인공간 휴지통 항목은 영구삭제 불가."""
+    from app.bootstrap import create_user
+
+    create_user(db, email="other@test.local", password="pw-123456")
+    db.commit()
+    admin_client.post("/api/auth/logout")
+    login(admin_client, "other@test.local", "pw-123456")
+    sp = personal_space(admin_client)
+    node = upload(admin_client, f"/api/spaces/{sp['id']}/files", "남의것.txt").json()
+    admin_client.delete(f"/api/nodes/{node['id']}")
+
+    admin_client.post("/api/auth/logout")
+    login(admin_client, ADMIN_EMAIL, ADMIN_PASSWORD)
+    assert admin_client.delete(f"/api/nodes/{node['id']}/purge").status_code in (403, 404)

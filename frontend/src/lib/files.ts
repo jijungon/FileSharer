@@ -105,5 +105,9 @@ export const deleteNode = (id: string) => api(`/api/nodes/${id}`, { method: 'DEL
 export const restoreNode = (id: string) =>
   api<NodeInfo>(`/api/nodes/${id}/restore`, { method: 'POST' })
 
+// 휴지통 항목 영구 삭제(본인). 되돌릴 수 없음.
+export const purgeNode = (id: string) =>
+  api<{ ok: boolean; removed: number }>(`/api/nodes/${id}/purge`, { method: 'DELETE' })
+
 export const downloadUrl = (node: NodeInfo) =>
   node.type === 'file' ? `/api/files/${node.id}` : `/api/nodes/${node.id}/tar`
