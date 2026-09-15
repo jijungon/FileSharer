@@ -1,5 +1,6 @@
 import mimetypes
 import unicodedata
+from datetime import timedelta
 from pathlib import Path, PurePosixPath
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request, UploadFile
@@ -560,7 +561,18 @@ def list_trash(
         .where(Node.space_id == space.id, Node.deleted_at.is_not(None))
         .order_by(Node.deleted_at.desc())
     ).all()
-    return [node_out(n) for n in rows]
+    # 삭제 시각과 자동 완전삭제 예정 시각(= 삭제시각 + 보존기간)을 함께 내려
+    # 프런트가 "완전삭제까지 N일 남음"을 표시할 수 있게 한다. 예정시각은 서버가
+    # 보존기간(get_settings)으로 계산 — 프런트에 보존기간 상수를 별도로 넘길 필요가 없다.
+    retention = timedelta(days=get_settings().trash_retention_days)
+
+    def out(n: Node) -> dict:
+        d = node_out(n)
+        d["deleted_at"] = _stamp(n.deleted_at)
+        d["purge_at"] = _stamp(n.deleted_at + retention) if n.deleted_at else None
+        return d
+
+    return [out(n) for n in rows]
 
 
 @router.post("/nodes/{node_id}/restore")

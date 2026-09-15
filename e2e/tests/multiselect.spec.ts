@@ -96,6 +96,40 @@ test('여러 개를 선택해 폴더로 드래그하면 모두 함께 이동한�
   await expect(page.getByRole('row', { name: /이동나\.txt/ })).toBeVisible()
 })
 
+test('열려 있던 파일을 다중 이동하면 뷰어가 닫힌다(잔상 방지)', async ({ page }) => {
+  await login(page)
+  await enterFreshFolder(page, `잔상_${Date.now()}`)
+
+  // 대상 하위폴더
+  page.once('dialog', (d) => d.accept('대상'))
+  await page.getByRole('button', { name: /새 폴더/ }).click()
+  const folder = page.getByRole('row', { name: /대상/ })
+  await expect(folder).toBeVisible()
+
+  await page.locator('input[type="file"]:not([webkitdirectory])').setInputFiles([
+    { name: '열린.txt', mimeType: 'text/plain', buffer: Buffer.from('hello') },
+    { name: '동반.txt', mimeType: 'text/plain', buffer: Buffer.from('world') },
+  ])
+  await expect(page.getByRole('row', { name: /열린\.txt/ })).toBeVisible()
+
+  // 열린.txt를 클릭해 뷰어를 연다
+  await page.getByRole('row', { name: /열린\.txt/ }).getByRole('cell', { name: /열린\.txt/ }).click()
+  await expect(page.locator('.viewer-area')).toBeVisible()
+
+  // 두 파일(열린 포함) 선택 후 대상으로 다중 드래그
+  await page.getByRole('row', { name: /열린\.txt/ }).getByRole('checkbox').check()
+  await page.getByRole('row', { name: /동반\.txt/ }).getByRole('checkbox').check()
+  const dt = await page.evaluateHandle(() => new DataTransfer())
+  const src = page.getByRole('row', { name: /동반\.txt/ })
+  await src.dispatchEvent('dragstart', { dataTransfer: dt })
+  await folder.dispatchEvent('dragover', { dataTransfer: dt })
+  await folder.dispatchEvent('drop', { dataTransfer: dt })
+
+  // 옮긴 뒤: 파일도 사라지고 뷰어도 닫혀 있어야 한다(예전엔 열린.txt가 잔상으로 남음)
+  await expect(page.getByRole('cell', { name: /열린\.txt/ })).toHaveCount(0)
+  await expect(page.locator('.viewer-area')).toHaveCount(0)
+})
+
 test('선택 해제 버튼을 누르면 다중선택이 초기화된다', async ({ page }) => {
   await login(page)
   await enterFreshFolder(page, `해제_${Date.now()}`)

@@ -427,6 +427,29 @@ button:focus-visible {
   background: color-mix(in srgb, var(--primary) 12%, var(--canvas)) !important;
 }
 
+/* 휴지통: 자동 완전삭제까지 남은 시간 칩 */
+.trash-remaining {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 8px;
+  border-radius: var(--radius-pill);
+  font-size: 0.75em;
+  white-space: nowrap;
+  vertical-align: middle;
+  color: var(--ink-muted-48, #6b6b6b);
+  background: var(--divider-soft, rgba(0, 0, 0, 0.06));
+}
+.trash-remaining::before {
+  content: '⏳ ';
+}
+.trash-remaining.soon {
+  color: #fff;
+  background: var(--danger, #c0392b);
+}
+.trash-remaining.soon::before {
+  content: '⚠ ';
+}
+
 .node-icon {
   margin-right: 4px;
 }

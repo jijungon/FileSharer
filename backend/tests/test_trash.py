@@ -62,6 +62,23 @@ def test_recent_trash_is_kept(admin_client):
     assert any(t["id"] == node["id"] for t in trash)
 
 
+def test_trash_listing_exposes_purge_schedule(admin_client):
+    """휴지통 목록은 삭제시각과 자동 완전삭제 예정시각(= 삭제시각 + 보존기간)을 포함한다."""
+    from datetime import datetime, timedelta
+
+    from app.config import get_settings
+
+    sp = personal_space(admin_client)
+    node = upload(admin_client, f"/api/spaces/{sp['id']}/files", "예정.txt").json()
+    admin_client.delete(f"/api/nodes/{node['id']}")
+
+    row = next(t for t in admin_client.get(f"/api/spaces/{sp['id']}/trash").json())
+    assert row["deleted_at"] and row["purge_at"]
+    deleted = datetime.fromisoformat(row["deleted_at"])
+    purge = datetime.fromisoformat(row["purge_at"])
+    assert purge - deleted == timedelta(days=get_settings().trash_retention_days)
+
+
 def test_trash_swept_on_app_start(app_factory):
     """앱 기동(lifespan)에서 보존기간 지난 휴지통이 자동 정리된다(스위퍼 배선 검증)."""
     from fastapi.testclient import TestClient

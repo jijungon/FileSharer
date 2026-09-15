@@ -10,6 +10,9 @@ export interface NodeInfo {
   mime: string
   created_at: string | null
   updated_at: string | null
+  // 휴지통 목록에서만 채워짐: 삭제 시각과 자동 완전삭제 예정 시각(서버 계산)
+  deleted_at?: string | null
+  purge_at?: string | null
 }
 
 export interface NodePath {
