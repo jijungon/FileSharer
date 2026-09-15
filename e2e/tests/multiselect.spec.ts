@@ -147,3 +147,42 @@ test('선택 해제 버튼을 누르면 다중선택이 초기화된다', async 
   await expect(page.locator('.bulk-bar')).toHaveCount(0)
   await expect(page.getByRole('row', { name: /해제가\.txt/ })).toBeVisible() // 파일은 그대로
 })
+
+test('여러 개를 선택해 다른 공간으로 드래그하면 복사된다(원본 유지)', async ({ page }) => {
+  await login(page)
+  const tag = Date.now()
+  await enterFreshFolder(page, `복사원본_${tag}`)
+
+  // 전역 org 공간(전체 공간)은 누적되므로 파일명을 실행마다 고유하게
+  const a = `복사가_${tag}.txt`
+  const b = `복사나_${tag}.txt`
+  await page.locator('input[type="file"]:not([webkitdirectory])').setInputFiles([
+    { name: a, mimeType: 'text/plain', buffer: Buffer.from('a') },
+    { name: b, mimeType: 'text/plain', buffer: Buffer.from('b') },
+  ])
+  await expect(page.getByRole('row', { name: new RegExp(a) })).toBeVisible()
+  await expect(page.getByRole('row', { name: new RegExp(b) })).toBeVisible()
+
+  // 두 파일 선택
+  await page.getByRole('row', { name: new RegExp(a) }).getByRole('checkbox').check()
+  await page.getByRole('row', { name: new RegExp(b) }).getByRole('checkbox').check()
+  await expect(page.locator('.bulk-bar')).toContainText('2개 선택됨')
+
+  // 사이드바의 다른 공간(전체 공간)으로 다중 드래그 → 복사(원본은 그대로)
+  const target = page
+    .getByRole('complementary')
+    .getByRole('button', { name: '전체 공간', exact: true })
+  const dt = await page.evaluateHandle(() => new DataTransfer())
+  await page.getByRole('row', { name: new RegExp(a) }).dispatchEvent('dragstart', { dataTransfer: dt })
+  await target.dispatchEvent('dragover', { dataTransfer: dt })
+  await target.dispatchEvent('drop', { dataTransfer: dt })
+
+  // 원본 공간엔 둘 다 그대로 남아 있다
+  await expect(page.getByRole('row', { name: new RegExp(a) })).toBeVisible()
+  await expect(page.getByRole('row', { name: new RegExp(b) })).toBeVisible()
+
+  // 전체 공간으로 전환하면 복사본 둘 다 존재한다
+  await target.click()
+  await expect(page.getByRole('row', { name: new RegExp(a) })).toBeVisible()
+  await expect(page.getByRole('row', { name: new RegExp(b) })).toBeVisible()
+})
