@@ -39,3 +39,24 @@ test('휴지통에서 완전 삭제하면 파일이 영구히 사라진다', asy
   await trashRow.getByRole('button', { name: '완전 삭제' }).click()
   await expect(page.getByRole('cell', { name: /영구삭제\.txt/ })).toHaveCount(0)
 })
+
+test('휴지통 항목에 자동 완전삭제까지 남은 시간이 표시된다', async ({ page }) => {
+  page.on('dialog', (d) => d.accept())
+  await login(page)
+
+  await page.locator('input[type="file"]:not([webkitdirectory])').setInputFiles({
+    name: '카운트다운.txt',
+    mimeType: 'text/plain',
+    buffer: Buffer.from('x'),
+  })
+  const row = page.getByRole('row', { name: /카운트다운\.txt/ })
+  await expect(row).toBeVisible()
+  await row.hover()
+  await row.getByRole('button', { name: '삭제', exact: true }).click()
+
+  // 휴지통 행에 "N일 … 남음" 칩이 보인다(방금 지웠으니 보존기간에 가깝다)
+  await page.getByRole('button', { name: '휴지통' }).click()
+  const trashRow = page.getByRole('row', { name: /카운트다운\.txt/ }).first()
+  await expect(trashRow.locator('.trash-remaining')).toBeVisible()
+  await expect(trashRow.locator('.trash-remaining')).toContainText('남음')
+})

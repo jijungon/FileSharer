@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { formatBytes, formatDateTime, normalizeFileName } from './format'
+import { formatBytes, formatDateTime, formatTrashRemaining, normalizeFileName } from './format'
 
 describe('formatBytes', () => {
   it('formats byte ranges', () => {
@@ -32,5 +32,27 @@ describe('formatDateTime', () => {
   it('handles null/invalid', () => {
     expect(formatDateTime(null)).toBe('—')
     expect(formatDateTime('nope')).toBe('—')
+  })
+})
+
+describe('formatTrashRemaining', () => {
+  const now = Date.parse('2026-09-15T00:00:00Z')
+  it('shows days and hours when more than a day remains', () => {
+    // 2026-09-21T05:00Z 예정 = 6일 5시간 뒤
+    expect(formatTrashRemaining('2026-09-21T05:00:00', now)).toBe('6일 5시간 남음')
+  })
+  it('shows hours when less than a day remains', () => {
+    expect(formatTrashRemaining('2026-09-15T03:30:00', now)).toBe('3시간 남음')
+  })
+  it('shows minutes when less than an hour remains', () => {
+    expect(formatTrashRemaining('2026-09-15T00:30:00', now)).toBe('30분 남음')
+  })
+  it('reports "곧 삭제됨" once the time has passed', () => {
+    expect(formatTrashRemaining('2026-09-14T23:00:00', now)).toBe('곧 삭제됨')
+  })
+  it('returns empty string for missing/invalid input', () => {
+    expect(formatTrashRemaining(null, now)).toBe('')
+    expect(formatTrashRemaining(undefined, now)).toBe('')
+    expect(formatTrashRemaining('nope', now)).toBe('')
   })
 })

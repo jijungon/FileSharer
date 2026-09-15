@@ -6,7 +6,7 @@ import NewMarkdownModal from '../components/NewMarkdownModal'
 import ViewerPanel from '../components/ViewerPanel'
 import { api, ApiError, Me, SpaceInfo } from '../lib/api'
 import { downloadUrlData, supportsDragOut } from '../lib/dragout'
-import { formatBytes, formatDateTime } from '../lib/format'
+import { formatBytes, formatDateTime, formatTrashRemaining } from '../lib/format'
 import { dropUpload, partitionBySize, percent, setProgress, UploadItem } from '../lib/upload'
 import {
   createFolder,
@@ -377,6 +377,7 @@ export default function Files() {
     await guard(() =>
       moveNode(draggedId, targetFolderId ? { parentId: targetFolderId } : { spaceId }),
     )
+    closeViewerIfAffected([draggedId]) // 열려 있던 파일을 옮겼으면 뷰어를 닫는다
   }
 
   async function copyToSpace(draggedId: string, targetSpaceId: string, spaceName: string) {
@@ -449,6 +450,16 @@ export default function Files() {
     setChecked(allChecked ? new Set() : new Set(sortedItems.map((n) => n.id)))
   }
 
+  // 이동·삭제한 항목이 지금 뷰어에 열려 있으면 닫는다.
+  // (다중 이동 후 옮긴 파일이 뷰어에 잔상처럼 남아 보이던 문제 방지)
+  function closeViewerIfAffected(ids: Iterable<string>) {
+    const set = ids instanceof Set ? ids : new Set(ids)
+    if (selected && set.has(selected.id)) {
+      setSelected(null)
+      setFullscreen(false)
+    }
+  }
+
   async function onMoveMany(ids: string[], targetFolderId: string | null) {
     if (!spaceId) return
     try {
@@ -460,6 +471,7 @@ export default function Files() {
     } catch (err) {
       flash(err instanceof Error ? err.message : '이동에 실패했습니다')
     } finally {
+      closeViewerIfAffected(ids)
       clearChecked()
       reload()
       setTreeVersion((v) => v + 1)
@@ -493,6 +505,7 @@ export default function Files() {
     } catch (err) {
       flash(err instanceof Error ? err.message : '삭제에 실패했습니다')
     } finally {
+      closeViewerIfAffected(ids)
       clearChecked()
       reload()
       setTreeVersion((v) => v + 1)
@@ -829,6 +842,7 @@ export default function Files() {
                         {node.name}
                       </span>
                     )}
+                    {trashMode && <TrashRemaining purgeAt={node.purge_at} />}
                   </td>
                   <td className="col-date muted">{formatDateTime(node.created_at)}</td>
                   <td className="col-date muted">{formatDateTime(node.updated_at)}</td>
@@ -980,6 +994,20 @@ export default function Files() {
         />
       )}
     </div>
+  )
+}
+
+// 휴지통 행에 "완전삭제까지 N일 남음"을 보여주는 칩. 예정 시각이 없으면 렌더 안 함.
+function TrashRemaining({ purgeAt }: { purgeAt?: string | null }) {
+  const text = formatTrashRemaining(purgeAt)
+  if (!text) return null
+  return (
+    <span
+      className={`trash-remaining${text === '곧 삭제됨' ? ' soon' : ''}`}
+      title={purgeAt ? `자동 완전삭제 예정: ${formatDateTime(purgeAt)}` : undefined}
+    >
+      {text}
+    </span>
   )
 }
 
