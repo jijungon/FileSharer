@@ -81,6 +81,8 @@ describe('isVideo / isAudio / isHtml', () => {
     expect(isOffice(node('보고서.docx'))).toBe(true)
     expect(isOffice(node('표.xlsx'))).toBe(true)
     expect(isOffice(node('구형.ppt'))).toBe(true)
+    expect(isOffice(node('현장.hwp'))).toBe(true) // 한글 구형
+    expect(isOffice(node('현장.hwpx'))).toBe(false) // 신형은 미지원 → 제외
     expect(isOffice(node('노트.md'))).toBe(false)
     expect(isOffice(node('문서.pdf'))).toBe(false)
   })

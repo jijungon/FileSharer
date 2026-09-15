@@ -25,6 +25,7 @@ OFFICE_EXTS = {
     ".odp",
     ".ods",
     ".odt",
+    ".hwp",  # 한글(구형 v5) — LibreOffice hwp 필터(libhwplo). .hwpx(신형 XML)는 미지원이라 제외.
 }
 
 
