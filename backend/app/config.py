@@ -31,6 +31,9 @@ class Settings(BaseSettings):
     r2_secret_access_key: str = ""
     r2_bucket: str = ""
     r2_endpoint: str = ""  # 비우면 account_id로 구성
+    # 버킷 안 환경 구분용 키 프리픽스(예: "dev/", "prod/"). 한 버킷을 dev/prod가
+    # 공유해도 객체가 섞이지 않게 한다. 빈 값이면 프리픽스 없음(기존 동작).
+    r2_prefix: str = ""
     share_default_days: int = 7
     share_max_days: int = 30
     disk_warn_ratio: float = 0.8

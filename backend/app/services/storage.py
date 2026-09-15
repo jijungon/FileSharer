@@ -148,11 +148,15 @@ class R2Storage(StorageBackend):
         secret_access_key: str,
         bucket: str,
         region: str = "auto",
+        prefix: str = "",
     ):
         import boto3
         from botocore.config import Config as BotoConfig
 
         self.bucket = bucket
+        # 버킷 내 환경 구분용 프리픽스(예: "dev/"). DB의 storage_key는 프리픽스 없는
+        # bare uuid로 유지하고, R2 객체 키에만 여기서 프리픽스를 붙인다.
+        self.prefix = prefix
         self._client = boto3.client(
             "s3",
             endpoint_url=endpoint_url or None,
@@ -161,6 +165,10 @@ class R2Storage(StorageBackend):
             region_name=region,
             config=BotoConfig(signature_version="s3v4", retries={"max_attempts": 3}),
         )
+
+    def _full(self, key: str) -> str:
+        """DB의 bare 키 → 실제 R2 객체 키(프리픽스 포함)."""
+        return f"{self.prefix}{key}"
 
     @staticmethod
     def _is_not_found(err) -> bool:  # noqa: ANN001
@@ -180,7 +188,7 @@ class R2Storage(StorageBackend):
                 digest.update(chunk)
                 spool.write(chunk)
             spool.seek(0)
-            self._client.upload_fileobj(spool, self.bucket, key)
+            self._client.upload_fileobj(spool, self.bucket, self._full(key))
         return key, size, digest.hexdigest()
 
     def exists(self, key: str) -> bool:
@@ -189,7 +197,7 @@ class R2Storage(StorageBackend):
         if not key:
             return False
         try:
-            self._client.head_object(Bucket=self.bucket, Key=key)
+            self._client.head_object(Bucket=self.bucket, Key=self._full(key))
             return True
         except ClientError as err:
             if self._is_not_found(err):
@@ -197,15 +205,17 @@ class R2Storage(StorageBackend):
             raise
 
     def size(self, key: str) -> int:
-        return int(self._client.head_object(Bucket=self.bucket, Key=key)["ContentLength"])
+        return int(
+            self._client.head_object(Bucket=self.bucket, Key=self._full(key))["ContentLength"]
+        )
 
     def open_stream(self, key: str) -> BinaryIO:
-        return self._client.get_object(Bucket=self.bucket, Key=key)["Body"]
+        return self._client.get_object(Bucket=self.bucket, Key=self._full(key))["Body"]
 
     def open_range(self, key: str, start: int, length: int) -> BinaryIO:
         end = start + length - 1
         resp = self._client.get_object(
-            Bucket=self.bucket, Key=key, Range=f"bytes={start}-{end}"
+            Bucket=self.bucket, Key=self._full(key), Range=f"bytes={start}-{end}"
         )
         return resp["Body"]
 
@@ -213,14 +223,14 @@ class R2Storage(StorageBackend):
         new_key = uuid.uuid4().hex
         self._client.copy_object(
             Bucket=self.bucket,
-            Key=new_key,
-            CopySource={"Bucket": self.bucket, "Key": key},
+            Key=self._full(new_key),
+            CopySource={"Bucket": self.bucket, "Key": self._full(key)},
         )
         return new_key
 
     def delete(self, key: str) -> None:
         if key:
-            self._client.delete_object(Bucket=self.bucket, Key=key)
+            self._client.delete_object(Bucket=self.bucket, Key=self._full(key))
 
     def sha256(self, key: str) -> str:
         digest = hashlib.sha256()
@@ -244,5 +254,6 @@ def build_storage(settings) -> StorageBackend:  # noqa: ANN001
             access_key_id=settings.r2_access_key_id,
             secret_access_key=settings.r2_secret_access_key,
             bucket=settings.r2_bucket,
+            prefix=getattr(settings, "r2_prefix", ""),
         )
     return LocalStorage(settings.data_dir)

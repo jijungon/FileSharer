@@ -43,6 +43,68 @@ def test_r2_put_get_roundtrip():
     assert st.sha256(key) == sha
 
 
+def _make_r2_prefixed(prefix: str) -> R2Storage:
+    return R2Storage(
+        endpoint_url=None,
+        access_key_id="k",
+        secret_access_key="s",
+        bucket=BUCKET,
+        region="us-east-1",
+        prefix=prefix,
+    )
+
+
+@mock_aws
+def test_r2_prefix_isolates_and_returns_bare_key():
+    """프리픽스는 실제 R2 객체 키에만 붙고, 반환(DB) 키는 프리픽스 없는 bare uuid.
+    같은 버킷을 다른 프리픽스로 쓰면 서로 객체가 안 보인다(dev/prod 격리)."""
+    from botocore.exceptions import ClientError
+
+    raw = boto3.client("s3", region_name="us-east-1")
+    raw.create_bucket(Bucket=BUCKET)
+    prod = _make_r2_prefixed("prod/")
+    dev = _make_r2_prefixed("dev/")
+
+    key, *_ = prod.put_stream(io.BytesIO(b"prod-data"), 10_000)
+    assert "/" not in key  # 반환 키는 bare uuid (프리픽스 없음)
+    # 실제 객체는 prod/<key> 에 저장된다
+    assert raw.get_object(Bucket=BUCKET, Key=f"prod/{key}")["Body"].read() == b"prod-data"
+    with pytest.raises(ClientError):
+        raw.get_object(Bucket=BUCKET, Key=key)  # 루트엔 없음
+    # 같은 bare 키라도 dev 프리픽스로는 안 보인다(격리)
+    assert prod.exists(key) is True
+    assert dev.exists(key) is False
+
+
+@mock_aws
+def test_r2_prefix_copy_and_delete_stay_in_prefix():
+    boto3.client("s3", region_name="us-east-1").create_bucket(Bucket=BUCKET)
+    st = _make_r2_prefixed("prod/")
+    key, *_ = st.put_stream(io.BytesIO(b"dup"), 10_000)
+    new_key = st.copy_blob(key)
+    assert "/" not in new_key
+    assert st.open_stream(new_key).read() == b"dup"
+    st.delete(key)
+    assert st.exists(key) is False
+    assert st.exists(new_key) is True
+
+
+def test_build_storage_passes_prefix():
+    class R2Set:
+        storage_backend = "r2"
+        r2_endpoint = ""
+        r2_account_id = "acc"
+        r2_access_key_id = "k"
+        r2_secret_access_key = "s"
+        r2_bucket = "b"
+        r2_prefix = "prod/"
+        data_dir = "./data"
+
+    st = build_storage(R2Set())
+    assert isinstance(st, R2Storage)
+    assert st.prefix == "prod/"
+
+
 @mock_aws
 def test_r2_range_read():
     st = _make_r2()
@@ -145,3 +207,35 @@ def test_serve_blob_streams_r2_with_range():
     assert ranged.status_code == 206
     assert ranged.content == b"3456"
     assert ranged.headers["content-range"] == "bytes 3-6/10"
+
+
+@mock_aws
+def test_migrate_root_to_prefix():
+    """루트 bare 키만 프리픽스 아래로 이동, 이미 프리픽스 있는 키는 보존, idempotent."""
+    from botocore.exceptions import ClientError
+
+    from scripts.migrate_r2_prefix import migrate_root_to_prefix
+
+    c = boto3.client("s3", region_name="us-east-1")
+    c.create_bucket(Bucket=BUCKET)
+    c.put_object(Bucket=BUCKET, Key="aaa", Body=b"1")  # 루트 bare 키
+    c.put_object(Bucket=BUCKET, Key="bbb", Body=b"2")  # 루트 bare 키
+    c.put_object(Bucket=BUCKET, Key="prod/ccc", Body=b"3")  # 이미 프리픽스 있음
+
+    # dry-run: 목록만, 실제 변화 없음
+    dry = migrate_root_to_prefix(c, BUCKET, "dev/", apply=False)
+    assert sorted(s for s, _ in dry["moved"]) == ["aaa", "bbb"]
+    assert dry["skipped"] == 1
+    assert c.get_object(Bucket=BUCKET, Key="aaa")["Body"].read() == b"1"
+
+    # apply: 실제 이동
+    res = migrate_root_to_prefix(c, BUCKET, "dev/", apply=True)
+    assert len(res["moved"]) == 2
+    assert c.get_object(Bucket=BUCKET, Key="dev/aaa")["Body"].read() == b"1"
+    assert c.get_object(Bucket=BUCKET, Key="dev/bbb")["Body"].read() == b"2"
+    with pytest.raises(ClientError):
+        c.get_object(Bucket=BUCKET, Key="aaa")  # 루트 원본은 삭제됨
+    assert c.get_object(Bucket=BUCKET, Key="prod/ccc")["Body"].read() == b"3"  # 보존
+
+    # idempotent
+    assert migrate_root_to_prefix(c, BUCKET, "dev/", apply=True)["moved"] == []
