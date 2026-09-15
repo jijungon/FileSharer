@@ -355,6 +355,62 @@ button:focus-visible {
   font-size: 14px;
 }
 
+.toolbar-search {
+  margin-left: 8px;
+}
+.search-input {
+  width: 200px;
+  max-width: 40vw;
+  padding: 5px 10px;
+  font-size: 14px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-pill);
+  background: var(--canvas);
+  color: var(--ink);
+}
+.search-input:focus {
+  outline: none;
+  border-color: var(--primary);
+}
+
+/* 검색 결과 (파일 테이블 자리) */
+.search-results {
+  font-size: 15px;
+}
+.search-results-head {
+  padding: 6px 4px 10px;
+  font-size: 13px;
+}
+.search-results-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.search-result {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 6px;
+  border-bottom: 1px solid var(--hairline);
+  cursor: pointer;
+}
+.search-result:hover {
+  background: color-mix(in srgb, var(--primary) 7%, var(--canvas));
+}
+.search-result-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.search-result-path {
+  margin-left: auto;
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 45%;
+}
+
 .file-table {
   width: 100%;
   border-collapse: collapse;

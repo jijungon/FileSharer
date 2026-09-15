@@ -155,6 +155,54 @@ def space_folders(
     return [{"id": n.id, "name": n.name, "parent_id": n.parent_id} for n in rows]
 
 
+@router.get("/spaces/{space_id}/search")
+def search_nodes(
+    space_id: str,
+    q: str = "",
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> list[dict]:
+    """공간 안에서 이름에 q가 포함된(대소문자 무시) 비삭제 노드를 재귀로 찾는다.
+    각 결과에 상위 폴더 경로(path, 공간 루트 기준 'a/b/c')를 붙여 위치를 보여준다."""
+    space = get_space_checked(db, user, space_id)
+    term = q.strip()
+    if not term:
+        return []
+    # SQL LIKE 와일드카드/이스케이프 문자를 리터럴로 처리
+    escaped = term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    rows = db.scalars(
+        select(Node)
+        .where(
+            Node.space_id == space.id,
+            Node.deleted_at.is_(None),
+            Node.name.ilike(f"%{escaped}%", escape="\\"),
+        )
+        .limit(200)
+    ).all()
+    # 상위 경로 표시용으로 공간의 폴더를 한 번에 로드해 메모리에서 경로를 해석
+    folders = db.scalars(
+        select(Node).where(
+            Node.space_id == space.id, Node.type == "folder", Node.deleted_at.is_(None)
+        )
+    ).all()
+    fmap = {f.id: f for f in folders}
+
+    def path_of(node: Node) -> str:
+        parts: list[str] = []
+        pid = node.parent_id
+        while pid and pid in fmap:
+            parts.append(fmap[pid].name)
+            pid = fmap[pid].parent_id
+        return "/".join(reversed(parts))
+
+    out: list[dict] = []
+    for n in sorted(rows, key=lambda n: (0 if n.type == "folder" else 1, n.name)):
+        d = node_out(n)
+        d["path"] = path_of(n)
+        out.append(d)
+    return out
+
+
 @router.get("/nodes/{node_id}/children")
 def node_children(
     node_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)

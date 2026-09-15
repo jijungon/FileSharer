@@ -507,3 +507,49 @@ def test_space_folders_flat_list(admin_client):
     assert names == {"A", "B", "C"}  # 파일 file.txt 없음
     b_row = next(f for f in folders if f["name"] == "B")
     assert b_row["parent_id"] == a["id"]  # 계층(parent_id) 포함
+
+
+def test_search_by_name_recursive_with_path(admin_client):
+    """공간 안 이름 부분일치(재귀). 결과에 상위 경로, 휴지통·타이핑은 제외."""
+    sp = spaces_of(admin_client)
+    pid = sp["personal"]["id"]
+    folder = admin_client.post("/api/nodes", json={"space_id": pid, "name": "문서"}).json()
+    upload(admin_client, f"/api/spaces/{pid}/files", "회의록.md")  # 루트
+    upload(admin_client, f"/api/nodes/{folder['id']}/files", "회의준비.txt")  # 문서/ 아래
+    upload(admin_client, f"/api/spaces/{pid}/files", "기타.bin")  # 매칭 안 됨
+    trashed = upload(admin_client, f"/api/spaces/{pid}/files", "회의취소.md").json()
+    admin_client.delete(f"/api/nodes/{trashed['id']}")  # 휴지통 → 검색 제외
+
+    res = admin_client.get(f"/api/spaces/{pid}/search", params={"q": "회의"}).json()
+    by_name = {r["name"]: r for r in res}
+    assert set(by_name) == {"회의록.md", "회의준비.txt"}  # 기타·휴지통 제외
+    assert by_name["회의준비.txt"]["path"] == "문서"  # 상위 폴더 경로
+    assert by_name["회의록.md"]["path"] == ""  # 루트
+
+    assert admin_client.get(f"/api/spaces/{pid}/search", params={"q": "  "}).json() == []
+
+
+def test_search_escapes_like_wildcards(admin_client):
+    """검색어의 _ % 는 리터럴로 취급(LIKE 와일드카드로 오작동 금지)."""
+    sp = spaces_of(admin_client)
+    pid = sp["personal"]["id"]
+    upload(admin_client, f"/api/spaces/{pid}/files", "a_b.txt")
+    upload(admin_client, f"/api/spaces/{pid}/files", "axb.txt")
+
+    names = {r["name"] for r in admin_client.get(f"/api/spaces/{pid}/search", params={"q": "a_b"}).json()}
+    assert names == {"a_b.txt"}  # axb.txt 는 매칭 안 됨(_ 가 임의문자로 동작하면 매칭됐을 것)
+
+
+def test_search_denied_in_others_personal_space(admin_client, db):
+    """남의 개인공간은 검색 불가(프라이버시)."""
+    from app.bootstrap import create_user
+    from tests.conftest import ADMIN_EMAIL, ADMIN_PASSWORD
+
+    create_user(db, email="s-other@test.local", password="pw-123456")
+    db.commit()
+    as_user(admin_client, "s-other@test.local")
+    other_pid = spaces_of(admin_client)["personal"]["id"]
+    # admin으로 복귀 (admin 비밀번호는 pw-123456이 아니므로 as_user 못 씀)
+    admin_client.post("/api/auth/logout")
+    login(admin_client, ADMIN_EMAIL, ADMIN_PASSWORD)
+    assert admin_client.get(f"/api/spaces/{other_pid}/search", params={"q": "x"}).status_code in (403, 404)
