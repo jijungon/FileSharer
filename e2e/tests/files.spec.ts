@@ -104,16 +104,23 @@ test('viewer resize handle works when dragging down over an iframe preview', asy
 
   const viewer = page.locator('.viewer-area')
   await expect(viewer).toBeVisible()
+  // HTML 프리뷰 iframe이 로드·배치될 때까지 대기(레이아웃 안정화 → 측정/드래그 타이밍 취약성 제거)
+  await expect(page.locator('.viewer-area iframe')).toBeVisible()
   const before = (await viewer.boundingBox())!.height
 
   // 핸들을 아래로 끌면 뷰어가 작아져야 한다. iframe이 이벤트를 가로채면 안 움직임(버그).
   const handle = page.locator('.vsplit-handle')
+  await expect(handle).toBeVisible()
   const hb = (await handle.boundingBox())!
   await page.mouse.move(hb.x + hb.width / 2, hb.y + hb.height / 2)
   await page.mouse.down()
+  // 큰 이동이 iframe 위를 지나기 전에, 작은 이동으로 드래그(오버레이)를 먼저 활성화
+  await page.mouse.move(hb.x + hb.width / 2, hb.y + hb.height / 2 + 12)
   await page.mouse.move(hb.x + hb.width / 2, hb.y + 160, { steps: 12 })
   await page.mouse.up()
 
-  const after = (await viewer.boundingBox())!.height
-  expect(after).toBeLessThan(before - 40)
+  // mouse.up 직후 1회 측정은 레이아웃 갱신 전일 수 있어 폴링으로 대기(플레이크 방지)
+  await expect
+    .poll(async () => (await viewer.boundingBox())!.height, { timeout: 5000 })
+    .toBeLessThan(before - 40)
 })
