@@ -28,10 +28,31 @@ test('image preview renders inline', async ({ page }) => {
   await expect(page.locator('.image-preview img')).toBeVisible()
 })
 
-test('new MD button creates a doc and opens the editor', async ({ page }) => {
+test('new MD: modal opens, save creates the file and opens it', async ({ page }) => {
   await loginAsAdmin(page)
   page.once('dialog', (d) => d.accept('회의록'))
   await page.getByRole('button', { name: /새 MD/ }).click()
-  await expect(page.locator('.cm-content')).toBeVisible()
-  await expect(page.locator('.md-preview').getByRole('heading', { name: '회의록' })).toBeVisible()
+
+  // 편집 모달이 뜬다(아직 파일 생성 안 됨) — 에디터 + 프리뷰
+  const modal = page.locator('.new-md-modal')
+  await expect(modal).toBeVisible()
+  await expect(modal.locator('.cm-content')).toBeVisible()
+  await expect(modal.locator('.md-preview').getByRole('heading', { name: '회의록' })).toBeVisible()
+
+  // 저장 → 모달 닫히고 파일이 목록에 나타난다
+  await modal.getByRole('button', { name: '저장' }).click()
+  await expect(modal).toBeHidden()
+  await expect(page.getByRole('cell', { name: /회의록\.md/ })).toBeVisible()
+})
+
+test('new MD: cancel discards without creating a file', async ({ page }) => {
+  await loginAsAdmin(page)
+  page.once('dialog', (d) => d.accept('버리는문서'))
+  await page.getByRole('button', { name: /새 MD/ }).click()
+  const modal = page.locator('.new-md-modal')
+  await expect(modal).toBeVisible()
+  await modal.getByRole('button', { name: '취소' }).click()
+  await expect(modal).toBeHidden()
+  // 파일이 생성되지 않았다
+  await expect(page.getByRole('cell', { name: /버리는문서\.md/ })).toHaveCount(0)
 })
