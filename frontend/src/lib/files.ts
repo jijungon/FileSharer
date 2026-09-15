@@ -42,10 +42,11 @@ export const createFolder = (spaceId: string, parentId: string | null, name: str
     body: JSON.stringify({ space_id: spaceId, parent_id: parentId, name }),
   })
 
-export async function uploadFile(
+export function uploadFile(
   target: { spaceId: string; parentId: string | null },
   file: File,
   relPath?: string,
+  onProgress?: (loaded: number, total: number) => void,
 ): Promise<NodeInfo> {
   const url = target.parentId
     ? `/api/nodes/${target.parentId}/files`
@@ -54,12 +55,27 @@ export async function uploadFile(
   form.append('file', file)
   // 폴더 업로드: 상대 경로를 보내면 서버가 중간 폴더를 만들어(있으면 재사용) 그 안에 넣는다
   if (relPath) form.append('rel_path', relPath)
-  const res = await fetch(url, { method: 'POST', body: form })
-  if (!res.ok) {
-    const body = (await res.json().catch(() => null)) as { detail?: string } | null
-    throw new Error(body?.detail ?? `업로드 실패 (${res.status})`)
-  }
-  return (await res.json()) as NodeInfo
+  // 업로드 진행률(upload.onprogress)이 필요해 fetch 대신 XHR 사용. 같은 오리진이라 쿠키 자동 전송.
+  return new Promise<NodeInfo>((resolve, reject) => {
+    const xhr = new XMLHttpRequest()
+    xhr.open('POST', url)
+    xhr.responseType = 'json'
+    if (onProgress) {
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) onProgress(e.loaded, e.total)
+      }
+    }
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve(xhr.response as NodeInfo)
+      } else {
+        const detail = (xhr.response as { detail?: string } | null)?.detail
+        reject(new Error(detail ?? `업로드 실패 (${xhr.status})`))
+      }
+    }
+    xhr.onerror = () => reject(new Error('업로드 실패 (네트워크)'))
+    xhr.send(form)
+  })
 }
 
 export const renameNode = (id: string, name: string) =>

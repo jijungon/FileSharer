@@ -6,7 +6,7 @@ import ViewerPanel from '../components/ViewerPanel'
 import { api, ApiError, Me, SpaceInfo } from '../lib/api'
 import { downloadUrlData, supportsDragOut } from '../lib/dragout'
 import { formatBytes, formatDateTime } from '../lib/format'
-import { partitionBySize } from '../lib/upload'
+import { dropUpload, partitionBySize, percent, setProgress, UploadItem } from '../lib/upload'
 import {
   createFolder,
   deleteNode,
@@ -49,6 +49,7 @@ export default function Files() {
   const [trashMode, setTrashMode] = useState(false)
   const [notice, setNotice] = useState('')
   const [maxUploadMb, setMaxUploadMb] = useState(0)
+  const [uploads, setUploads] = useState<UploadItem[]>([])
   const [dropActive, setDropActive] = useState(false)
   const [fullscreen, setFullscreen] = useState(false)
   const [bootError, setBootError] = useState('')
@@ -265,13 +266,27 @@ export default function Files() {
     if (created) selectNode(created)
   }
 
+  // 파일 하나 업로드 + 진행바 표시(시작 시 추가 → onprogress 갱신 → 완료/실패 시 제거)
+  async function runUpload(file: File, relPath?: string) {
+    const id = `${file.name}:${Date.now()}:${Math.random().toString(36).slice(2)}`
+    setUploads((u) => [...u, { id, name: file.name, loaded: 0, total: file.size }])
+    await guard(() =>
+      uploadFile(
+        { spaceId: spaceId!, parentId: currentFolder?.id ?? null },
+        file,
+        relPath,
+        (loaded, total) => setUploads((u) => setProgress(u, id, loaded, total)),
+      ),
+    )
+    setUploads((u) => dropUpload(u, id))
+  }
+
   async function uploadAll(files: FileList | File[]) {
     if (!spaceId) return
     const { ok, tooBig } = partitionBySize(Array.from(files), maxUploadMb, (f) => f.size)
     for (const file of ok) {
       // 폴더 선택 업로드면 webkitRelativePath에 'folder/sub/file' 경로가 담긴다
-      const relPath = file.webkitRelativePath || undefined
-      await guard(() => uploadFile({ spaceId, parentId: currentFolder?.id ?? null }, file, relPath))
+      await runUpload(file, file.webkitRelativePath || undefined)
     }
     if (tooBig.length)
       flash(`${maxUploadMb}MB 초과로 제외됨: ${tooBig.map((f) => f.name).join(', ')}`)
@@ -313,7 +328,7 @@ export default function Files() {
     for (const entry of entries) await walkEntry(entry, '', collected)
     const { ok, tooBig } = partitionBySize(collected, maxUploadMb, (c) => c.file.size)
     for (const { file, relPath } of ok) {
-      await guard(() => uploadFile({ spaceId, parentId: currentFolder?.id ?? null }, file, relPath))
+      await runUpload(file, relPath)
     }
     if (tooBig.length)
       flash(`${maxUploadMb}MB 초과로 제외됨: ${tooBig.map((c) => c.file.name).join(', ')}`)
@@ -758,6 +773,19 @@ export default function Files() {
             />
           </div>
         </>
+      )}
+      {uploads.length > 0 && (
+        <div className="upload-progress" aria-label="업로드 진행">
+          {uploads.map((u) => (
+            <div key={u.id} className="upload-progress-row">
+              <span className="upload-progress-name" title={u.name}>
+                {u.name}
+              </span>
+              <progress className="upload-progress-bar" value={u.loaded} max={u.total || 1} />
+              <span className="upload-progress-pct">{percent(u)}%</span>
+            </div>
+          ))}
+        </div>
       )}
     </div>
   )
