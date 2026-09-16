@@ -701,6 +701,39 @@ export default function Files() {
       e.dataTransfer.setData('DownloadURL', downloadUrlData(node, window.location.origin))
     }
     e.dataTransfer.effectAllowed = 'copyMove'
+    setDragChip(e, node, ids.length)
+  }
+
+  // 기본 드래그 고스트는 행 전체 폭을 반투명 복사해서, 드롭하려는 위치(폴더 행·사이드바)를
+  // 가려 버린다. 커서 옆에 붙는 작은 칩으로 바꿔 뒤가 보이게 한다. 여러 개면 개수 배지.
+  function setDragChip(e: React.DragEvent, node: NodeInfo, count: number) {
+    if (typeof document === 'undefined' || !e.dataTransfer.setDragImage) return
+    const chip = document.createElement('div')
+    chip.className = 'drag-chip'
+    const icon = document.createElement('span')
+    icon.className = 'drag-chip__icon'
+    icon.textContent = node.type === 'folder' ? '📁' : '📄'
+    const name = document.createElement('span')
+    name.className = 'drag-chip__name'
+    name.textContent = node.name
+    chip.append(icon, name)
+    if (count > 1) {
+      const badge = document.createElement('span')
+      badge.className = 'drag-chip__count'
+      badge.textContent = String(count)
+      chip.append(badge)
+    }
+    // 화면 밖에 붙였다가(스냅샷용) 다음 틱에 제거 — 곧바로 지우면 캡처 전에 사라질 수 있다.
+    chip.style.position = 'absolute'
+    chip.style.top = '-1000px'
+    chip.style.left = '-1000px'
+    document.body.appendChild(chip)
+    try {
+      e.dataTransfer.setDragImage(chip, 14, 18) // 커서를 칩 좌상단 근처에 둔다
+    } catch {
+      /* 미지원 환경 — 기본 고스트로 폴백 */
+    }
+    setTimeout(() => chip.remove(), 0)
   }
 
   function draggedIds(e: React.DragEvent): string[] {
