@@ -4,10 +4,7 @@ WORKDIR /web
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
 COPY frontend/ ./
-# 배포 버전 라벨. 빌드 컨텍스트엔 .git이 없어(.dockerignore) git describe가 안 되므로
-# CI가 --build-arg APP_VERSION=... 로 넘겨준다. vite.config가 process.env.APP_VERSION을 우선 사용.
-ARG APP_VERSION=dev
-ENV APP_VERSION=$APP_VERSION
+# 버전 뱃지는 frontend/package.json 버전을 vite.config가 직접 읽어 주입(빌드 컨텍스트에 있음).
 RUN npm run build
 
 # ── Stage 2: 백엔드 + 정적파일 → 단일 이미지 ───────────────

@@ -63,6 +63,10 @@ export default function Files() {
   const navigate = useNavigate()
   const { nodeId } = useParams()
   const [me, setMe] = useState<Me | null>(null)
+  // 화면 테마(다크 기본 ↔ 라이트). data-theme로 토큰을 뒤집고 localStorage에 기억한다.
+  const [theme, setTheme] = useState<'dark' | 'light'>(() =>
+    document.documentElement.dataset.theme === 'light' ? 'light' : 'dark',
+  )
   const [spaces, setSpaces] = useState<SpaceInfo[]>([])
   const [spaceId, setSpaceId] = useState<string | null>(null)
   const [path, setPath] = useState<NodeInfo[]>([])
@@ -118,6 +122,17 @@ export default function Files() {
     } else {
       setSortKey(key)
       setSortDir(key === 'name' ? 'asc' : 'desc') // 날짜·크기는 최신·큰 것부터가 자연스러움
+    }
+  }
+
+  function toggleTheme() {
+    const next = theme === 'dark' ? 'light' : 'dark'
+    setTheme(next)
+    document.documentElement.dataset.theme = next
+    try {
+      localStorage.setItem('fs:theme', next)
+    } catch {
+      /* localStorage 불가 — 세션 동안만 적용 */
     }
   }
 
@@ -810,6 +825,14 @@ export default function Files() {
               <button className="btn-utility">관리</button>
             </Link>
           )}
+          <button
+            className="btn-utility theme-toggle"
+            onClick={toggleTheme}
+            title={theme === 'dark' ? '라이트 모드로 전환' : '다크 모드로 전환'}
+            aria-label="테마 전환"
+          >
+            {theme === 'dark' ? '☀︎' : '☾'}
+          </button>
           <button
             className="btn-utility"
             onClick={() =>
