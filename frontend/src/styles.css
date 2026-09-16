@@ -54,6 +54,32 @@
   -webkit-font-smoothing: antialiased;
 }
 
+/* ── 라이트 모드 ─────────────────────────────────────────────
+   data-theme="light"일 때 색 토큰만 밝게 뒤집는다. 앱이 토큰 기반이라 이걸로 대부분
+   전환되고, 글씨/배경 대비를 각 역할에 맞게 정해 어느 모드에서도 안 묻히게 한다.
+   (골드 액센트는 흰 배경에서 대비가 낮아 라이트에선 더 진한 골드를 쓴다) */
+:root[data-theme='light'] {
+  --primary: #9a7526; /* 진한 골드 — 흰 배경에서 버튼·링크 모두 대비 확보 */
+  --primary-focus: #856322;
+  --primary-on-dark: #7d5d20;
+  --ink: #1d1d1f; /* 본문 — 짙은 회색 */
+  --ink-muted-80: #48484d;
+  --ink-muted-48: #6e6e75;
+  --divider-soft: #ececef;
+  --hairline: #dddde2;
+  --hairline-strong: #c2c2ca;
+  --canvas: #ffffff; /* 카드·표면 */
+  --canvas-parchment: #f4f4f6; /* 앱 바탕 */
+  --surface-pearl: #eeeef1; /* 입력·살짝 들린 표면 */
+  --surface-tile: #e8e8ee; /* 유틸 버튼 */
+  --surface-raised: #dfdfe5;
+  --on-primary: #ffffff; /* 진한 골드 버튼 위 흰 텍스트 */
+  --on-dark: #1d1d1f;
+  --danger: #c0392b;
+  --danger-soft: #fbe9e7;
+  color-scheme: light;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -260,6 +286,13 @@ button:focus-visible {
   display: flex;
   gap: var(--sp-sm);
   align-items: center;
+}
+
+/* 다크/라이트 전환 토글 — 해/달 아이콘 버튼 */
+.theme-toggle {
+  padding: 7px 10px;
+  font-size: 15px;
+  line-height: 1;
 }
 
 .muted {
