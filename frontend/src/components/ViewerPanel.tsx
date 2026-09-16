@@ -64,6 +64,8 @@ type MediaKind = 'image' | 'pdf' | 'video' | 'audio' | 'html'
 
 function MediaPreview({ node, onClose, kind, fullscreen, onToggleFullscreen }: Props & { kind: MediaKind }) {
   const raw = `/api/files/${node.id}/raw`
+  // 영상 재생은 preview.mp4로 — 브라우저가 못 푸는 오디오 코덱(AC-3 등)이면 서버가 AAC로 변환해 준다.
+  const videoSrc = `/api/files/${node.id}/preview.mp4`
   return (
     <div className="editor-shell">
       <div className="editor-toolbar">
@@ -94,7 +96,7 @@ function MediaPreview({ node, onClose, kind, fullscreen, onToggleFullscreen }: P
         </div>
       ) : kind === 'video' ? (
         <div className="media-preview">
-          <video src={raw} controls preload="metadata" />
+          <video src={videoSrc} controls preload="metadata" />
         </div>
       ) : kind === 'audio' ? (
         <div className="media-preview audio">
