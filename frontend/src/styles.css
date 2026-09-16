@@ -564,34 +564,77 @@ button:focus-visible {
   min-height: 0;
 }
 
+/* ── 뷰어·에디터 패널: DnX풍 다크 프리미엄 (파일 브라우저는 라이트 유지) ── */
 .editor-shell {
+  --ed-base: #18181a;
+  --ed-surface: #1e1e21;
+  --ed-raised: #26262b;
+  --ed-ink: #eceaf0;
+  --ed-muted: #a9a7b0;
+  --ed-quiet: #86848d;
+  --ed-line: #2f2e34;
+  --ed-line-strong: #46454d;
+  --ed-accent: #c9a454;
   display: flex;
   flex-direction: column;
   flex: 1;
   min-height: 0;
+  background: var(--ed-base);
+  color: var(--ed-ink);
 }
 
 .editor-toolbar {
   display: flex;
   align-items: center;
   gap: var(--sp-sm);
-  padding: 8px var(--sp-lg);
-  border-bottom: 1px solid var(--divider-soft);
-  background: var(--surface-pearl);
+  padding: 9px var(--sp-lg);
+  border-bottom: 1px solid var(--ed-line);
+  background: var(--ed-surface);
+}
+/* 에디터 툴바 안 버튼은 다크에 맞춘다 */
+.editor-toolbar .btn-utility {
+  background: var(--ed-raised);
+  color: var(--ed-muted);
+  border: 1px solid var(--ed-line-strong);
+}
+.editor-toolbar .btn-utility:hover:not(:disabled) {
+  color: var(--ed-ink);
+  border-color: var(--ed-accent);
+}
+.editor-toolbar .btn-utility:disabled {
+  opacity: 0.4;
 }
 
 .editor-name {
   font-weight: 600;
-  font-size: 15px;
+  font-size: 14px;
+  color: var(--ed-ink);
+  letter-spacing: 0.01em;
 }
 
 .editor-status {
-  font-size: 13px;
-  color: var(--ink-muted-48);
+  font-size: 12px;
+  color: var(--ed-quiet);
+  font-variant-numeric: tabular-nums;
+  transition: color 0.2s ease;
 }
 
 .editor-status.dirty {
-  color: var(--primary);
+  color: var(--ed-accent);
+}
+
+/* 저장 직후 — 골드 하이라이트 펄스 */
+.editor-status.saved {
+  color: var(--ed-accent);
+  animation: ed-saved-pulse 1.4s ease-out;
+}
+@keyframes ed-saved-pulse {
+  0% {
+    text-shadow: 0 0 10px color-mix(in srgb, var(--ed-accent) 70%, transparent);
+  }
+  100% {
+    text-shadow: none;
+  }
 }
 
 .toolbar-spacer {
@@ -612,8 +655,9 @@ button:focus-visible {
   align-items: center;
   gap: var(--sp-sm);
   padding: 8px var(--sp-lg);
-  background: #fff4e5;
-  border-bottom: 1px solid #f0ddc0;
+  background: rgba(201, 164, 84, 0.1);
+  border-bottom: 1px solid color-mix(in srgb, var(--ed-accent) 32%, transparent);
+  color: var(--ed-ink);
   font-size: 14px;
 }
 
@@ -626,40 +670,95 @@ button:focus-visible {
 .editor-pane {
   min-width: 0;
   overflow: auto;
-  border-right: none;
+  background: var(--ed-base);
 }
 
 .editor-pane .cm-editor {
   height: 100%;
   font-size: 14px;
 }
-
-.split-handle {
-  width: 6px;
-  cursor: col-resize;
-  background: var(--canvas-parchment);
-  flex-shrink: 0;
+.editor-pane .cm-editor.cm-focused {
+  outline: none;
 }
 
-.split-handle:hover {
-  background: var(--divider-soft);
+/* 창 분할선 — 얇은 선 + 가운데 노드(호버 시 골드). DnX 커넥터풍 */
+.split-handle {
+  width: 11px;
+  flex-shrink: 0;
+  cursor: col-resize;
+  position: relative;
+  background: var(--ed-base);
+}
+.split-handle::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 1px;
+  transform: translateX(-50%);
+  background: var(--ed-line-strong);
+}
+.split-handle::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 7px;
+  height: 7px;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: var(--ed-base);
+  border: 1.5px solid var(--ed-line-strong);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.split-handle:hover::after {
+  border-color: var(--ed-accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ed-accent) 22%, transparent);
 }
 
 .preview-pane {
   min-width: 0;
   overflow: auto;
-  background: var(--canvas);
+  background: var(--ed-base);
+  color: var(--ed-ink);
 }
 
 .md-preview {
   padding: var(--sp-md) var(--sp-lg);
   max-width: 860px;
+  color: var(--ed-ink);
+}
+.md-preview h1,
+.md-preview h2,
+.md-preview h3,
+.md-preview h4 {
+  color: #fdfdfe;
+}
+.md-preview h1,
+.md-preview h2 {
+  border-bottom: 1px solid var(--ed-line);
+  padding-bottom: 0.3em;
+}
+.md-preview a {
+  color: var(--ed-accent);
+}
+.md-preview hr {
+  border: none;
+  border-top: 1px solid var(--ed-line);
+}
+.md-preview blockquote {
+  margin-left: 0;
+  padding-left: var(--sp-md);
+  border-left: 3px solid var(--ed-line-strong);
+  color: var(--ed-muted);
 }
 
 .md-preview pre {
-  background: var(--surface-tile);
-  color: var(--on-dark);
+  background: #0f0f11;
+  color: var(--ed-ink);
   padding: var(--sp-md);
+  border: 1px solid var(--ed-line);
   border-radius: var(--radius-sm);
   overflow-x: auto;
 }
@@ -669,7 +768,8 @@ button:focus-visible {
 }
 
 .md-preview code {
-  background: var(--divider-soft);
+  background: var(--ed-raised);
+  color: #e0c893;
   padding: 1px 5px;
   border-radius: 4px;
   font-size: 0.9em;
@@ -681,8 +781,11 @@ button:focus-visible {
 
 .md-preview th,
 .md-preview td {
-  border: 1px solid var(--hairline);
+  border: 1px solid var(--ed-line);
   padding: 6px 12px;
+}
+.md-preview th {
+  background: var(--ed-surface);
 }
 
 .md-preview img {
@@ -693,6 +796,7 @@ button:focus-visible {
   padding: var(--sp-md) var(--sp-lg);
   font-size: 14px;
   white-space: pre-wrap;
+  color: var(--ed-ink);
 }
 
 .mermaid-block {
@@ -700,8 +804,22 @@ button:focus-visible {
 }
 
 .mermaid-error {
-  color: #d70015;
+  color: var(--ed-accent);
   font-size: 13px;
+}
+
+/* 뷰어(이미지/영상/카드)도 다크 셸에 맞춘다 */
+.editor-shell .image-preview,
+.editor-shell .media-preview.audio {
+  background: var(--ed-base);
+}
+.editor-shell .viewer-card {
+  background: var(--ed-surface);
+  border-color: var(--ed-line);
+  color: var(--ed-ink);
+}
+.editor-shell .viewer-card .muted {
+  color: var(--ed-muted);
 }
 
 /* 다운로드 카드 (미리보기 불가 형식) */
@@ -1046,7 +1164,7 @@ button:focus-visible {
   align-items: center;
   gap: 6px;
   font-size: 13px;
-  color: var(--ink-muted-80);
+  color: var(--ed-muted);
   cursor: pointer;
 }
 
@@ -1055,14 +1173,15 @@ button:focus-visible {
   width: 38px;
   height: 22px;
   border-radius: var(--radius-pill);
-  background: var(--hairline);
+  background: var(--ed-line-strong);
   padding: 0;
+  border: none;
   transition: background 0.15s ease;
   flex-shrink: 0;
 }
 
 .switch.on {
-  background: var(--primary);
+  background: var(--ed-accent);
 }
 
 .switch-knob {
@@ -1072,8 +1191,8 @@ button:focus-visible {
   width: 18px;
   height: 18px;
   border-radius: 50%;
-  background: #fff;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+  background: #f4f2ee;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
   transition: transform 0.15s ease;
 }
 
@@ -1086,19 +1205,18 @@ button:focus-visible {
 }
 
 .switch:focus-visible {
-  outline: 2px solid var(--primary-focus);
+  outline: 2px solid var(--ed-accent);
   outline-offset: 2px;
 }
 
-/* --- 자동저장 ON: 편집기 영역에 은은한 활성 테두리 --- */
+/* --- 자동저장 ON: 편집기 영역에 은은한 골드 활성 테두리 --- */
 .editor-shell.autosave-on {
-  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--primary) 55%, transparent);
-  border-radius: var(--radius-sm);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ed-accent) 45%, transparent);
   transition: box-shadow 0.2s ease;
 }
 
 .editor-shell.autosave-on .editor-toolbar {
-  background: color-mix(in srgb, var(--primary) 7%, var(--surface-pearl));
+  background: color-mix(in srgb, var(--ed-accent) 8%, var(--ed-surface));
 }
 
 /* --- 사이드바 폴더 트리 (dirtree식 연결선 ├── └── │) --- */
