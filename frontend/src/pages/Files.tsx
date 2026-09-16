@@ -153,7 +153,28 @@ export default function Files() {
             setNotice('링크의 항목을 찾을 수 없습니다')
           }
         }
-        setSpaceId((prev) => prev ?? spacesRes[0]?.id ?? null)
+        // nodeId가 없으면(루트/뷰) 저장된 공간·뷰로 복원 — 새로고침해도 위치가 유지된다.
+        let saved: { spaceId?: string; view?: string } = {}
+        try {
+          saved = JSON.parse(localStorage.getItem('fs:view') || '{}')
+        } catch {
+          /* localStorage 불가 — 기본값 사용 */
+        }
+        const savedSpace = spacesRes.find((s) => s.id === saved.spaceId)?.id
+        setSpaceId((prev) => prev ?? savedSpace ?? spacesRes[0]?.id ?? null)
+        if (saved.view === 'recent') {
+          setRecentMode(true)
+          listRecent()
+            .then(setRecentItems)
+            .catch(() => setRecentItems([]))
+        } else if (saved.view === 'fav') {
+          setFavMode(true)
+          listFavorites()
+            .then(setFavItems)
+            .catch(() => setFavItems([]))
+        } else if (saved.view === 'trash') {
+          setTrashMode(true)
+        }
         navSynced.current = true
       } catch (err) {
         if (err instanceof ApiError && err.status === 401) {
@@ -169,6 +190,18 @@ export default function Files() {
     boot()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // 현재 공간·뷰를 기억해 둔다(새로고침 복원용). 루트/뷰(최근·즐겨찾기·휴지통·전체공간)는
+  // URL에 안 담기므로 localStorage에 저장 → 부팅 시 위 boot()가 복원한다.
+  useEffect(() => {
+    if (!navSynced.current || !spaceId) return
+    const view = trashMode ? 'trash' : favMode ? 'fav' : recentMode ? 'recent' : 'normal'
+    try {
+      localStorage.setItem('fs:view', JSON.stringify({ spaceId, view }))
+    } catch {
+      /* localStorage 불가 — 저장 생략 */
+    }
+  }, [spaceId, trashMode, favMode, recentMode])
 
   // 브라우저 뒤로/앞으로: URL(nodeId)이 화면 상태와 어긋나면 URL을 기준으로 복원.
   // 앞으로 이동(폴더 열기 등)은 상태를 먼저 세팅하므로 currentId === nodeId라 건너뛴다.
