@@ -330,8 +330,11 @@ button:focus-visible {
   margin-top: auto;
 }
 
-/* 사이드바 맨 위 즐겨찾기 — 공간 목록과 살짝 구분 */
+/* 사이드바 맨 위 빠른 접근(즐겨찾기·최근) — 공간 목록과 살짝 구분 */
 .sidebar-fav {
+  margin-bottom: 2px;
+}
+.sidebar-recent {
   margin-bottom: 8px;
 }
 

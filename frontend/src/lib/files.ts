@@ -52,6 +52,12 @@ export const addFavorite = (id: string) =>
 export const removeFavorite = (id: string) =>
   api<{ favorited: boolean }>(`/api/nodes/${id}/favorite`, { method: 'DELETE' })
 
+/** 항목 열람 기록('최근 열어본 항목'용). 파일을 열 때 호출. */
+export const recordView = (id: string) =>
+  api<{ ok: boolean }>(`/api/nodes/${id}/view`, { method: 'POST' })
+/** 내가 최근 열어본 항목(경로 포함, 최근 열람순). */
+export const listRecent = () => api<NodeInfo[]>('/api/recent')
+
 export const getNodePath = (nodeId: string) => api<NodePath>(`/api/nodes/${nodeId}/path`)
 
 export const createFolder = (spaceId: string, parentId: string | null, name: string) =>
