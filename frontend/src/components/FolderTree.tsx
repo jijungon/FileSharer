@@ -39,6 +39,7 @@ export default function FolderTree({
 }: Props) {
   const [rows, setRows] = useState<FolderRow[]>([])
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
+  const [dragOverId, setDragOverId] = useState<string | null>(null) // 드래그가 올라온 폴더(드롭 대상 강조)
 
   useEffect(() => {
     let alive = true
@@ -89,9 +90,14 @@ export default function FolderTree({
     if (!onDropToFolder) return {}
     return {
       onDragOver: (e: React.DragEvent) => {
-        if (e.dataTransfer.types.includes('application/x-node-id')) e.preventDefault()
+        if (e.dataTransfer.types.includes('application/x-node-id')) {
+          e.preventDefault()
+          setDragOverId(targetId)
+        }
       },
+      onDragLeave: () => setDragOverId((cur) => (cur === targetId ? null : cur)),
       onDrop: (e: React.DragEvent) => {
+        setDragOverId(null)
         const id = e.dataTransfer.getData('application/x-node-id')
         if (id) {
           e.preventDefault()
@@ -107,7 +113,9 @@ export default function FolderTree({
     return (
       <li key={node.id} className="tree-li">
         <div
-          className={`tree-row${node.id === currentFolderId ? ' active' : ''}`}
+          className={`tree-row${node.id === currentFolderId ? ' active' : ''}${
+            dragOverId === node.id ? ' drag-over' : ''
+          }`}
           {...dropHandlers(node.id)}
         >
           <button
