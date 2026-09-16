@@ -121,6 +121,18 @@ class Favorite(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 
+class NodeView(Base):
+    """사용자별 '최근 열어본 항목'. (user_id, node_id) 유일, 열 때마다 viewed_at 갱신."""
+
+    __tablename__ = "node_views"
+    __table_args__ = (UniqueConstraint("user_id", "node_id", name="uq_nodeview_user_node"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    node_id: Mapped[str] = mapped_column(ForeignKey("nodes.id"), index=True)
+    viewed_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)
+
+
 class AuditLog(Base):
     __tablename__ = "audit_log"
 

@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from ..config import get_settings
 from ..deps import current_user, get_db
-from ..models import Favorite, Node, Space, User, utcnow
+from ..models import Favorite, Node, NodeView, Space, User, utcnow
 from ..services import audit
 from ..services.office import OfficeConvertError, convert_to_pdf, is_office
 from ..services.permissions import (
@@ -292,6 +292,77 @@ def remove_favorite(
         db.delete(fav)
         db.commit()
     return {"favorited": False}
+
+
+@router.post("/nodes/{node_id}/view")
+def record_view(
+    node_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)
+) -> dict:
+    """항목 열람을 기록('최근 열어본 항목'용). 있으면 viewed_at 갱신, 없으면 추가."""
+    node = get_node_checked(db, user, node_id)  # 존재 + 접근 권한 검사
+    row = db.scalar(
+        select(NodeView).where(NodeView.user_id == user.id, NodeView.node_id == node.id)
+    )
+    if row:
+        row.viewed_at = utcnow()
+    else:
+        db.add(NodeView(user_id=user.id, node_id=node.id))
+    db.commit()
+    return {"ok": True}
+
+
+@router.get("/recent")
+def list_recent(
+    user: User = Depends(current_user), db: Session = Depends(get_db)
+) -> list[dict]:
+    """내가 최근 열어본 항목 — 접근 가능하고 휴지통이 아닌 것만, 최근 열람순(최대 40). 경로 포함."""
+    views = db.scalars(
+        select(NodeView)
+        .where(NodeView.user_id == user.id)
+        .order_by(NodeView.viewed_at.desc())
+        .limit(120)
+    ).all()
+    if not views:
+        return []
+    order = {v.node_id: idx for idx, v in enumerate(views)}  # 최근 열람 우선
+    nodes = db.scalars(
+        select(Node).where(Node.id.in_(order.keys()), Node.deleted_at.is_(None))
+    ).all()
+    ok_space: dict[str, bool] = {}
+
+    def accessible(space_id: str) -> bool:
+        if space_id not in ok_space:
+            sp = db.get(Space, space_id)
+            ok_space[space_id] = sp is not None and can_access_space(db, user, sp)
+        return ok_space[space_id]
+
+    nodes = [n for n in nodes if accessible(n.space_id)]
+    space_ids = {n.space_id for n in nodes}
+    fmap: dict[str, Node] = {}
+    if space_ids:
+        folders = db.scalars(
+            select(Node).where(
+                Node.space_id.in_(space_ids),
+                Node.type == "folder",
+                Node.deleted_at.is_(None),
+            )
+        ).all()
+        fmap = {f.id: f for f in folders}
+
+    def path_of(node: Node) -> str:
+        parts: list[str] = []
+        pid = node.parent_id
+        while pid and pid in fmap:
+            parts.append(fmap[pid].name)
+            pid = fmap[pid].parent_id
+        return "/".join(reversed(parts))
+
+    out: list[dict] = []
+    for n in sorted(nodes, key=lambda n: order.get(n.id, 0))[:40]:
+        d = node_out(n)
+        d["path"] = path_of(n)
+        out.append(d)
+    return out
 
 
 @router.get("/nodes/{node_id}/children")

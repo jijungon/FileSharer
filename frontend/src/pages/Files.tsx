@@ -27,12 +27,14 @@ import {
   listFavoriteIds,
   listFavorites,
   listNodeChildren,
+  listRecent,
   listSpaceChildren,
   listTrash,
   copyNode,
   moveNode,
   NodeInfo,
   purgeNode,
+  recordView,
   removeFavorite,
   renameNode,
   restoreNode,
@@ -76,6 +78,8 @@ export default function Files() {
   const [favIds, setFavIds] = useState<Set<string>>(new Set()) // 내 즐겨찾기 노드 id
   const [favMode, setFavMode] = useState(false) // 즐겨찾기 뷰
   const [favItems, setFavItems] = useState<NodeInfo[]>([])
+  const [recentMode, setRecentMode] = useState(false) // 최근 열어본 항목 뷰
+  const [recentItems, setRecentItems] = useState<NodeInfo[]>([])
   const [dropActive, setDropActive] = useState(false)
   const [fullscreen, setFullscreen] = useState(false)
   const [bootError, setBootError] = useState('')
@@ -218,6 +222,14 @@ export default function Files() {
     setSearchQ('')
   }, [spaceId, currentFolder?.id, trashMode])
 
+  // 파일을 열면(뷰어에 뜨면) '최근 열어본 항목'에 기록. id/type만 의존(같은 파일 재렌더엔 중복 기록 안 함)
+  useEffect(() => {
+    if (selected && selected.type === 'file') {
+      recordView(selected.id).catch(() => {})
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected?.id, selected?.type])
+
   // 검색어 디바운스 → 현재 공간에서 이름 검색. 빈 문자열이면 검색 모드 해제.
   useEffect(() => {
     if (!spaceId) return
@@ -250,6 +262,7 @@ export default function Files() {
     setFullscreen(false)
     setTrashMode(false)
     setFavMode(false)
+    setRecentMode(false)
     navigate('/files')
   }
 
@@ -257,6 +270,7 @@ export default function Files() {
     setPath((p) => [...p, folder])
     setSelected(null)
     setFavMode(false)
+    setRecentMode(false)
     navigate(`/files/${folder.id}`)
   }
 
@@ -269,6 +283,7 @@ export default function Files() {
     setSelected(null)
     setFullscreen(false)
     setFavMode(false)
+    setRecentMode(false)
     if (index === null) {
       setPath([])
       navigate('/files')
@@ -302,6 +317,7 @@ export default function Files() {
       setFullscreen(false)
       setTrashMode(false)
       setFavMode(false)
+      setRecentMode(false)
       setPath(found.node.type === 'folder' ? [...found.ancestors, found.node] : found.ancestors)
       navigate(`/files/${id}`)
     } catch {
@@ -309,12 +325,25 @@ export default function Files() {
     }
   }
 
-  // 검색/즐겨찾기 결과 클릭: 폴더면 그 폴더로, 파일이면 경로 복원 후 뷰어로 연다.
-  function openLocated(node: NodeInfo) {
+  // 검색/즐겨찾기/최근 결과 클릭: 폴더면 그 폴더로, 파일이면 경로 복원 후 뷰어로 연다.
+  async function openLocated(node: NodeInfo) {
     setSearchQ('') // 검색 모드 종료
     setFavMode(false) // 즐겨찾기 뷰 종료
-    if (node.type === 'folder') openFolderById(node.id)
-    else navigate(`/files/${node.id}`) // nav 이펙트가 경로 복원 + 뷰어 오픈
+    setRecentMode(false) // 최근 뷰 종료
+    if (node.type === 'folder') {
+      openFolderById(node.id)
+      return
+    }
+    // 파일: 경로/선택을 직접 세팅해 뷰어를 연다(URL이 이미 같아도 확실히 열리게).
+    try {
+      const found = await getNodePath(node.id)
+      setSpaceId(found.space_id)
+      setPath(found.ancestors)
+      setSelected(found.node)
+      navigate(`/files/${node.id}`)
+    } catch {
+      flash('항목을 열 수 없습니다')
+    }
   }
 
   // 즐겨찾기 뷰 열기/토글
@@ -324,6 +353,7 @@ export default function Files() {
       return
     }
     setTrashMode(false)
+    setRecentMode(false)
     setSelected(null)
     setSearchQ('')
     setFavMode(true)
@@ -331,6 +361,24 @@ export default function Files() {
       setFavItems(await listFavorites())
     } catch {
       setFavItems([])
+    }
+  }
+
+  // 최근 열어본 항목 뷰 열기/토글
+  async function toggleRecentView() {
+    if (recentMode) {
+      setRecentMode(false)
+      return
+    }
+    setTrashMode(false)
+    setFavMode(false)
+    setSelected(null)
+    setSearchQ('')
+    setRecentMode(true)
+    try {
+      setRecentItems(await listRecent())
+    } catch {
+      setRecentItems([])
     }
   }
 
@@ -693,13 +741,19 @@ export default function Files() {
           >
             ★ 즐겨찾기
           </button>
+          <button
+            className={`space-item sidebar-recent${recentMode ? ' active' : ''}`}
+            onClick={toggleRecentView}
+          >
+            🕘 최근
+          </button>
           {spaces.map((s) => (
             <div key={s.id}>
               <button
                 className={
-                  // 휴지통·즐겨찾기 뷰일 땐 공간을 활성 표시하지 않는다(하이라이트 중복 방지)
+                  // 휴지통·즐겨찾기·최근 뷰일 땐 공간을 활성 표시하지 않는다(하이라이트 중복 방지)
                   `space-item space-root${
-                    s.id === spaceId && !trashMode && !favMode ? ' active' : ''
+                    s.id === spaceId && !trashMode && !favMode && !recentMode ? ' active' : ''
                   }` + (dragOverSpace === s.id ? ' drag-over' : '')
                 }
                 onClick={() => switchSpace(s.id)}
@@ -747,6 +801,7 @@ export default function Files() {
               onClick={() => {
                 setTrashMode((t) => !t)
                 setFavMode(false)
+                setRecentMode(false)
                 setSelected(null)
               }}
             >
@@ -783,7 +838,7 @@ export default function Files() {
           }}
         >
           <div className="toolbar">
-            {!trashMode && !favMode && (
+            {!trashMode && !favMode && !recentMode && (
               <>
                 <button className="btn-utility" onClick={onNewFolder}>
                   ＋ 새 폴더
@@ -828,6 +883,7 @@ export default function Files() {
             )}
             {trashMode && <span className="muted">휴지통 — 복원하면 원래 위치로 돌아갑니다</span>}
             {favMode && <span className="muted">즐겨찾기 — ★ 를 눌러 해제, 항목을 눌러 이동</span>}
+            {recentMode && <span className="muted">최근 열어본 항목 — 항목을 눌러 다시 열기</span>}
             {uploads.length > 0 && (
               <span className="upload-count muted">
                 업로드 {uploadStats.done}/{uploadStats.total}
@@ -835,7 +891,7 @@ export default function Files() {
               </span>
             )}
             <span className="toolbar-notice">{notice}</span>
-            {!trashMode && !favMode && (
+            {!trashMode && !favMode && !recentMode && (
               <div className="toolbar-search">
                 <input
                   type="search"
@@ -877,6 +933,25 @@ export default function Files() {
                     >
                       ★
                     </button>
+                    <span className="node-icon">{node.type === 'folder' ? '📁' : '📄'}</span>
+                    <span className="search-result-name">{node.name}</span>
+                    <span className="search-result-path muted">
+                      {node.path ? node.path : '(루트)'}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : recentMode ? (
+            <div className="search-results">
+              <div className="search-results-head muted">
+                {recentItems.length > 0
+                  ? `최근 열어본 항목 ${recentItems.length}개`
+                  : '최근 열어본 항목이 없습니다 — 파일을 열면 여기 쌓입니다'}
+              </div>
+              <ul className="search-results-list">
+                {recentItems.map((node) => (
+                  <li key={node.id} className="search-result" onClick={() => openLocated(node)}>
                     <span className="node-icon">{node.type === 'folder' ? '📁' : '📄'}</span>
                     <span className="search-result-name">{node.name}</span>
                     <span className="search-result-path muted">
@@ -959,6 +1034,7 @@ export default function Files() {
             <tbody>
               {!trashMode &&
                 !favMode &&
+                !recentMode &&
                 uploads
                   // 완료된 업로드가 실제 목록에 이미 나타났으면 진행 행을 숨긴다
                   // (실제 행과 진행 행이 한순간 겹쳐 같은 이름이 두 번 보이던 문제 방지)
@@ -1183,7 +1259,12 @@ export default function Files() {
         </main>
       </div>
 
-      {selected && selected.type === 'file' && !trashMode && !favMode && checked.size === 0 && (
+      {selected &&
+        selected.type === 'file' &&
+        !trashMode &&
+        !favMode &&
+        !recentMode &&
+        checked.size === 0 && (
         <>
           {!fullscreen && <div className="vsplit-handle" onPointerDown={viewerDrag} />}
           <div
