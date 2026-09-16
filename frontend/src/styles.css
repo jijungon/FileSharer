@@ -1,27 +1,39 @@
 /* ==========================================================
-   FileSharer 디자인 토큰 — 설계/DESIGN-apple.md 기반
-   단일 액센트(Action Blue), hairline 구분, 그림자 없는 크롬
+   FileSharer 디자인 토큰 — DnX(x.rgrg.im) 프리미엄 다크
+   Steel(골드) 액센트, 층상 서피스, 샤프 코너, 기술 라벨은 모노
    ========================================================== */
 :root {
-  --primary: #0066cc;
-  --primary-focus: #0071e3;
-  --primary-on-dark: #2997ff;
-  --ink: #1d1d1f;
-  --ink-muted-80: #333333;
-  --ink-muted-48: #7a7a7a;
-  --divider-soft: #f0f0f0;
-  --hairline: #e0e0e0;
-  --canvas: #ffffff;
-  --canvas-parchment: #f5f5f7;
-  --surface-pearl: #fafafc;
-  --surface-tile: #272729;
-  --on-primary: #ffffff;
-  --on-dark: #ffffff;
+  --primary: #cba85a; /* 골드 액센트(DnX Steel) */
+  --primary-focus: #d9b978;
+  --primary-on-dark: #e6c98d;
+  --ink: #f0eff2; /* 본문 — 오프화이트 */
+  --ink-muted-80: #b0aeb7;
+  --ink-muted-48: #9e9ca5;
+  --divider-soft: #232327; /* 옅은 구분선 */
+  --hairline: #34333b; /* 경계선 */
+  --hairline-strong: #4b4951;
+  --canvas: #1d1d20; /* 카드·표면 */
+  --canvas-parchment: #161719; /* 앱 바탕 — 가장 깊은 톤 */
+  --surface-pearl: #242428; /* 입력·살짝 들린 표면 */
+  --surface-tile: #2d2d32;
+  --surface-raised: #34333b;
+  --on-primary: #18181a; /* 골드 버튼 위 텍스트(어둡게) */
+  --on-dark: #f0eff2;
 
-  --radius-sm: 8px;
-  --radius-md: 11px;
-  --radius-lg: 18px;
-  --radius-pill: 9999px;
+  /* 상태색(다크 대응) */
+  --danger: #ff8f86;
+  --danger-soft: #3a2422;
+  --healthy: #79a47e;
+  --pending: #c9a454;
+
+  /* 기술 라벨용 모노 — DnX가 크기·날짜·코드에 쓰는 그 톤 */
+  --mono:
+    'SFMono-Regular', 'JetBrains Mono', 'DejaVu Sans Mono', ui-monospace, Menlo, Consolas, monospace;
+
+  --radius-sm: 2px; /* DnX 샤프 코너 */
+  --radius-md: 3px;
+  --radius-lg: 6px;
+  --radius-pill: 9999px; /* 진짜 둥근 것(점·아바타)만 */
 
   --sp-xxs: 4px;
   --sp-xs: 8px;
@@ -35,6 +47,7 @@
     sans-serif;
   color: var(--ink);
   background: var(--canvas-parchment);
+  color-scheme: dark; /* 네이티브 폼·스크롤바 다크 */
   font-size: 17px;
   line-height: 1.47;
   letter-spacing: -0.374px;
@@ -82,27 +95,38 @@ button:focus-visible {
 .btn-primary {
   background: var(--primary);
   color: var(--on-primary);
-  border-radius: var(--radius-pill);
-  padding: 11px 22px;
-  font-size: 17px;
+  border-radius: var(--radius-sm);
+  padding: 10px 20px;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.btn-primary:hover {
+  background: var(--primary-focus);
 }
 
 .btn-utility {
-  background: var(--ink);
-  color: var(--on-dark);
+  background: var(--surface-tile);
+  color: var(--ink);
+  border: 1px solid var(--hairline);
   border-radius: var(--radius-sm);
-  padding: 8px 15px;
+  padding: 7px 14px;
   font-size: 14px;
   letter-spacing: -0.224px;
+}
+
+.btn-utility:hover {
+  background: var(--surface-raised);
+  border-color: var(--hairline-strong);
 }
 
 .btn-ghost {
   background: transparent;
   color: var(--primary);
   border: 1px solid var(--primary);
-  border-radius: var(--radius-pill);
-  padding: 11px 22px;
-  font-size: 17px;
+  border-radius: var(--radius-sm);
+  padding: 10px 20px;
+  font-size: 16px;
 }
 
 /* --- 로그인 화면 --- */
@@ -214,6 +238,22 @@ button:focus-visible {
 .logo {
   font-size: 21px;
   letter-spacing: -0.374px;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+/* 배포 버전 라벨 — 빌드 시 git 태그/SHA 주입(모노, DnX 톤) */
+.app-version {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0;
+  color: var(--ink-muted-48);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-sm);
+  padding: 1px 6px;
+  transform: translateY(-1px);
 }
 
 .topbar-right {
@@ -427,10 +467,13 @@ button:focus-visible {
 
 .file-table th {
   text-align: left;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
+  font-family: var(--mono);
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
   color: var(--ink-muted-48);
-  padding: 6px 8px;
+  padding: 8px 8px;
   border-bottom: 1px solid var(--hairline);
 }
 
@@ -455,6 +498,15 @@ button:focus-visible {
 .col-size {
   width: 90px;
   white-space: nowrap;
+  font-family: var(--mono);
+  font-size: 13px;
+  color: var(--ink-muted-80);
+}
+
+.col-date {
+  font-family: var(--mono);
+  font-size: 12.5px;
+  letter-spacing: -0.01em;
 }
 
 .col-actions {
@@ -489,6 +541,159 @@ button:focus-visible {
 }
 .row-checked {
   background: color-mix(in srgb, var(--primary) 12%, var(--canvas)) !important;
+}
+
+/* ── 삭제 모션 ──────────────────────────────────────────────
+   삭제 버튼 = 자연 불꽃색으로 태워 재로 사라짐 / 드래그 = 휴지통으로 빨려 들어감 */
+/* 행 자체는 불꽃 아래에서 '그을려 재가 되어' 어두워지며 사라진다(실제 불은 오버레이가 그림). */
+@keyframes row-burn {
+  0% {
+    opacity: 1;
+    filter: none;
+  }
+  28% {
+    filter: brightness(0.8) contrast(1.08);
+  }
+  62% {
+    opacity: 0.5;
+    filter: grayscale(1) brightness(0.38);
+  }
+  100% {
+    opacity: 0;
+    filter: grayscale(1) brightness(0.2);
+  }
+}
+
+tr.row-burning {
+  animation: row-burn 0.78s ease-in forwards;
+  pointer-events: none;
+}
+
+/* ── 실제로 움직이는 불꽃 오버레이 ─────────────────────────────
+   삭제되는 행 위에 fixed로 얹어 일렁이는 불길 + 튀어오르는 불티를 그린다. */
+.burn-flames {
+  position: fixed;
+  z-index: 60;
+  pointer-events: none;
+  overflow: visible;
+  /* 가운데(아래)에서 작게 시작해 바깥·위로 커지며 번지는 불길 → 사그라듦 */
+  transform-origin: center bottom;
+  animation: burn-grow 0.82s ease-in forwards;
+}
+
+@keyframes burn-grow {
+  0% {
+    transform: scaleX(0.16) scaleY(0.4);
+    opacity: 0;
+  }
+  20% {
+    opacity: 1;
+  }
+  55% {
+    transform: scaleX(1.06) scaleY(1.08);
+    opacity: 1;
+  }
+  100% {
+    transform: scaleX(1.12) scaleY(1.18);
+    opacity: 0;
+  }
+}
+
+.burn-flames .flame {
+  position: absolute;
+  bottom: -34%;
+  width: 12%;
+  height: 210%; /* 행보다 훌쩍 높이 솟는 불길(개별 height는 컴포넌트에서 변주) */
+  background: radial-gradient(
+    closest-side at 50% 82%,
+    rgba(255, 251, 224, 0.97),
+    rgba(255, 210, 70, 0.94) 26%,
+    rgba(255, 120, 24, 0.9) 50%,
+    rgba(230, 46, 14, 0.78) 72%,
+    rgba(190, 30, 10, 0) 84%
+  );
+  border-radius: 46% 46% 44% 44% / 78% 78% 36% 36%;
+  filter: blur(3.5px);
+  mix-blend-mode: screen;
+  transform-origin: 50% 100%;
+  animation: flame-flicker 0.4s ease-in-out infinite alternate;
+}
+
+@keyframes flame-flicker {
+  0% {
+    transform: translateY(9%) scaleY(0.8) scaleX(1.02) skewX(-6deg);
+    opacity: 0.76;
+  }
+  50% {
+    transform: translateY(-6%) scaleY(1.2) scaleX(0.9) skewX(5deg);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(-15%) scaleY(1.34) scaleX(0.97) skewX(-2deg);
+    opacity: 0.9;
+  }
+}
+
+.burn-flames .ember {
+  position: absolute;
+  bottom: 18%;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: #ffcf5a;
+  box-shadow: 0 0 6px 1px rgba(255, 150, 40, 0.85);
+  animation: ember-rise 0.82s ease-out forwards;
+}
+
+@keyframes ember-rise {
+  0% {
+    transform: translateY(0) translateX(0) scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(-48px) translateX(var(--ex, 6px)) scale(0.3);
+    opacity: 0;
+  }
+}
+
+/* transform은 <tr>에 잘 안 먹어서, clip-path로 좌하단(휴지통 방향)으로 빨려드는 느낌을 낸다. */
+@keyframes row-vacuum {
+  0% {
+    opacity: 1;
+    clip-path: inset(0 0 0 0);
+    filter: none;
+  }
+  22% {
+    opacity: 1;
+    clip-path: inset(0 0 0 0);
+    filter: brightness(0.9) saturate(0.85);
+  }
+  100% {
+    opacity: 0;
+    clip-path: inset(58% 66% 4% 0);
+    filter: blur(2.5px) brightness(0.45) saturate(0.6);
+  }
+}
+
+tr.row-vacuum {
+  animation: row-vacuum 0.5s cubic-bezier(0.5, 0, 0.85, 0.4) forwards;
+  pointer-events: none;
+}
+
+/* 휴지통 버튼: 항목을 끌어다 올리면 강조(빨간 계열) */
+.sidebar-trash.drag-over {
+  background: color-mix(in srgb, var(--danger) 22%, var(--canvas)) !important;
+  box-shadow: inset 0 0 0 1px var(--danger);
+  color: var(--ink);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  tr.row-burning,
+  tr.row-vacuum {
+    animation-duration: 0.12s;
+    background-image: none;
+    transform: none;
+  }
 }
 
 /* 휴지통: '삭제 예정' 열 + 남은 시간 칩 */
