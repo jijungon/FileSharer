@@ -18,10 +18,13 @@ import {
   UploadItem,
 } from '../lib/upload'
 import {
+  addFavorite,
   createFolder,
   deleteNode,
   downloadUrl,
   getNodePath,
+  listFavoriteIds,
+  listFavorites,
   listNodeChildren,
   listSpaceChildren,
   listTrash,
@@ -29,6 +32,7 @@ import {
   moveNode,
   NodeInfo,
   purgeNode,
+  removeFavorite,
   renameNode,
   restoreNode,
   searchNodes,
@@ -68,6 +72,9 @@ export default function Files() {
   const [newMdName, setNewMdName] = useState<string | null>(null)
   const [searchQ, setSearchQ] = useState('')
   const [searchResults, setSearchResults] = useState<NodeInfo[] | null>(null) // null=검색 안 함
+  const [favIds, setFavIds] = useState<Set<string>>(new Set()) // 내 즐겨찾기 노드 id
+  const [favMode, setFavMode] = useState(false) // 즐겨찾기 뷰
+  const [favItems, setFavItems] = useState<NodeInfo[]>([])
   const [dropActive, setDropActive] = useState(false)
   const [fullscreen, setFullscreen] = useState(false)
   const [bootError, setBootError] = useState('')
@@ -107,14 +114,16 @@ export default function Files() {
   useEffect(() => {
     async function boot() {
       try {
-        const [meRes, spacesRes, cfg] = await Promise.all([
+        const [meRes, spacesRes, cfg, favs] = await Promise.all([
           api<Me>('/api/me'),
           api<SpaceInfo[]>('/api/spaces'),
           api<{ max_upload_mb: number }>('/api/auth/config'),
+          listFavoriteIds().catch(() => [] as string[]),
         ])
         setMe(meRes)
         setSpaces(spacesRes)
         setMaxUploadMb(cfg.max_upload_mb)
+        setFavIds(new Set(favs))
         if (nodeId && !restoredFromUrl.current) {
           restoredFromUrl.current = true
           try {
@@ -239,12 +248,14 @@ export default function Files() {
     setSelected(null)
     setFullscreen(false)
     setTrashMode(false)
+    setFavMode(false)
     navigate('/files')
   }
 
   function openFolder(folder: NodeInfo) {
     setPath((p) => [...p, folder])
     setSelected(null)
+    setFavMode(false)
     navigate(`/files/${folder.id}`)
   }
 
@@ -256,6 +267,7 @@ export default function Files() {
   function crumbNavigate(index: number | null) {
     setSelected(null)
     setFullscreen(false)
+    setFavMode(false)
     if (index === null) {
       setPath([])
       navigate('/files')
@@ -288,6 +300,7 @@ export default function Files() {
       setSelected(null)
       setFullscreen(false)
       setTrashMode(false)
+      setFavMode(false)
       setPath(found.node.type === 'folder' ? [...found.ancestors, found.node] : found.ancestors)
       navigate(`/files/${id}`)
     } catch {
@@ -295,11 +308,53 @@ export default function Files() {
     }
   }
 
-  // 검색 결과 클릭: 폴더면 그 폴더로, 파일이면 경로 복원 후 뷰어로 연다.
-  function openSearchResult(node: NodeInfo) {
+  // 검색/즐겨찾기 결과 클릭: 폴더면 그 폴더로, 파일이면 경로 복원 후 뷰어로 연다.
+  function openLocated(node: NodeInfo) {
     setSearchQ('') // 검색 모드 종료
+    setFavMode(false) // 즐겨찾기 뷰 종료
     if (node.type === 'folder') openFolderById(node.id)
     else navigate(`/files/${node.id}`) // nav 이펙트가 경로 복원 + 뷰어 오픈
+  }
+
+  // 즐겨찾기 뷰 열기/토글
+  async function toggleFavView() {
+    if (favMode) {
+      setFavMode(false)
+      return
+    }
+    setTrashMode(false)
+    setSelected(null)
+    setSearchQ('')
+    setFavMode(true)
+    try {
+      setFavItems(await listFavorites())
+    } catch {
+      setFavItems([])
+    }
+  }
+
+  // 별표 토글(낙관적 업데이트 + 실패 시 롤백)
+  async function toggleFav(node: NodeInfo) {
+    const on = favIds.has(node.id)
+    setFavIds((prev) => {
+      const next = new Set(prev)
+      if (on) next.delete(node.id)
+      else next.add(node.id)
+      return next
+    })
+    try {
+      if (on) await removeFavorite(node.id)
+      else await addFavorite(node.id)
+      if (favMode && on) setFavItems((items) => items.filter((n) => n.id !== node.id))
+    } catch (err) {
+      setFavIds((prev) => {
+        const next = new Set(prev)
+        if (on) next.add(node.id)
+        else next.delete(node.id)
+        return next
+      })
+      flash(err instanceof Error ? err.message : '즐겨찾기 변경에 실패했습니다')
+    }
   }
 
   async function onNewFolder() {
@@ -668,9 +723,16 @@ export default function Files() {
           ))}
           <div className="sidebar-foot">
             <button
+              className={`space-item${favMode ? ' active' : ''}`}
+              onClick={toggleFavView}
+            >
+              ★ 즐겨찾기
+            </button>
+            <button
               className={`space-item${trashMode ? ' active' : ''}`}
               onClick={() => {
                 setTrashMode((t) => !t)
+                setFavMode(false)
                 setSelected(null)
               }}
             >
@@ -707,7 +769,7 @@ export default function Files() {
           }}
         >
           <div className="toolbar">
-            {!trashMode && (
+            {!trashMode && !favMode && (
               <>
                 <button className="btn-utility" onClick={onNewFolder}>
                   ＋ 새 폴더
@@ -751,8 +813,9 @@ export default function Files() {
               </>
             )}
             {trashMode && <span className="muted">휴지통 — 복원하면 원래 위치로 돌아갑니다</span>}
+            {favMode && <span className="muted">즐겨찾기 — ★ 를 눌러 해제, 항목을 눌러 이동</span>}
             <span className="toolbar-notice">{notice}</span>
-            {!trashMode && (
+            {!trashMode && !favMode && (
               <div className="toolbar-search">
                 <input
                   type="search"
@@ -769,7 +832,41 @@ export default function Files() {
             )}
           </div>
 
-          {searchResults !== null ? (
+          {favMode ? (
+            <div className="search-results">
+              <div className="search-results-head muted">
+                {favItems.length > 0
+                  ? `즐겨찾기 ${favItems.length}개`
+                  : '즐겨찾기한 항목이 없습니다 — 목록에서 ☆ 를 눌러 추가하세요'}
+              </div>
+              <ul className="search-results-list">
+                {favItems.map((node) => (
+                  <li
+                    key={node.id}
+                    className="search-result"
+                    onClick={() => openLocated(node)}
+                  >
+                    <button
+                      className="fav-star on"
+                      title="즐겨찾기 해제"
+                      aria-label="즐겨찾기 해제"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        toggleFav(node)
+                      }}
+                    >
+                      ★
+                    </button>
+                    <span className="node-icon">{node.type === 'folder' ? '📁' : '📄'}</span>
+                    <span className="search-result-name">{node.name}</span>
+                    <span className="search-result-path muted">
+                      {node.path ? node.path : '(루트)'}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : searchResults !== null ? (
             <div className="search-results">
               <div className="search-results-head muted">
                 {searchResults.length > 0
@@ -781,7 +878,7 @@ export default function Files() {
                   <li
                     key={node.id}
                     className="search-result"
-                    onClick={() => openSearchResult(node)}
+                    onClick={() => openLocated(node)}
                   >
                     <span className="node-icon">{node.type === 'folder' ? '📁' : '📄'}</span>
                     <span className="search-result-name">{node.name}</span>
@@ -914,6 +1011,19 @@ export default function Files() {
                     )}
                   </td>
                   <td>
+                    {!trashMode && (
+                      <button
+                        className={`fav-star${favIds.has(node.id) ? ' on' : ''}`}
+                        title={favIds.has(node.id) ? '즐겨찾기 해제' : '즐겨찾기'}
+                        aria-label={favIds.has(node.id) ? '즐겨찾기 해제' : '즐겨찾기'}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          toggleFav(node)
+                        }}
+                      >
+                        {favIds.has(node.id) ? '★' : '☆'}
+                      </button>
+                    )}
                     <span className="node-icon">{node.type === 'folder' ? '📁' : '📄'}</span>{' '}
                     {editingId === node.id ? (
                       <input
@@ -1025,7 +1135,7 @@ export default function Files() {
         </main>
       </div>
 
-      {selected && selected.type === 'file' && !trashMode && checked.size === 0 && (
+      {selected && selected.type === 'file' && !trashMode && !favMode && checked.size === 0 && (
         <>
           {!fullscreen && <div className="vsplit-handle" onPointerDown={viewerDrag} />}
           <div

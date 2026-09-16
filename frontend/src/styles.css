@@ -513,6 +513,29 @@ button:focus-visible {
   margin-right: 4px;
 }
 
+/* 즐겨찾기 별표 — 즐겨찾기된 것은 항상 보이고, 아닌 것은 행 hover 때만 */
+.fav-star {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 15px;
+  line-height: 1;
+  padding: 0 4px 0 0;
+  color: var(--ink-muted-48, #9a9a9a);
+  visibility: hidden;
+}
+.file-table tbody tr:hover .fav-star,
+.row-selected .fav-star {
+  visibility: visible;
+}
+.fav-star.on {
+  visibility: visible;
+  color: #e8a33d;
+}
+.search-result .fav-star {
+  visibility: visible;
+}
+
 .empty {
   text-align: center;
   color: var(--ink-muted-48);

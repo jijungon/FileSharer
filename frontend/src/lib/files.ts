@@ -43,6 +43,15 @@ export const listTrash = (spaceId: string) => api<NodeInfo[]>(`/api/spaces/${spa
 export const searchNodes = (spaceId: string, q: string) =>
   api<NodeInfo[]>(`/api/spaces/${spaceId}/search?q=${encodeURIComponent(q)}`)
 
+/** 내 즐겨찾기 항목(경로 포함, 최근 추가순). */
+export const listFavorites = () => api<NodeInfo[]>('/api/favorites')
+/** 내가 즐겨찾기한 노드 id들(별표 상태 표시용). */
+export const listFavoriteIds = () => api<string[]>('/api/favorites/ids')
+export const addFavorite = (id: string) =>
+  api<{ favorited: boolean }>(`/api/nodes/${id}/favorite`, { method: 'POST' })
+export const removeFavorite = (id: string) =>
+  api<{ favorited: boolean }>(`/api/nodes/${id}/favorite`, { method: 'DELETE' })
+
 export const getNodePath = (nodeId: string) => api<NodePath>(`/api/nodes/${nodeId}/path`)
 
 export const createFolder = (spaceId: string, parentId: string | null, name: string) =>
