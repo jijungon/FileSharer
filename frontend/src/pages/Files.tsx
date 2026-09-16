@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { flushSync } from 'react-dom'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import FolderTree from '../components/FolderTree'
 import LinkBar from '../components/LinkBar'
@@ -411,17 +412,21 @@ export default function Files() {
     })
     setTreeVersion((v) => v + 1) // 폴더가 새로 생겼을 수 있음(폴더 업로드)
     if (failed === 0) flash(`업로드 완료 (${items.length}개)`)
-    // 실제 목록을 받아오며 업로드 행을 같은 렌더에서 교체(중복 깜빡임 방지)
+    // 실제 목록을 받아오며 업로드 행을 같은 렌더에서 교체(중간 상태로 같은
+    // 파일이 두 번 보이지 않게). flushSync로 setItems+제거를 한 커밋에 묶는다.
     const ids = new Set(items.map((it) => it.id))
+    let fresh: NodeInfo[] | null = null
     try {
-      const fresh = currentFolder
+      fresh = currentFolder
         ? await listNodeChildren(currentFolder.id)
         : await listSpaceChildren(spaceId)
-      setItems(fresh)
     } catch {
       /* 목록 새로고침 실패는 무시 — 다음 네비게이션에서 갱신됨 */
     }
-    setUploads((u) => dropUploads(u, ids))
+    flushSync(() => {
+      if (fresh) setItems(fresh)
+      setUploads((u) => dropUploads(u, ids))
+    })
   }
 
   async function uploadAll(files: FileList | File[]) {
@@ -682,6 +687,12 @@ export default function Files() {
 
       <div className="workspace" style={{ display: fullscreen && selected ? 'none' : undefined }}>
         <aside className="sidebar">
+          <button
+            className={`space-item sidebar-fav${favMode ? ' active' : ''}`}
+            onClick={toggleFavView}
+          >
+            ★ 즐겨찾기
+          </button>
           {spaces.map((s) => (
             <div key={s.id}>
               <button
@@ -731,12 +742,6 @@ export default function Files() {
             </div>
           ))}
           <div className="sidebar-foot">
-            <button
-              className={`space-item${favMode ? ' active' : ''}`}
-              onClick={toggleFavView}
-            >
-              ★ 즐겨찾기
-            </button>
             <button
               className={`space-item${trashMode ? ' active' : ''}`}
               onClick={() => {

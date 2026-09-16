@@ -9,16 +9,16 @@ import { formatBytes } from '../lib/format'
 // DnX풍 다크 에디터 테마 (near-black base + 골드 커서/활성줄)
 const EDITOR_DARK = EditorView.theme(
   {
-    '&': { color: '#e9e8ec', backgroundColor: '#18181a' },
-    '.cm-content': { caretColor: '#c9a454' },
-    '.cm-cursor, .cm-dropCursor': { borderLeftColor: '#c9a454' },
+    '&': { color: '#dedce4', backgroundColor: '#131315' },
+    '.cm-content': { caretColor: '#cba85a', padding: '8px 0' },
+    '.cm-cursor, .cm-dropCursor': { borderLeftColor: '#cba85a' },
     '.cm-selectionBackground, &.cm-focused .cm-selectionBackground, .cm-content ::selection': {
       backgroundColor: '#3a3427',
     },
-    '.cm-gutters': { backgroundColor: '#18181a', color: '#6b6a72', border: 'none' },
-    '.cm-activeLine': { backgroundColor: 'rgba(201, 164, 84, 0.05)' },
-    '.cm-activeLineGutter': { backgroundColor: 'rgba(201, 164, 84, 0.06)', color: '#c9a454' },
-    '.cm-selectionMatch': { backgroundColor: 'rgba(201, 164, 84, 0.14)' },
+    '.cm-gutters': { backgroundColor: '#131315', color: '#57565d', border: 'none' },
+    '.cm-activeLine': { backgroundColor: 'rgba(203, 168, 90, 0.045)' },
+    '.cm-activeLineGutter': { backgroundColor: 'rgba(203, 168, 90, 0.05)', color: '#cba85a' },
+    '.cm-selectionMatch': { backgroundColor: 'rgba(203, 168, 90, 0.14)' },
   },
   { dark: true },
 )
