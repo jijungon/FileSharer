@@ -1656,6 +1656,7 @@ tr.row-vacuum {
 }
 
 .tree-row.drag-over {
+  background: color-mix(in srgb, var(--primary) 14%, var(--canvas));
   box-shadow: inset 0 0 0 2px var(--primary);
 }
 

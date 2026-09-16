@@ -101,6 +101,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0 # 태그 기반 버전(git describe)용 — 도커 빌드엔 .git이 없어 여기서 계산해 넘긴다
+      - name: 앱 버전 라벨 계산(태그 또는 short SHA)
+        id: ver
+        run: echo "v=$(git describe --tags --always --dirty)" >> "$GITHUB_OUTPUT"
       # arm64(오라클 Ampere 등)용 크로스 빌드를 위해 QEMU + buildx
       - uses: docker/setup-qemu-action@v4
       - uses: docker/setup-buildx-action@v4
@@ -118,6 +123,8 @@ jobs:
           context: .
           platforms: ${{ github.event_name == 'push' && 'linux/amd64,linux/arm64' || 'linux/amd64' }}
           push: ${{ github.event_name == 'push' }}
+          build-args: |
+            APP_VERSION=${{ steps.ver.outputs.v }}
           tags: |
             ghcr.io/jijungon/filesharer:latest
             ghcr.io/jijungon/filesharer:${{ github.sha }}
