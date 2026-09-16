@@ -13,6 +13,13 @@ from ..config import get_settings
 from ..deps import current_user, get_db
 from ..models import Favorite, Node, NodeView, Space, User, utcnow
 from ..services import audit
+from ..services.media import (
+    TranscodeError,
+    audio_codec,
+    audio_is_browser_ok,
+    is_video,
+    transcode_audio_to_aac,
+)
 from ..services.office import OfficeConvertError, convert_to_pdf, is_office
 from ..services.permissions import (
     can_access_space,
@@ -590,6 +597,69 @@ def office_preview(
         media_type="application/pdf",
         headers={"Content-Disposition": _content_disposition("inline", f"{node.name}.pdf")},
     )
+
+
+@router.get("/files/{node_id}/preview.mp4")
+def video_preview(
+    node_id: str,
+    request: Request,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+    storage: StorageBackend = Depends(get_storage),
+):
+    """영상 미리보기용 서빙. 오디오가 브라우저 비호환 코덱(AC-3 등)이면 AAC로 변환해
+    내려주고, 호환이면 원본을 그대로 스트리밍한다. 판정·변환 결과는 캐시해 재사용."""
+    node = get_node_checked(db, user, node_id)
+    if node.type != "file" or not is_video(node.name):
+        raise HTTPException(status_code=400, detail="영상 파일이 아닙니다")
+    if not storage.exists(node.storage_key):
+        raise HTTPException(status_code=410, detail="파일 본체가 없습니다")
+
+    cache_dir = Path(get_settings().data_dir) / "preview_cache"
+    transcoded = cache_dir / f"{node.storage_key}.mp4"
+    passthrough = cache_dir / f"{node.storage_key}.audio_ok"
+
+    def serve_original():
+        return serve_blob(
+            storage,
+            node.storage_key,
+            filename=node.name,
+            media_type=media_type_for(node),
+            disposition="inline",
+            request=request,
+        )
+
+    def serve_transcoded():
+        return FileResponse(
+            transcoded,
+            media_type="video/mp4",
+            headers={"Content-Disposition": _content_disposition("inline", node.name)},
+        )
+
+    # 이미 판정된 경우: 변환본이 있으면 그걸, '오디오 호환' 표시가 있으면 원본을.
+    if transcoded.is_file():
+        return serve_transcoded()
+    if passthrough.is_file():
+        return serve_original()
+
+    # 첫 요청: 원본을 받아 오디오 코덱을 확인 → 비호환이면 오디오만 AAC로 변환.
+    codec = ""
+    compatible = True
+    try:
+        with storage.local_copy(node.storage_key) as src:
+            codec = audio_codec(src)
+            compatible = audio_is_browser_ok(codec)
+            if not compatible:
+                transcode_audio_to_aac(src, cache_dir, node.storage_key)
+    except TranscodeError:
+        # ffmpeg/ffprobe 문제 등 — 변환 못 해도 원본이라도 내려준다(그림은 나옴).
+        return serve_original()
+
+    if compatible:
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        passthrough.write_text(codec or "none", encoding="utf-8")
+        return serve_original()
+    return serve_transcoded()
 
 
 def collect_tar_entries(db: Session, root: Node):

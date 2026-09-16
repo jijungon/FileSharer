@@ -16,12 +16,14 @@ ENV PIP_NO_CACHE_DIR=1 PYTHONUNBUFFERED=1
 # 오피스 문서(PPT·워드·엑셀·한글) 미리보기용 PDF 변환기 + 한글 폰트.
 # libreoffice-h2orestart: 한컴 HWP/HWPX 임포트 필터(Java 확장, GPLv3) → JRE 동반 설치됨.
 # (기본 LibreOffice의 libhwplo는 구형 .hwp만, 신형 .hwpx는 h2orestart가 필요)
+# ffmpeg: 영상 미리보기에서 브라우저 비호환 오디오(AC-3 등)를 AAC로 변환(ffprobe 포함).
 RUN apt-get update && apt-get install -y --no-install-recommends \
       libreoffice-impress \
       libreoffice-writer \
       libreoffice-calc \
       libreoffice-h2orestart \
       fonts-noto-cjk \
+      ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 RUN useradd --create-home --uid 1000 app \
     && mkdir /data && chown app:app /data
