@@ -22,6 +22,8 @@ test('별표로 즐겨찾기에 추가하고, 즐겨찾기 뷰에서 해제한�
     mimeType: 'text/plain',
     buffer: Buffer.from('x'),
   })
+  // 업로드 진행 행이 사라진 뒤(실제 파일 행으로 교체됨) 별표 버튼을 다룬다
+  await expect(page.locator('.upload-row')).toHaveCount(0)
   const row = page.getByRole('row', { name: new RegExp(fname) })
   await expect(row).toBeVisible()
 

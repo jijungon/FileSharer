@@ -32,6 +32,8 @@ test('체크박스로 여러 개를 선택해 한 번에 휴지통으로 보낸�
     { name: '다중가.txt', mimeType: 'text/plain', buffer: Buffer.from('a') },
     { name: '다중나.txt', mimeType: 'text/plain', buffer: Buffer.from('b') },
   ])
+  // 업로드 진행 행이 사라진 뒤(실제 파일 행으로 교체됨) 행을 다룬다
+  await expect(page.locator('.upload-row')).toHaveCount(0)
   await expect(page.getByRole('row', { name: /다중가\.txt/ })).toBeVisible()
   await expect(page.getByRole('row', { name: /다중나\.txt/ })).toBeVisible()
 
@@ -72,6 +74,7 @@ test('여러 개를 선택해 폴더로 드래그하면 모두 함께 이동한�
     { name: '이동가.txt', mimeType: 'text/plain', buffer: Buffer.from('a') },
     { name: '이동나.txt', mimeType: 'text/plain', buffer: Buffer.from('b') },
   ])
+  await expect(page.locator('.upload-row')).toHaveCount(0)
   await expect(page.getByRole('row', { name: /이동가\.txt/ })).toBeVisible()
   await expect(page.getByRole('row', { name: /이동나\.txt/ })).toBeVisible()
 
@@ -110,6 +113,7 @@ test('열려 있던 파일을 다중 이동하면 뷰어가 닫힌다(잔상 방
     { name: '열린.txt', mimeType: 'text/plain', buffer: Buffer.from('hello') },
     { name: '동반.txt', mimeType: 'text/plain', buffer: Buffer.from('world') },
   ])
+  await expect(page.locator('.upload-row')).toHaveCount(0)
   await expect(page.getByRole('row', { name: /열린\.txt/ })).toBeVisible()
 
   // 열린.txt를 클릭해 뷰어를 연다
@@ -138,6 +142,7 @@ test('선택 해제 버튼을 누르면 다중선택이 초기화된다', async 
     { name: '해제가.txt', mimeType: 'text/plain', buffer: Buffer.from('a') },
     { name: '해제나.txt', mimeType: 'text/plain', buffer: Buffer.from('b') },
   ])
+  await expect(page.locator('.upload-row')).toHaveCount(0)
   await expect(page.getByRole('row', { name: /해제가\.txt/ })).toBeVisible()
 
   await page.getByRole('checkbox', { name: '전체 선택' }).check()
@@ -160,6 +165,7 @@ test('여러 개를 선택해 다른 공간으로 드래그하면 복사된다(�
     { name: a, mimeType: 'text/plain', buffer: Buffer.from('a') },
     { name: b, mimeType: 'text/plain', buffer: Buffer.from('b') },
   ])
+  await expect(page.locator('.upload-row')).toHaveCount(0)
   await expect(page.getByRole('row', { name: new RegExp(a) })).toBeVisible()
   await expect(page.getByRole('row', { name: new RegExp(b) })).toBeVisible()
 

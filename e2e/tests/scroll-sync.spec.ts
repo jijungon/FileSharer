@@ -1,5 +1,7 @@
 import { expect, test } from '@playwright/test'
 
+import { fileCell } from './helpers'
+
 const EMAIL = 'e2e@test.local'
 const PASSWORD = 'e2e-password-123'
 
@@ -23,7 +25,7 @@ test('MD 에디터와 프리뷰가 함께 스크롤된다(양방향)', async ({ 
     mimeType: 'text/markdown',
     buffer: Buffer.from(long),
   })
-  await page.getByRole('cell', { name: /긴문서\.md/ }).click()
+  await fileCell(page, /긴문서\.md/).click()
 
   const editor = page.locator('.editor-pane') // 실제 스크롤 컨테이너
   const preview = page.locator('.preview-pane')
