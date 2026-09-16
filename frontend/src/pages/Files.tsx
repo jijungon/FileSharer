@@ -954,7 +954,11 @@ export default function Files() {
             <tbody>
               {!trashMode &&
                 !favMode &&
-                uploads.map((u) => (
+                uploads
+                  // 완료된 업로드가 실제 목록에 이미 나타났으면 진행 행을 숨긴다
+                  // (실제 행과 진행 행이 한순간 겹쳐 같은 이름이 두 번 보이던 문제 방지)
+                  .filter((u) => !(u.done && items.some((it) => it.name === u.name)))
+                  .map((u) => (
                   <tr key={u.id} className={`upload-row${u.error ? ' error' : ''}`}>
                     <td className="col-check"></td>
                     <td>

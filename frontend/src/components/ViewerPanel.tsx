@@ -1,10 +1,27 @@
 import { markdown } from '@codemirror/lang-markdown'
-import CodeMirror from '@uiw/react-codemirror'
+import CodeMirror, { EditorView } from '@uiw/react-codemirror'
 import { useScrollSync } from '../lib/scrollsync'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ApiError } from '../lib/api'
 import { downloadUrl, NodeInfo } from '../lib/files'
 import { formatBytes } from '../lib/format'
+
+// DnX풍 다크 에디터 테마 (near-black base + 골드 커서/활성줄)
+const EDITOR_DARK = EditorView.theme(
+  {
+    '&': { color: '#e9e8ec', backgroundColor: '#18181a' },
+    '.cm-content': { caretColor: '#c9a454' },
+    '.cm-cursor, .cm-dropCursor': { borderLeftColor: '#c9a454' },
+    '.cm-selectionBackground, &.cm-focused .cm-selectionBackground, .cm-content ::selection': {
+      backgroundColor: '#3a3427',
+    },
+    '.cm-gutters': { backgroundColor: '#18181a', color: '#6b6a72', border: 'none' },
+    '.cm-activeLine': { backgroundColor: 'rgba(201, 164, 84, 0.05)' },
+    '.cm-activeLineGutter': { backgroundColor: 'rgba(201, 164, 84, 0.06)', color: '#c9a454' },
+    '.cm-selectionMatch': { backgroundColor: 'rgba(201, 164, 84, 0.14)' },
+  },
+  { dark: true },
+)
 import {
   fetchText,
   isAudio,
@@ -377,7 +394,13 @@ function TextEditor({ node, fullscreen, onToggleFullscreen, onNodeUpdated, onClo
     <div className={`editor-shell${autosave ? ' autosave-on' : ''}`}>
       <div className="editor-toolbar">
         <span className="editor-name">{node.name}</span>
-        <span className={`editor-status${dirty && !saving ? ' dirty' : ''}`}>{status}</span>
+        <span
+          className={`editor-status${dirty && !saving ? ' dirty' : ''}${
+            savedFlash ? ' saved' : ''
+          }`}
+        >
+          {status}
+        </span>
         <span className="toolbar-spacer" />
         <label className="autosave-toggle">
           <span>자동저장</span>
@@ -429,6 +452,7 @@ function TextEditor({ node, fullscreen, onToggleFullscreen, onNodeUpdated, onClo
             <CodeMirror
               value={text}
               height="100%"
+              theme={EDITOR_DARK}
               extensions={[markdown()]}
               onChange={onChange}
               basicSetup={{ lineNumbers: true, foldGutter: false }}
