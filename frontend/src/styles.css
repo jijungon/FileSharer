@@ -527,18 +527,20 @@ button:focus-visible {
   line-height: 1;
   padding: 0 4px 0 0;
   color: var(--ink-muted-48, #9a9a9a);
-  visibility: hidden;
+  /* visibility 대신 opacity — 안 보여도 클릭 가능(호버-노출 컨트롤의 테스트 불안정 방지) */
+  opacity: 0;
+  transition: opacity 0.12s ease;
 }
 .file-table tbody tr:hover .fav-star,
 .row-selected .fav-star {
-  visibility: visible;
+  opacity: 1;
 }
 .fav-star.on {
-  visibility: visible;
+  opacity: 1;
   color: #e8a33d;
 }
 .search-result .fav-star {
-  visibility: visible;
+  opacity: 1;
 }
 
 .empty {
