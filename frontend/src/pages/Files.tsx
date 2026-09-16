@@ -682,6 +682,12 @@ export default function Files() {
 
       <div className="workspace" style={{ display: fullscreen && selected ? 'none' : undefined }}>
         <aside className="sidebar">
+          <button
+            className={`space-item sidebar-fav${favMode ? ' active' : ''}`}
+            onClick={toggleFavView}
+          >
+            ★ 즐겨찾기
+          </button>
           {spaces.map((s) => (
             <div key={s.id}>
               <button
@@ -731,12 +737,6 @@ export default function Files() {
             </div>
           ))}
           <div className="sidebar-foot">
-            <button
-              className={`space-item${favMode ? ' active' : ''}`}
-              onClick={toggleFavView}
-            >
-              ★ 즐겨찾기
-            </button>
             <button
               className={`space-item${trashMode ? ' active' : ''}`}
               onClick={() => {
