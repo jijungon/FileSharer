@@ -1,5 +1,7 @@
 import { expect, test } from '@playwright/test'
 
+import { fileCell } from './helpers'
+
 const EMAIL = 'e2e@test.local'
 const PASSWORD = 'e2e-password-123'
 
@@ -22,10 +24,10 @@ test('local login → browse → create folder → upload file', async ({ page }
     mimeType: 'text/plain',
     buffer: Buffer.from('e2e smoke content'),
   })
-  await expect(page.getByRole('cell', { name: /스모크\.txt/ })).toBeVisible()
+  await expect(fileCell(page, /스모크\.txt/)).toBeVisible()
 
   // 파일 선택 → 링크 바에 사내 링크 복사 버튼 노출
-  await page.getByRole('cell', { name: /스모크\.txt/ }).click()
+  await fileCell(page, /스모크\.txt/).click()
   await expect(page.getByRole('button', { name: '사내 링크 복사' })).toBeVisible()
 })
 
@@ -48,7 +50,7 @@ test('non-text viewer (image/pdf) can maximize and restore', async ({ page }) =>
     mimeType: 'image/png',
     buffer: PNG_1x1,
   })
-  await page.getByRole('cell', { name: /사진\.png/ }).click()
+  await fileCell(page, /사진\.png/).click()
 
   // 이미지 뷰어(비텍스트)에도 전체화면 버튼이 있어야 하고, 누르면 파일 브라우저가 숨겨진다
   await expect(page.locator('.workspace')).toBeVisible()
@@ -100,7 +102,7 @@ test('viewer resize handle works when dragging down over an iframe preview', asy
     mimeType: 'text/html',
     buffer: Buffer.from('<h1>resize drag test</h1>'),
   })
-  await page.getByRole('cell', { name: /리사이즈\.html/ }).click()
+  await fileCell(page, /리사이즈\.html/).click()
 
   const viewer = page.locator('.viewer-area')
   await expect(viewer).toBeVisible()

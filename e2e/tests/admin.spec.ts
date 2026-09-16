@@ -1,5 +1,7 @@
 import { expect, test } from '@playwright/test'
 
+import { fileCell } from './helpers'
+
 test('admin system tab: disk, audit log, trash manager', async ({ page }) => {
   await page.goto('/login')
   await page.getByRole('button', { name: /로컬 계정으로 로그인/ }).click()
@@ -14,7 +16,7 @@ test('admin system tab: disk, audit log, trash manager', async ({ page }) => {
     mimeType: 'text/plain',
     buffer: Buffer.from('ops'),
   })
-  await expect(page.getByRole('cell', { name: /운영\.txt/ })).toBeVisible()
+  await expect(fileCell(page, /운영\.txt/)).toBeVisible()
 
   await page.getByRole('button', { name: '관리' }).click()
   await page.getByRole('button', { name: '시스템' }).click()

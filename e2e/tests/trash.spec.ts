@@ -21,6 +21,7 @@ test('휴지통에서 완전 삭제하면 파일이 영구히 사라진다', asy
     mimeType: 'text/plain',
     buffer: Buffer.from('bye'),
   })
+  await expect(page.locator('.upload-row')).toHaveCount(0)
   const row = page.getByRole('row', { name: /영구삭제\.txt/ })
   await expect(row).toBeVisible()
 
@@ -49,6 +50,7 @@ test('휴지통 항목에 자동 완전삭제까지 남은 시간이 표시된�
     mimeType: 'text/plain',
     buffer: Buffer.from('x'),
   })
+  await expect(page.locator('.upload-row')).toHaveCount(0)
   const row = page.getByRole('row', { name: /카운트다운\.txt/ })
   await expect(row).toBeVisible()
   await row.hover()

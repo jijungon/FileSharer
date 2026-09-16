@@ -29,6 +29,7 @@ test('하위 폴더의 파일을 이름으로 검색해 위치와 함께 찾고,
     mimeType: 'text/plain',
     buffer: Buffer.from('hello'),
   })
+  await expect(page.locator('.upload-row')).toHaveCount(0)
   await expect(page.getByRole('row', { name: new RegExp(fname) })).toBeVisible()
 
   // 루트로 나가면 그 파일은 목록에 없다(하위 폴더에 있으니)

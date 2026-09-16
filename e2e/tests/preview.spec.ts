@@ -1,5 +1,7 @@
 import { expect, test } from '@playwright/test'
 
+import { fileCell } from './helpers'
+
 const EMAIL = 'e2e@test.local'
 const PASSWORD = 'e2e-password-123'
 // 1x1 투명 PNG
@@ -24,7 +26,7 @@ test('image preview renders inline', async ({ page }) => {
     mimeType: 'image/png',
     buffer: PNG,
   })
-  await page.getByRole('cell', { name: /픽셀\.png/ }).click()
+  await fileCell(page, /픽셀\.png/).click()
   await expect(page.locator('.image-preview img')).toBeVisible()
 })
 

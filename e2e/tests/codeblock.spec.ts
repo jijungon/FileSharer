@@ -1,5 +1,7 @@
 import { expect, test } from '@playwright/test'
 
+import { fileCell } from './helpers'
+
 const EMAIL = 'e2e@test.local'
 const PASSWORD = 'e2e-password-123'
 
@@ -24,7 +26,7 @@ test('마크다운 코드블록 글자가 배경과 충분한 대비로 보인�
     mimeType: 'text/markdown',
     buffer: Buffer.from(md),
   })
-  await page.getByRole('cell', { name: /코드블록\.md/ }).click()
+  await fileCell(page, /코드블록\.md/).click()
 
   const code = page.locator('.md-preview pre code')
   await expect(code).toBeVisible()

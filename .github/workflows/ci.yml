@@ -16,7 +16,7 @@ jobs:
     if: github.event.action != 'labeled'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0 # 전체 히스토리 스캔 (한 번 새면 히스토리에 남으므로)
       - uses: gitleaks/gitleaks-action@v2
@@ -30,8 +30,8 @@ jobs:
       run:
         working-directory: backend
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.13" # 로컬(3.13)과 일치 — 로컬=CI 동일 원칙
       - run: pip install -e ".[dev]"
@@ -45,8 +45,8 @@ jobs:
       run:
         working-directory: frontend
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: 22 # 로컬(v22)과 일치
           cache: npm
@@ -61,7 +61,7 @@ jobs:
     if: github.event_name == 'push' || contains(github.event.pull_request.labels.*.name, 'e2e')
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: CI용 .env 구성 (example의 안전한 기본값 + 테스트 관리자)
         run: |
           cp .env.example .env
@@ -76,7 +76,7 @@ jobs:
             sleep 2
           done
           echo "server did not come up" && exit 1
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
       - run: cd e2e && npm ci && npx playwright install --with-deps chromium
@@ -88,7 +88,7 @@ jobs:
         run: |
           docker compose logs > compose.log || true
           docker compose down -v
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         if: failure()
         with:
           name: e2e-logs
@@ -100,7 +100,7 @@ jobs:
     needs: [secrets-scan, backend, frontend]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       # arm64(오라클 Ampere 등)용 크로스 빌드를 위해 QEMU + buildx
       - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3

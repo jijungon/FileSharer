@@ -1,5 +1,7 @@
 import { expect, test } from '@playwright/test'
 
+import { fileCell } from './helpers'
+
 const EMAIL = 'e2e@test.local'
 const PASSWORD = 'e2e-password-123'
 
@@ -16,7 +18,7 @@ test('markdown editor: open → live preview → edit → save', async ({ page }
     mimeType: 'text/markdown',
     buffer: Buffer.from('# 제목\n\n- 항목 하나\n'),
   })
-  const row = page.getByRole('cell', { name: /에디터\.md/ })
+  const row = fileCell(page, /에디터\.md/)
   await expect(row).toBeVisible()
   await row.click()
 

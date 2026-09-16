@@ -1,5 +1,7 @@
 import { expect, test } from '@playwright/test'
 
+import { fileCell } from './helpers'
+
 const EMAIL = 'e2e@test.local'
 const PASSWORD = 'e2e-password-123'
 
@@ -22,7 +24,7 @@ test('파일을 열면 "최근" 뷰에 쌓이고, 클릭하면 다시 열린다'
     mimeType: 'text/markdown',
     buffer: Buffer.from('# 최근 문서\n\n본문'),
   })
-  const cell = page.getByRole('cell', { name: new RegExp(fname) })
+  const cell = fileCell(page, new RegExp(fname))
   await expect(cell).toBeVisible()
 
   // 파일 열기 → 뷰어 뜸(= 열람 기록됨)

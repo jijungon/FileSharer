@@ -1,5 +1,7 @@
 import { expect, test } from '@playwright/test'
 
+import { fileCell } from './helpers'
+
 const EMAIL = 'e2e@test.local'
 const PASSWORD = 'e2e-password-123'
 
@@ -17,7 +19,7 @@ test('share link: create in UI, open without login, download', async ({ page, br
     mimeType: 'text/markdown',
     buffer: Buffer.from('# 외부 공유 문서\n\n내용입니다.\n'),
   })
-  await page.getByRole('cell', { name: /외부공유\.md/ }).click()
+  await fileCell(page, /외부공유\.md/).click()
   await page.getByRole('button', { name: '공유 링크' }).click()
   await page.getByRole('button', { name: '링크 만들기' }).click()
 
