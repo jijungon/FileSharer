@@ -11,10 +11,11 @@ from sqlalchemy.orm import Session
 
 from ..config import get_settings
 from ..deps import current_user, get_db
-from ..models import Node, Space, User, utcnow
+from ..models import Favorite, Node, Space, User, utcnow
 from ..services import audit
 from ..services.office import OfficeConvertError, convert_to_pdf, is_office
 from ..services.permissions import (
+    can_access_space,
     get_node_checked,
     get_space_checked,
     is_descendant,
@@ -201,6 +202,96 @@ def search_nodes(
         d["path"] = path_of(n)
         out.append(d)
     return out
+
+
+@router.get("/favorites")
+def list_favorites(
+    user: User = Depends(current_user), db: Session = Depends(get_db)
+) -> list[dict]:
+    """내 즐겨찾기 — 접근 가능하고 휴지통이 아닌 항목만, 최근 추가순. 각 항목에 경로(path)."""
+    favs = db.scalars(
+        select(Favorite).where(Favorite.user_id == user.id).order_by(Favorite.id.desc())
+    ).all()
+    if not favs:
+        return []
+    order = {f.node_id: idx for idx, f in enumerate(favs)}  # 최근 추가 우선
+    nodes = db.scalars(
+        select(Node).where(Node.id.in_(order.keys()), Node.deleted_at.is_(None))
+    ).all()
+    # 접근 가능한 공간만(권한 캐시)
+    ok_space: dict[str, bool] = {}
+
+    def accessible(space_id: str) -> bool:
+        if space_id not in ok_space:
+            sp = db.get(Space, space_id)
+            ok_space[space_id] = sp is not None and can_access_space(db, user, sp)
+        return ok_space[space_id]
+
+    nodes = [n for n in nodes if accessible(n.space_id)]
+    # 경로 표시용 폴더맵(관련 공간들)
+    space_ids = {n.space_id for n in nodes}
+    fmap: dict[str, Node] = {}
+    if space_ids:
+        folders = db.scalars(
+            select(Node).where(
+                Node.space_id.in_(space_ids),
+                Node.type == "folder",
+                Node.deleted_at.is_(None),
+            )
+        ).all()
+        fmap = {f.id: f for f in folders}
+
+    def path_of(node: Node) -> str:
+        parts: list[str] = []
+        pid = node.parent_id
+        while pid and pid in fmap:
+            parts.append(fmap[pid].name)
+            pid = fmap[pid].parent_id
+        return "/".join(reversed(parts))
+
+    out: list[dict] = []
+    for n in sorted(nodes, key=lambda n: order.get(n.id, 0)):
+        d = node_out(n)
+        d["path"] = path_of(n)
+        out.append(d)
+    return out
+
+
+@router.get("/favorites/ids")
+def favorite_ids(
+    user: User = Depends(current_user), db: Session = Depends(get_db)
+) -> list[str]:
+    """내가 즐겨찾기한 노드 id 목록(가볍게 — 별표 상태 표시용)."""
+    return list(
+        db.scalars(select(Favorite.node_id).where(Favorite.user_id == user.id)).all()
+    )
+
+
+@router.post("/nodes/{node_id}/favorite")
+def add_favorite(
+    node_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)
+) -> dict:
+    node = get_node_checked(db, user, node_id)  # 존재 + 접근 권한 검사
+    exists = db.scalar(
+        select(Favorite).where(Favorite.user_id == user.id, Favorite.node_id == node.id)
+    )
+    if not exists:
+        db.add(Favorite(user_id=user.id, node_id=node.id))
+        db.commit()
+    return {"favorited": True}
+
+
+@router.delete("/nodes/{node_id}/favorite")
+def remove_favorite(
+    node_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)
+) -> dict:
+    fav = db.scalar(
+        select(Favorite).where(Favorite.user_id == user.id, Favorite.node_id == node_id)
+    )
+    if fav:
+        db.delete(fav)
+        db.commit()
+    return {"favorited": False}
 
 
 @router.get("/nodes/{node_id}/children")

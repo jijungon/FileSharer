@@ -109,6 +109,18 @@ class ShareLink(Base):
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
 
+class Favorite(Base):
+    """사용자별 즐겨찾기(별표). (user_id, node_id) 유일."""
+
+    __tablename__ = "favorites"
+    __table_args__ = (UniqueConstraint("user_id", "node_id", name="uq_favorite_user_node"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    node_id: Mapped[str] = mapped_column(ForeignKey("nodes.id"), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
 class AuditLog(Base):
     __tablename__ = "audit_log"
 
