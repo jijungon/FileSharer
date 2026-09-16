@@ -409,12 +409,19 @@ export default function Files() {
         flash(err instanceof Error ? err.message : `${it.file.name} 업로드 실패`)
       }
     })
-    reload()
     setTreeVersion((v) => v + 1) // 폴더가 새로 생겼을 수 있음(폴더 업로드)
     if (failed === 0) flash(`업로드 완료 (${items.length}개)`)
-    // 완료 상태를 잠깐 보여준 뒤 이 배치 항목들을 패널에서 제거
+    // 실제 목록을 받아오며 업로드 행을 같은 렌더에서 교체(중복 깜빡임 방지)
     const ids = new Set(items.map((it) => it.id))
-    setTimeout(() => setUploads((u) => dropUploads(u, ids)), 1500)
+    try {
+      const fresh = currentFolder
+        ? await listNodeChildren(currentFolder.id)
+        : await listSpaceChildren(spaceId)
+      setItems(fresh)
+    } catch {
+      /* 목록 새로고침 실패는 무시 — 다음 네비게이션에서 갱신됨 */
+    }
+    setUploads((u) => dropUploads(u, ids))
   }
 
   async function uploadAll(files: FileList | File[]) {
@@ -679,8 +686,10 @@ export default function Files() {
             <div key={s.id}>
               <button
                 className={
-                  `space-item space-root${s.id === spaceId ? ' active' : ''}` +
-                  (dragOverSpace === s.id ? ' drag-over' : '')
+                  // 휴지통·즐겨찾기 뷰일 땐 공간을 활성 표시하지 않는다(하이라이트 중복 방지)
+                  `space-item space-root${
+                    s.id === spaceId && !trashMode && !favMode ? ' active' : ''
+                  }` + (dragOverSpace === s.id ? ' drag-over' : '')
                 }
                 onClick={() => switchSpace(s.id)}
                 onDragOver={(e) => {
@@ -814,6 +823,12 @@ export default function Files() {
             )}
             {trashMode && <span className="muted">휴지통 — 복원하면 원래 위치로 돌아갑니다</span>}
             {favMode && <span className="muted">즐겨찾기 — ★ 를 눌러 해제, 항목을 눌러 이동</span>}
+            {uploads.length > 0 && (
+              <span className="upload-count muted">
+                업로드 {uploadStats.done}/{uploadStats.total}
+                {uploadStats.failed > 0 && ` · 실패 ${uploadStats.failed}`} · {uploadStats.percent}%
+              </span>
+            )}
             <span className="toolbar-notice">{notice}</span>
             {!trashMode && !favMode && (
               <div className="toolbar-search">
@@ -937,6 +952,30 @@ export default function Files() {
               </tr>
             </thead>
             <tbody>
+              {!trashMode &&
+                !favMode &&
+                uploads.map((u) => (
+                  <tr key={u.id} className={`upload-row${u.error ? ' error' : ''}`}>
+                    <td className="col-check"></td>
+                    <td>
+                      <span className="node-icon">{u.error ? '⚠️' : '📄'}</span>{' '}
+                      <span className="node-name">{u.name}</span>
+                    </td>
+                    <td colSpan={3} className="upload-inline">
+                      <div className="upload-inline-wrap">
+                        <progress
+                          className="upload-inline-bar"
+                          value={u.loaded}
+                          max={u.total || 1}
+                        />
+                        <span className="upload-inline-pct">
+                          {u.error ? '실패' : `${percent(u)}%`}
+                        </span>
+                      </div>
+                    </td>
+                    <td className="col-actions"></td>
+                  </tr>
+                ))}
               {!trashMode && currentFolder && (
                 <tr
                   className="row-up"
@@ -1120,7 +1159,7 @@ export default function Files() {
                   </td>
                 </tr>
               ))}
-              {sortedItems.length === 0 && (
+              {sortedItems.length === 0 && (trashMode || uploads.length === 0) && (
                 <tr>
                   <td colSpan={6} className="empty">
                     {trashMode
@@ -1192,29 +1231,6 @@ export default function Files() {
                 </li>
               ))}
           </ul>
-        </div>
-      )}
-      {uploads.length > 0 && (
-        <div className="upload-progress" aria-label="업로드 진행">
-          <div className="upload-progress-head">
-            <span>
-              업로드 {uploadStats.done}/{uploadStats.total}
-              {uploadStats.failed > 0 && ` · 실패 ${uploadStats.failed}`}
-            </span>
-            <span className="upload-progress-pct">{uploadStats.percent}%</span>
-          </div>
-          {uploads.map((u) => (
-            <div
-              key={u.id}
-              className={`upload-progress-row${u.error ? ' error' : u.done ? ' done' : ''}`}
-            >
-              <span className="upload-progress-name" title={u.name}>
-                {u.name}
-              </span>
-              <progress className="upload-progress-bar" value={u.loaded} max={u.total || 1} />
-              <span className="upload-progress-pct">{u.error ? '실패' : `${percent(u)}%`}</span>
-            </div>
-          ))}
         </div>
       )}
       {newMdName && (
