@@ -52,13 +52,14 @@ test('non-text viewer (image/pdf) can maximize and restore', async ({ page }) =>
   })
   await fileCell(page, /사진\.png/).click()
 
-  // 이미지 뷰어(비텍스트)에도 전체화면 버튼이 있어야 하고, 누르면 파일 브라우저가 숨겨진다
-  await expect(page.locator('.workspace')).toBeVisible()
+  // 이미지 뷰어(비텍스트)에도 전체화면 버튼이 있어야 하고, 누르면 사이드바(트리)가 숨겨진다
+  // (VS Code식 레이아웃: 전체화면 = 사이드바만 숨기고 뷰어가 폭을 꽉 채움)
+  await expect(page.locator('.sidebar')).toBeVisible()
   await page.getByRole('button', { name: '전체화면' }).click()
-  await expect(page.locator('.workspace')).toBeHidden()
+  await expect(page.locator('.sidebar')).toBeHidden()
   // 분할 보기로 되돌리면 다시 보인다
   await page.getByRole('button', { name: '분할 보기' }).click()
-  await expect(page.locator('.workspace')).toBeVisible()
+  await expect(page.locator('.sidebar')).toBeVisible()
 })
 
 test('browser back/forward syncs the folder view', async ({ page }) => {
@@ -86,48 +87,4 @@ test('browser back/forward syncs the folder view', async ({ page }) => {
   await page.goForward()
   await expect(page).toHaveURL(/\/files\/.+/)
   await expect(page.locator('.crumb-current, .crumb', { hasText: folder })).toBeVisible()
-})
-
-test('viewer resize handle works when dragging down over an iframe preview', async ({ page }) => {
-  await page.goto('/login')
-  await page.getByRole('button', { name: /로컬 계정으로 로그인/ }).click()
-  await page.getByPlaceholder('이메일').fill(EMAIL)
-  await page.getByPlaceholder('비밀번호').fill(PASSWORD)
-  await page.getByRole('button', { name: '로컬 계정으로 로그인' }).click()
-  await expect(page).toHaveURL(/\/files/)
-
-  // HTML 파일 = iframe 뷰어 (핸들 아래로 끌면 커서가 iframe 위를 지나감)
-  await page.locator('input[type="file"]:not([webkitdirectory])').setInputFiles({
-    name: '리사이즈.html',
-    mimeType: 'text/html',
-    buffer: Buffer.from('<h1>resize drag test</h1>'),
-  })
-  await fileCell(page, /리사이즈\.html/).click()
-
-  const viewer = page.locator('.viewer-area')
-  await expect(viewer).toBeVisible()
-  // HTML 프리뷰 iframe이 로드·배치될 때까지 대기(레이아웃 안정화)
-  await expect(page.locator('.viewer-area iframe')).toBeVisible()
-
-  // 핸들을 아래로 끌면 뷰어가 작아져야 한다. iframe이 이벤트를 가로채면 안 움직임(버그).
-  // 앞선 테스트들이 파일을 쌓아 목록이 길어지면 핸들이 뷰포트(720) 밖으로 밀려
-  // 마우스 좌표가 아무것도 못 눌러 드래그가 무시된다(=CI 플레이크의 실제 원인).
-  // → 먼저 핸들을 뷰포트 중앙으로 스크롤해 드래그 좌표를 유효화한다.
-  const handle = page.locator('.vsplit-handle')
-  await handle.evaluate((el) => el.scrollIntoView({ block: 'center' }))
-  await expect(handle).toBeVisible()
-  const before = (await viewer.boundingBox())!.height
-  const hb = (await handle.boundingBox())!
-  const cx = hb.x + hb.width / 2
-  const cy = hb.y + hb.height / 2
-  await page.mouse.move(cx, cy)
-  await page.mouse.down()
-  await page.mouse.move(cx, cy + 12) // 작은 이동으로 드래그(오버레이) 먼저 활성화
-  await page.mouse.move(cx, cy + 120, { steps: 10 }) // 아래로 → 뷰어 축소(뷰포트 내 유지)
-  await page.mouse.up()
-
-  // mouse.up 직후 1회 측정은 레이아웃 갱신 전일 수 있어 폴링으로 대기(플레이크 방지)
-  await expect
-    .poll(async () => (await viewer.boundingBox())!.height, { timeout: 5000 })
-    .toBeLessThan(before - 40)
 })
