@@ -405,6 +405,8 @@ export default function Files() {
     setRecentMode(false)
     setSelected(null)
     setSearchQ('')
+    setPath([]) // 루트 뷰 진입: URL nodeId 비우기(새로고침 복원, [nodeId] 효과의 모드 리셋 방지)
+    navigate('/files')
     setFavMode(true)
     try {
       setFavItems(await listFavorites())
@@ -423,6 +425,8 @@ export default function Files() {
     setFavMode(false)
     setSelected(null)
     setSearchQ('')
+    setPath([]) // 루트 뷰 진입: URL nodeId 비우기(새로고침 복원, [nodeId] 효과의 모드 리셋 방지)
+    navigate('/files')
     setRecentMode(true)
     try {
       setRecentItems(await listRecent())
@@ -913,6 +917,11 @@ export default function Files() {
                 setFavMode(false)
                 setRecentMode(false)
                 setSelected(null)
+                // 루트 뷰 진입: URL의 nodeId를 비운다. 안 비우면 폴더 안에서 휴지통을 열고
+                // 새로고침할 때 boot()이 URL의 nodeId를 먼저 복원해 이전 폴더로 튄다.
+                // path를 함께 비우면 아래 [nodeId] 효과의 currentId===null===nodeId라 모드가 리셋되지 않는다.
+                setPath([])
+                navigate('/files')
               }}
               onDragOver={(e) => {
                 if (e.dataTransfer.types.includes('application/x-node-id')) {
