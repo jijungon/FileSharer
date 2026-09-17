@@ -114,6 +114,8 @@ def _stamp(dt) -> str | None:
 
 
 def node_out(node: Node) -> dict:
+    # 표시용 닉네임: 업로더=생성자, 수정자=마지막 수정자(없으면 생성자로 폴백).
+    editor = node.editor or node.creator
     return {
         "id": node.id,
         "space_id": node.space_id,
@@ -124,6 +126,8 @@ def node_out(node: Node) -> dict:
         "mime": node.mime,
         "created_at": _stamp(node.created_at),
         "updated_at": _stamp(node.updated_at),
+        "uploader": email_nickname(node.creator.email) if node.creator else "",
+        "editor": email_nickname(editor.email) if editor else "",
     }
 
 
@@ -786,7 +790,9 @@ def patch_node(
         audit.log(db, "move", user_id=user.id, node_id=node.id, detail=target_space.type)
 
     node.updated_at = utcnow()
+    node.updated_by = user.id  # 수정자 = 방금 리네임/이동한 사람
     db.flush()
+    db.expire(node, ["editor"])  # updated_by가 바뀌었으니 editor 관계 캐시 갱신
     return node_out(node)
 
 
@@ -983,7 +989,9 @@ def save_content(
     node.size = size
     node.sha256 = sha
     node.updated_at = utcnow()
+    node.updated_by = user.id  # 수정자 = 방금 저장한 사람
     db.flush()
+    db.expire(node, ["editor"])  # updated_by가 바뀌었으니 editor 관계 캐시 갱신
     storage.delete(old_key)
     audit.log(db, "edit", user_id=user.id, node_id=node.id, detail=node.name)
     return node_out(node)

@@ -2,7 +2,7 @@ import uuid
 from datetime import UTC, datetime
 
 from sqlalchemy import DateTime, ForeignKey, Integer, String, UniqueConstraint
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
 def new_id() -> str:
@@ -94,9 +94,19 @@ class Node(Base):
     # 업로드 때 저장 — 원격 스토리지에서 체크섬 재다운로드 방지
     sha256: Mapped[str] = mapped_column(String(64), default="")
     created_by: Mapped[str] = mapped_column(ForeignKey("users.id"))
+    # 마지막으로 바꾼 사람(저장·리네임·이동). 신규 업로드 직후엔 없어 표시상 created_by로 폴백.
+    updated_by: Mapped[str | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
+
+    # 표시용(업로더·수정자 닉네임). selectin으로 배치 로드해 N+1 회피, 읽기 전용.
+    creator: Mapped["User | None"] = relationship(
+        "User", foreign_keys=[created_by], lazy="selectin", viewonly=True
+    )
+    editor: Mapped["User | None"] = relationship(
+        "User", foreign_keys=[updated_by], lazy="selectin", viewonly=True
+    )
 
 
 class ShareLink(Base):
