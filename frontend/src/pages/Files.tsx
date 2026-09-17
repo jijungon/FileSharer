@@ -1317,13 +1317,27 @@ export default function Files() {
                       </span>
                     )}
                   </td>
-                  <td className="col-date muted">{formatDateTime(node.created_at)}</td>
+                  <td className="col-date muted">
+                    {node.uploader && (
+                      <span className="by-name" title={`올린 사람: ${node.uploader}`}>
+                        {node.uploader}
+                      </span>
+                    )}
+                    {formatDateTime(node.created_at)}
+                  </td>
                   {trashMode ? (
                     <td className="col-remaining">
                       <TrashRemaining purgeAt={node.purge_at} />
                     </td>
                   ) : (
-                    <td className="col-date muted">{formatDateTime(node.updated_at)}</td>
+                    <td className="col-date muted">
+                      {node.editor && (
+                        <span className="by-name" title={`수정한 사람: ${node.editor}`}>
+                          {node.editor}
+                        </span>
+                      )}
+                      {formatDateTime(node.updated_at)}
+                    </td>
                   )}
                   <td className="col-size muted">
                     {node.type === 'file' ? formatBytes(node.size) : '—'}
