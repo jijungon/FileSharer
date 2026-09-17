@@ -303,6 +303,7 @@ function TextEditor({ node, fullscreen, onToggleFullscreen, onNodeUpdated, onClo
   const previewRef = useRef<HTMLDivElement>(null)
   const baseStamp = useRef<string | null>(node.updated_at)
   const textRef = useRef('')
+  const savedTextRef = useRef('') // 마지막으로 저장된(=서버와 같은) 내용. 이거랑 같으면 저장할 게 없음
   const autosaveTimer = useRef<number | undefined>(undefined)
 
   // 문서 로드
@@ -315,6 +316,7 @@ function TextEditor({ node, fullscreen, onToggleFullscreen, onNodeUpdated, onClo
       .then((t) => {
         setText(t)
         textRef.current = t
+        savedTextRef.current = t // 로드 직후 = 서버와 동일 → 저장 버튼 비활성
       })
       .catch((e) => setLoadError(e instanceof Error ? e.message : '불러오기 실패'))
   }, [node.id, node.size])
@@ -322,15 +324,16 @@ function TextEditor({ node, fullscreen, onToggleFullscreen, onNodeUpdated, onClo
   const doSave = useCallback(
     async (force = false) => {
       if (saving) return
+      const snapshot = textRef.current // 저장 시점 내용 스냅샷
+      // 저장 전후가 동일하면(변경 없음) 저장 자체를 건너뛴다 — 불필요한 no-op 저장 방지.
+      // (수동 저장 버튼은 아래 dirty로 비활성화되지만, autosave 타이머·Cmd+S 경로도 함께 막는다.)
+      if (!force && snapshot === savedTextRef.current) return
       setSaving(true)
       try {
-        const fresh = await saveContent(
-          node.id,
-          textRef.current,
-          force ? null : baseStamp.current,
-        )
+        const fresh = await saveContent(node.id, snapshot, force ? null : baseStamp.current)
         baseStamp.current = fresh.updated_at
-        setDirty(false)
+        savedTextRef.current = snapshot
+        setDirty(textRef.current !== snapshot) // 저장 중 추가 입력이 있었으면 여전히 dirty
         setConflict(false)
         setSavedFlash(true)
         setTimeout(() => setSavedFlash(false), 1500)
@@ -368,7 +371,9 @@ function TextEditor({ node, fullscreen, onToggleFullscreen, onNodeUpdated, onClo
   function onChange(value: string) {
     textRef.current = value
     setText(value)
-    setDirty(true)
+    // 저장된 내용과 실제로 다를 때만 dirty=true. 입력했다가 원래대로 되돌리면
+    // dirty=false가 되어 저장 버튼이 다시 비활성화된다(저장 전후 동일 → 저장 불가).
+    setDirty(value !== savedTextRef.current)
     if (autosave && !conflict) {
       window.clearTimeout(autosaveTimer.current)
       autosaveTimer.current = window.setTimeout(() => doSave(), 2500)
@@ -389,6 +394,7 @@ function TextEditor({ node, fullscreen, onToggleFullscreen, onNodeUpdated, onClo
     const t = await fetchText(node.id)
     setText(t)
     textRef.current = t
+    savedTextRef.current = t // 서버 최신을 기준선으로 → 변경 없음 상태
     baseStamp.current = null // 다음 저장은 서버 최신 기준(사용자가 방금 확인)
     setConflict(false)
     setDirty(false)
