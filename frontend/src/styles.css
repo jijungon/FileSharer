@@ -430,6 +430,22 @@ button:focus-visible {
   margin-bottom: var(--sp-sm);
 }
 
+/* 목록 새로고침 버튼(툴바 최좌측, 아이콘). 새로고침 중엔 회전. */
+.toolbar-refresh {
+  padding: 7px 11px;
+  font-size: 15px;
+  line-height: 1;
+}
+.toolbar-refresh .spin {
+  display: inline-block;
+  animation: refresh-spin 0.7s linear infinite;
+}
+@keyframes refresh-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .toolbar-notice {
   margin-left: auto;
   color: var(--primary);

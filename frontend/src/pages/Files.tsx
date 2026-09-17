@@ -95,6 +95,7 @@ export default function Files() {
   const [dragOverSpace, setDragOverSpace] = useState<string | null>(null)
   const [dragOverTrash, setDragOverTrash] = useState(false)
   const [treeVersion, setTreeVersion] = useState(0)
+  const [refreshing, setRefreshing] = useState(false) // 새로고침 버튼 회전 표시
   const [checked, setChecked] = useState<Set<string>>(new Set()) // 다중선택된 노드 id
   const fileInput = useRef<HTMLInputElement>(null)
   const folderInput = useRef<HTMLInputElement | null>(null)
@@ -264,6 +265,22 @@ export default function Files() {
   useEffect(() => {
     reload()
   }, [reload])
+
+  // 새로고침 버튼: 현재 보고 있는 목록(즐겨찾기/최근/휴지통·폴더)을 서버에서 다시 불러온다.
+  async function refreshCurrent() {
+    if (refreshing) return
+    setRefreshing(true)
+    try {
+      if (favMode) setFavItems(await listFavorites())
+      else if (recentMode) setRecentItems(await listRecent())
+      else await reload()
+      setTreeVersion((v) => v + 1) // 사이드바 폴더 트리도 갱신
+    } catch {
+      /* reload/loader 내부에서 에러 표시 처리 */
+    } finally {
+      setRefreshing(false)
+    }
+  }
 
   // 공간·폴더 이동이나 휴지통 토글 시 다중선택·검색 해제(다른 목록의 잔상 방지)
   useEffect(() => {
@@ -972,6 +989,15 @@ export default function Files() {
           }}
         >
           <div className="toolbar">
+            <button
+              className="btn-utility toolbar-refresh"
+              onClick={refreshCurrent}
+              disabled={refreshing}
+              title="목록 새로고침"
+              aria-label="목록 새로고침"
+            >
+              <span className={refreshing ? 'spin' : ''}>⟳</span>
+            </button>
             {!trashMode && !favMode && !recentMode && (
               <>
                 <button className="btn-utility" onClick={onNewFolder}>
