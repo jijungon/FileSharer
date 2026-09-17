@@ -246,7 +246,8 @@ button:focus-visible {
 
 /* --- 앱 셸 & 파일 브라우저 --- */
 .shell {
-  min-height: 100vh;
+  height: 100vh; /* 뷰포트에 고정 — 에디터가 열려도 셸이 늘어나지 않고 내부 패널이 스크롤 */
+  overflow: hidden;
   display: flex;
   flex-direction: column;
   background: var(--canvas-parchment);
