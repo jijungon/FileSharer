@@ -861,6 +861,22 @@ button:focus-visible {
   font-size: 14px;
 }
 
+/* 편집 잠금: 남이 편집 중이라 읽기 전용일 때 상단 배너 */
+.lock-banner {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px var(--sp-lg);
+  background: color-mix(in srgb, var(--ed-accent) 12%, var(--ed-surface));
+  border-bottom: 1px solid color-mix(in srgb, var(--ed-accent) 38%, transparent);
+  color: var(--ed-ink);
+  font-size: 13.5px;
+}
+.lock-banner strong {
+  color: var(--ed-accent);
+  font-weight: 700;
+}
+
 .editor-split {
   display: flex;
   flex: 1;

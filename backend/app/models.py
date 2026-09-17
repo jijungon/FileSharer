@@ -142,3 +142,15 @@ class AuditLog(Base):
     node_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
     at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)
     detail: Mapped[str] = mapped_column(String(500), default="")
+
+
+class EditLock(Base):
+    """텍스트/MD 편집 잠금 — 한 노드는 한 번에 한 명만 편집(동시 수정 방지).
+    node_id가 곧 PK(노드당 잠금 1개). heartbeat_at이 LOCK_TTL 넘게 오래되면
+    만료로 보고(브라우저 닫힘·크래시 대비) 다른 사람이 인수할 수 있다. services/locks.py 참고."""
+
+    __tablename__ = "edit_locks"
+
+    node_id: Mapped[str] = mapped_column(ForeignKey("nodes.id"), primary_key=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    heartbeat_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)
