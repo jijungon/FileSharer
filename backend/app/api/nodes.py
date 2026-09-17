@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from ..config import get_settings
 from ..deps import current_user, get_db
-from ..models import Favorite, Node, NodeView, Space, User, utcnow
+from ..models import Favorite, Node, NodeView, Space, User, email_nickname, utcnow
 from ..services import audit, locks
 from ..services.media import (
     TranscodeError,
@@ -320,8 +320,9 @@ def record_view(
 
 # ── 편집 잠금(동시 수정 방지) ───────────────────────────────────────────
 def _lock_holder_name(db: Session, user_id: str) -> str:
+    """편집 잠금 표시명 = 이메일 @ 앞부분(닉네임)."""
     u = db.get(User, user_id)
-    return (u.name or u.email) if u else "다른 사용자"
+    return email_nickname(u.email) if u else "다른 사용자"
 
 
 @router.post("/nodes/{node_id}/lock")
