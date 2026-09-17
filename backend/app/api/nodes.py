@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from ..config import get_settings
 from ..deps import current_user, get_db
 from ..models import Favorite, Node, NodeView, Space, User, utcnow
-from ..services import audit
+from ..services import audit, locks
 from ..services.media import (
     TranscodeError,
     audio_codec,
@@ -316,6 +316,47 @@ def record_view(
         db.add(NodeView(user_id=user.id, node_id=node.id))
     db.commit()
     return {"ok": True}
+
+
+# ── 편집 잠금(동시 수정 방지) ───────────────────────────────────────────
+def _lock_holder_name(db: Session, user_id: str) -> str:
+    u = db.get(User, user_id)
+    return (u.name or u.email) if u else "다른 사용자"
+
+
+@router.post("/nodes/{node_id}/lock")
+def acquire_edit_lock(
+    node_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)
+) -> dict:
+    """편집 잠금 획득/갱신(하트비트). 내가 쥐면 held_by_me=True, 남이 편집 중이면 False."""
+    node = get_node_checked(db, user, node_id)  # 존재 + 접근 권한 검사
+    ok, lock = locks.acquire(db, node.id, user.id)
+    if ok:
+        return {"held_by_me": True, "holder": ""}
+    return {"held_by_me": False, "holder": _lock_holder_name(db, lock.user_id)}
+
+
+@router.get("/nodes/{node_id}/lock")
+def edit_lock_status(
+    node_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)
+) -> dict:
+    """현재 잠금 상태 조회 — 읽기 전용 뷰어가 폴링해 해제/인수 시점을 감지한다."""
+    node = get_node_checked(db, user, node_id)
+    lock = locks.get_active(db, node.id)
+    if lock is None:
+        return {"locked": False, "held_by_me": False, "holder": ""}
+    if lock.user_id == user.id:
+        return {"locked": False, "held_by_me": True, "holder": ""}
+    return {"locked": True, "held_by_me": False, "holder": _lock_holder_name(db, lock.user_id)}
+
+
+@router.post("/nodes/{node_id}/lock/release")
+def release_edit_lock(
+    node_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)
+) -> dict:
+    """편집 잠금 해제(닫기/이탈). 내 잠금만 풀린다. sendBeacon 호환 위해 POST."""
+    locks.release(db, node_id, user.id)
+    return {"released": True}
 
 
 @router.get("/recent")

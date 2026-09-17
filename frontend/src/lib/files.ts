@@ -58,6 +58,25 @@ export const recordView = (id: string) =>
 /** 내가 최근 열어본 항목(경로 포함, 최근 열람순). */
 export const listRecent = () => api<NodeInfo[]>('/api/recent')
 
+/** 편집 잠금 상태. held_by_me면 내가 편집 중(편집 가능), 아니면 holder가 편집 중(읽기 전용). */
+export interface LockState {
+  held_by_me: boolean
+  holder: string
+}
+/** 편집 잠금 획득/갱신(하트비트). 주기적으로 호출하면 내 잠금 유지 + 남의 잠금이 풀리면 인수. */
+export const acquireLock = (id: string) =>
+  api<LockState>(`/api/nodes/${id}/lock`, { method: 'POST' })
+/** 편집 잠금 해제(에디터 닫기/이탈). 이탈 중에도 확실히 가도록 sendBeacon 우선. */
+export function releaseLock(id: string) {
+  const url = `/api/nodes/${id}/lock/release`
+  try {
+    if (navigator.sendBeacon) navigator.sendBeacon(url)
+    else fetch(url, { method: 'POST', credentials: 'same-origin', keepalive: true }).catch(() => {})
+  } catch {
+    /* 이탈 중 실패해도 서버가 TTL(30초)로 정리하므로 무방 */
+  }
+}
+
 export const getNodePath = (nodeId: string) => api<NodePath>(`/api/nodes/${nodeId}/path`)
 
 export const createFolder = (spaceId: string, parentId: string | null, name: string) =>

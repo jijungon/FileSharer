@@ -3,7 +3,7 @@ import CodeMirror, { EditorView } from '@uiw/react-codemirror'
 import { useScrollSync } from '../lib/scrollsync'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ApiError } from '../lib/api'
-import { downloadUrl, NodeInfo } from '../lib/files'
+import { acquireLock, downloadUrl, LockState, NodeInfo, releaseLock } from '../lib/files'
 import { formatBytes } from '../lib/format'
 
 // DnX풍 다크 에디터 테마 (near-black base + 골드 커서/활성줄)
@@ -291,6 +291,8 @@ function TextEditor({ node, fullscreen, onToggleFullscreen, onNodeUpdated, onClo
   const [saving, setSaving] = useState(false)
   const [savedFlash, setSavedFlash] = useState(false)
   const [conflict, setConflict] = useState(false)
+  // 편집 잠금 상태(null=확인 전). held_by_me면 내가 편집 중, 아니면 holder가 편집 중 → 읽기 전용.
+  const [lock, setLock] = useState<LockState | null>(null)
   const [autosave, setAutosave] = useState(() => {
     try {
       return localStorage.getItem(AUTOSAVE_KEY) === 'on'
@@ -305,6 +307,7 @@ function TextEditor({ node, fullscreen, onToggleFullscreen, onNodeUpdated, onClo
   const textRef = useRef('')
   const savedTextRef = useRef('') // 마지막으로 저장된(=서버와 같은) 내용. 이거랑 같으면 저장할 게 없음
   const autosaveTimer = useRef<number | undefined>(undefined)
+  const canEditRef = useRef(true) // 잠금 미보유(읽기 전용)면 false — doSave 가드용(스테일 클로저 방지)
 
   // 문서 로드
   useEffect(() => {
@@ -321,9 +324,58 @@ function TextEditor({ node, fullscreen, onToggleFullscreen, onNodeUpdated, onClo
       .catch((e) => setLoadError(e instanceof Error ? e.message : '불러오기 실패'))
   }, [node.id, node.size])
 
+  // 남이 편집 중이면 읽기 전용. (잠금 확인 전 null은 편집 가능으로 두되 아래 획득이 곧 확정)
+  const readOnly = lock !== null && !lock.held_by_me
+  useEffect(() => {
+    canEditRef.current = !readOnly
+  }, [readOnly])
+
+  // 편집 잠금: 열면 획득, 10초마다 하트비트(겸 남의 잠금 만료 시 인수), 닫으면 해제.
+  useEffect(() => {
+    let alive = true
+    let prevHeld: boolean | null = null
+    async function beat() {
+      try {
+        const s = await acquireLock(node.id)
+        if (!alive) return
+        // 읽기전용→편집가능(잠금 인수)으로 바뀌면 서버 최신으로 새로고침 — 낡은 내용 위 편집 방지
+        if (prevHeld === false && s.held_by_me) {
+          const t = await fetchText(node.id).catch(() => null)
+          if (t !== null && alive) {
+            setText(t)
+            textRef.current = t
+            savedTextRef.current = t
+            baseStamp.current = null
+            setDirty(false)
+            setConflict(false)
+          }
+        }
+        prevHeld = s.held_by_me
+        setLock(s)
+      } catch {
+        /* 네트워크 순단 — 다음 주기에 재시도. 잠금 상태는 유지 */
+      }
+    }
+    beat()
+    const timer = window.setInterval(beat, 10000)
+    return () => {
+      alive = false
+      window.clearInterval(timer)
+      releaseLock(node.id) // 닫기/전환 시 해제(그래도 못 가면 서버 TTL이 정리)
+    }
+  }, [node.id])
+
+  // 탭 닫기·새로고침 등 이탈 시에도 잠금 해제(sendBeacon)
+  useEffect(() => {
+    const onLeave = () => releaseLock(node.id)
+    window.addEventListener('pagehide', onLeave)
+    return () => window.removeEventListener('pagehide', onLeave)
+  }, [node.id])
+
   const doSave = useCallback(
     async (force = false) => {
       if (saving) return
+      if (!canEditRef.current) return // 읽기 전용(잠금 미보유)이면 저장 금지
       const snapshot = textRef.current // 저장 시점 내용 스냅샷
       // 저장 전후가 동일하면(변경 없음) 저장 자체를 건너뛴다 — 불필요한 no-op 저장 방지.
       // (수동 저장 버튼은 아래 dirty로 비활성화되지만, autosave 타이머·Cmd+S 경로도 함께 막는다.)
@@ -460,7 +512,11 @@ function TextEditor({ node, fullscreen, onToggleFullscreen, onNodeUpdated, onClo
             <span className="switch-knob" />
           </button>
         </label>
-        <button className="btn-utility" onClick={() => doSave()} disabled={saving || !dirty}>
+        <button
+          className="btn-utility"
+          onClick={() => doSave()}
+          disabled={saving || !dirty || readOnly}
+        >
           저장 ⌘S
         </button>
         <button className="btn-utility" onClick={onToggleFullscreen}>
@@ -470,6 +526,13 @@ function TextEditor({ node, fullscreen, onToggleFullscreen, onNodeUpdated, onClo
           닫기
         </button>
       </div>
+
+      {readOnly && (
+        <div className="lock-banner">
+          🔒 <strong>{lock?.holder}</strong>님이 편집 중입니다 — 읽기 전용입니다. 편집이 끝나면 자동으로
+          이어받습니다.
+        </div>
+      )}
 
       {conflict && (
         <div className="conflict-banner">
@@ -500,6 +563,8 @@ function TextEditor({ node, fullscreen, onToggleFullscreen, onNodeUpdated, onClo
               theme={appTheme === 'light' ? EDITOR_LIGHT : EDITOR_DARK}
               extensions={[markdown()]}
               onChange={onChange}
+              editable={!readOnly}
+              readOnly={readOnly}
               basicSetup={{ lineNumbers: true, foldGutter: false }}
             />
           </div>
