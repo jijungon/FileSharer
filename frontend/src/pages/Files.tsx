@@ -143,7 +143,6 @@ export default function Files() {
   const [dropActive, setDropActive] = useState(false)
   const [fullscreen, setFullscreen] = useState(false)
   const [bootError, setBootError] = useState('')
-  const [viewerH, setViewerH] = useState(340)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editingName, setEditingName] = useState('')
   const [sortKey, setSortKey] = useState<SortKey>('name')
@@ -714,27 +713,6 @@ export default function Files() {
     if (ok) flash(`${spaceName}(으)로 복사했습니다`)
   }
 
-  function viewerDrag(e: React.PointerEvent) {
-    e.preventDefault()
-    const startY = e.clientY
-    const startH = viewerH
-    // 드래그 중 아래쪽 iframe(PDF·HTML·오피스)이 pointermove를 가로채면 드래그가 멈춘다.
-    // 전체화면 투명 오버레이로 덮어 이벤트를 부모 문서에서 계속 받게 한다.
-    // (아래로 빠르게 끌 때 뷰어가 안 따라오던 버그 수정)
-    const overlay = document.createElement('div')
-    overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;cursor:row-resize'
-    document.body.appendChild(overlay)
-    function move(ev: PointerEvent) {
-      setViewerH(Math.min(window.innerHeight * 0.75, Math.max(180, startH + (startY - ev.clientY))))
-    }
-    function up() {
-      overlay.remove()
-      window.removeEventListener('pointermove', move)
-      window.removeEventListener('pointerup', up)
-    }
-    window.addEventListener('pointermove', move)
-    window.addEventListener('pointerup', up)
-  }
 
   // 드래그 시작: 이 행이 체크돼 있고 여러 개 선택됐으면 선택 전체를, 아니면 이 항목만.
   function rowDragStart(e: React.DragEvent, node: NodeInfo) {
@@ -887,6 +865,15 @@ export default function Files() {
 
   if (!me) return null
 
+  // 파일을 열면 메인 영역이 편집+프리뷰로 바뀐다 → 트리(사이드바) | 편집 | 프리뷰 3분할(VS Code식)
+  const viewerOpen =
+    !!selected &&
+    selected.type === 'file' &&
+    !trashMode &&
+    !favMode &&
+    !recentMode &&
+    checked.size === 0
+
   return (
     <div className="shell">
       <header className="topbar">
@@ -927,20 +914,26 @@ export default function Files() {
         onDropToCrumb={(id, idx) => onMove(id, idx === null ? null : path[idx].id)}
       />
 
-      <div className="workspace" style={{ display: fullscreen && selected ? 'none' : undefined }}>
-        <aside className="sidebar">
+      <div className="workspace">
+        <aside
+          className="sidebar"
+          style={fullscreen && viewerOpen ? { display: 'none' } : undefined}
+        >
           <button
             className={`space-item sidebar-fav${favMode ? ' active' : ''}`}
             onClick={toggleFavView}
           >
             ★ 즐겨찾기
           </button>
+          <div className="sidebar-divider" />
           <button
             className={`space-item sidebar-recent${recentMode ? ' active' : ''}`}
             onClick={toggleRecentView}
           >
             🕘 최근
           </button>
+          <div className="sidebar-divider" />
+          <div className="sidebar-section-label">공간 · 폴더</div>
           {spaces.map((s) => (
             <div key={s.id}>
               <button
@@ -1026,7 +1019,8 @@ export default function Files() {
           </div>
         </aside>
 
-        <main
+        {!viewerOpen && (
+          <main
           className={`browser${dropActive ? ' drop-active' : ''}`}
           onDragOver={(e) => {
             if (e.dataTransfer.types.includes('Files')) {
@@ -1534,20 +1528,9 @@ export default function Files() {
           </table>
           )}
         </main>
-      </div>
-
-      {selected &&
-        selected.type === 'file' &&
-        !trashMode &&
-        !favMode &&
-        !recentMode &&
-        checked.size === 0 && (
-        <>
-          {!fullscreen && <div className="vsplit-handle" onPointerDown={viewerDrag} />}
-          <div
-            className="viewer-area"
-            style={fullscreen ? { flex: 1, minHeight: 0 } : { height: viewerH }}
-          >
+        )}
+        {viewerOpen && selected && (
+          <div className="viewer-area">
             <ViewerPanel
               node={selected}
               fullscreen={fullscreen}
@@ -1563,8 +1546,8 @@ export default function Files() {
               }}
             />
           </div>
-        </>
-      )}
+        )}
+      </div>
       {!trashMode && checked.size > 0 && (
         <div className="bulk-bar" aria-label="선택 항목">
           <div className="bulk-bar-head">
