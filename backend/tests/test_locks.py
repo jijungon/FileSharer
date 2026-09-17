@@ -36,9 +36,9 @@ def test_acquire_blocks_others(admin_client, db):
     login(admin_client, "lock-b@test.local", "pw-123456")
     r = admin_client.post(f"/api/nodes/{node['id']}/lock").json()
     assert r["held_by_me"] is False
-    assert r["holder"] == "Admin"  # 부트스트랩 관리자 name
+    assert r["holder"] == "admin"  # 닉네임 = 이메일 @ 앞부분(admin@test.local → admin)
     s = admin_client.get(f"/api/nodes/{node['id']}/lock").json()
-    assert s == {"locked": True, "held_by_me": False, "holder": "Admin"}
+    assert s == {"locked": True, "held_by_me": False, "holder": "admin"}
 
 
 def test_release_frees_lock(admin_client, db):
@@ -90,3 +90,26 @@ def test_lock_denied_without_access(admin_client, db):
     admin_client.post("/api/auth/logout")
     login(admin_client, ADMIN_EMAIL, ADMIN_PASSWORD)
     assert admin_client.post(f"/api/nodes/{node['id']}/lock").status_code in (403, 404)
+
+
+def test_holder_shown_as_email_nickname(admin_client, db):
+    """holder는 이메일 @ 앞부분(닉네임)으로 표시된다 — 점(.) 포함 로컬파트도 그대로."""
+    make_user(db, "alice.kim@corp.example", name="앨리스")  # name 있어도 닉네임은 이메일 기준
+    node = org_md(admin_client)
+
+    admin_client.post("/api/auth/logout")
+    login(admin_client, "alice.kim@corp.example", "pw-123456")
+    admin_client.post(f"/api/nodes/{node['id']}/lock")  # 앨리스가 잠금
+
+    admin_client.post("/api/auth/logout")
+    login(admin_client, ADMIN_EMAIL, ADMIN_PASSWORD)
+    s = admin_client.get(f"/api/nodes/{node['id']}/lock").json()
+    assert s["holder"] == "alice.kim"  # @ 앞부분, name('앨리스') 아님
+
+
+def test_email_nickname_helper():
+    from app.models import email_nickname
+
+    assert email_nickname("joji@parametacorp.com") == "joji"
+    assert email_nickname("a.b.c@x.io") == "a.b.c"
+    assert email_nickname("noatsign") == "noatsign"  # @ 없으면 원문

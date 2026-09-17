@@ -20,6 +20,11 @@ def as_utc(dt: datetime | None) -> datetime | None:
     return dt.replace(tzinfo=UTC) if dt.tzinfo is None else dt
 
 
+def email_nickname(email: str) -> str:
+    """표시용 닉네임 = 이메일 @ 앞부분(joji@parametacorp.com → joji). @ 없으면 원문."""
+    return email.split("@", 1)[0] or email
+
+
 class Base(DeclarativeBase):
     pass
 
