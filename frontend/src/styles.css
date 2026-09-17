@@ -403,12 +403,21 @@ button:focus-visible {
   margin-top: auto;
 }
 
-/* 사이드바 맨 위 빠른 접근(즐겨찾기·최근) — 공간 목록과 살짝 구분 */
-.sidebar-fav {
-  margin-bottom: 2px;
+/* 사이드바 섹션 구분선(즐겨찾기 ─ 최근 ─ 폴더 트리) */
+.sidebar-divider {
+  height: 1px;
+  margin: 8px 8px;
+  background: var(--hairline);
 }
-.sidebar-recent {
-  margin-bottom: 8px;
+/* 섹션 라벨(VS Code식 소문자 헤더) */
+.sidebar-section-label {
+  padding: 2px 12px 4px;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-muted-48);
 }
 
 .browser {
@@ -770,25 +779,13 @@ button:focus-visible {
   padding: 48px 0 !important;
 }
 
-/* --- 뷰어·편집기 (T자 하단) --- */
-.vsplit-handle {
-  height: 6px;
-  cursor: row-resize;
-  background: var(--canvas-parchment);
-  border-top: 1px solid var(--hairline);
-  flex-shrink: 0;
-}
-
-.vsplit-handle:hover {
-  background: var(--divider-soft);
-}
-
+/* --- 뷰어·편집기: 파일을 열면 메인 영역을 채운다(트리 | 편집 | 프리뷰 3분할) --- */
 .viewer-area {
-  flex-shrink: 0;
+  flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   background: var(--canvas);
-  border-top: 1px solid var(--hairline);
   min-height: 0;
 }
 

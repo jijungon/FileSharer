@@ -22,9 +22,10 @@ test('markdown editor: open → live preview → edit → save', async ({ page }
   await expect(row).toBeVisible()
   await row.click()
 
-  // T자 하단: 좌 편집기 / 우 렌더링
+  // VS Code식 3분할: 파일을 열면 메인이 편집기(좌)+렌더링(우)로 바뀌고, 왼쪽 트리는 그대로.
   await expect(page.locator('.cm-content')).toBeVisible()
   await expect(page.locator('.md-preview').getByRole('heading', { name: '제목' })).toBeVisible()
+  await expect(page.locator('.sidebar')).toBeVisible() // 트리 | 편집 | 프리뷰 — 트리 유지
 
   // 편집 → 실시간 렌더 반영
   await page.locator('.cm-content').click()
