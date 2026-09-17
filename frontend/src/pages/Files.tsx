@@ -94,11 +94,6 @@ export default function Files() {
   const [sortDir, setSortDir] = useState<SortDir>('asc')
   const [dragOverSpace, setDragOverSpace] = useState<string | null>(null)
   const [dragOverTrash, setDragOverTrash] = useState(false)
-  // 삭제 애니메이션 중인 노드 → 모드('burn'=삭제버튼 불타서재로 / 'vacuum'=드래그 휴지통흡입).
-  // 행이 사라지는 모션을 재생하는 동안만 잠시 유지한다.
-  const [deletingIds, setDeletingIds] = useState<Map<string, 'burn' | 'vacuum'>>(new Map())
-  // 불타는 행 위에 얹을 불꽃 오버레이의 위치(행의 화면 좌표). burn 모드에서만 채워진다.
-  const [flames, setFlames] = useState<{ id: string; rect: DOMRect }[]>([])
   const [treeVersion, setTreeVersion] = useState(0)
   const [checked, setChecked] = useState<Set<string>>(new Set()) // 다중선택된 노드 id
   const fileInput = useRef<HTMLInputElement>(null)
@@ -596,43 +591,9 @@ export default function Files() {
     await guard(() => renameNode(node.id, name))
   }
 
-  const BURN_MS = 720
-  const VACUUM_MS = 520
-  // 삭제 모션 재생: 대상 행에 모드를 표시하고 애니메이션 시간만큼 기다린다.
-  // reduced-motion 사용자는 즉시 넘어간다(모션 생략).
-  async function playDelete(ids: string[], mode: 'burn' | 'vacuum') {
-    const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
-    if (reduce || ids.length === 0) return
-    // burn: 행이 움직이기 전에 화면 좌표를 재서 불꽃 오버레이 위치를 잡는다.
-    if (mode === 'burn') {
-      const rects = ids
-        .map((id) => {
-          const el = document.querySelector(`tr[data-nid="${id}"]`)
-          return el ? { id, rect: el.getBoundingClientRect() } : null
-        })
-        .filter((x): x is { id: string; rect: DOMRect } => x !== null)
-      setFlames(rects)
-    }
-    setDeletingIds((m) => {
-      const n = new Map(m)
-      ids.forEach((i) => n.set(i, mode))
-      return n
-    })
-    await new Promise((r) => setTimeout(r, mode === 'burn' ? BURN_MS : VACUUM_MS))
-  }
-  function clearDeleting(ids: string[]) {
-    setDeletingIds((m) => {
-      const n = new Map(m)
-      ids.forEach((i) => n.delete(i))
-      return n
-    })
-    setFlames((f) => f.filter((x) => !ids.includes(x.id)))
-  }
-
-  // 드래그로 휴지통에 놓아 삭제 — '빨려 들어가는' 모션 후 실제 이동. 복원 가능하므로 확인창 없음.
+  // 드래그로 휴지통에 놓아 삭제(복원 가능하므로 확인창 없음).
   async function trashByDrag(ids: string[]) {
     if (ids.length === 0) return
-    await playDelete(ids, 'vacuum')
     try {
       for (const id of ids) await deleteNode(id)
     } catch (err) {
@@ -642,16 +603,13 @@ export default function Files() {
       clearChecked()
       reload()
       setTreeVersion((v) => v + 1)
-      clearDeleting(ids)
     }
   }
 
-  // 삭제 버튼 — '불타서 재로' 모션 후 실제 이동.
+  // 삭제 버튼 — 휴지통으로 이동(밋밋한 기본 삭제, 모션 없음).
   async function onDelete(node: NodeInfo) {
     if (!window.confirm(`"${node.name}"을(를) 휴지통으로 이동할까요?`)) return
-    await playDelete([node.id], 'burn')
     await guard(() => deleteNode(node.id))
-    clearDeleting([node.id])
     if (selected?.id === node.id) setSelected(null)
   }
 
@@ -816,7 +774,6 @@ export default function Files() {
     const ids = [...checked]
     if (ids.length === 0) return
     if (!window.confirm(`선택한 ${ids.length}개를 휴지통으로 이동할까요?`)) return
-    await playDelete(ids, 'burn')
     try {
       for (const id of ids) await deleteNode(id)
     } catch (err) {
@@ -826,7 +783,6 @@ export default function Files() {
       clearChecked()
       reload()
       setTreeVersion((v) => v + 1)
-      clearDeleting(ids)
     }
   }
 
@@ -1264,9 +1220,7 @@ export default function Files() {
                   data-nid={node.id}
                   className={
                     (selected?.id === node.id ? 'row-selected' : '') +
-                    (checked.has(node.id) ? ' row-checked' : '') +
-                    (deletingIds.get(node.id) === 'burn' ? ' row-burning' : '') +
-                    (deletingIds.get(node.id) === 'vacuum' ? ' row-vacuum' : '')
+                    (checked.has(node.id) ? ' row-checked' : '')
                   }
                   draggable={!trashMode}
                   onDragStart={(e) => rowDragStart(e, node)}
@@ -1502,33 +1456,6 @@ export default function Files() {
           onCreate={createNewMd}
         />
       )}
-      {flames.map((f) => (
-        <BurnFlames key={f.id} rect={f.rect} />
-      ))}
-      {/* 불 영상 백그라운드 프리로드 — 첫 삭제부터 지연 없이 불이 뜨도록 캐시를 데운다 */}
-      <video className="fire-preload" src="/fire.mp4" preload="auto" muted playsInline aria-hidden />
-    </div>
-  )
-}
-
-// 삭제되는 행 위에 얹는 '실제로 일렁이는 불꽃' 오버레이. fixed로 행의 화면 좌표에 맞춘다.
-// 삭제되는 행 위에 실제 불 영상(fire.mp4)을 얹는다. 검은 배경은 screen 블렌드로
-// 빠지고 불꽃만 남는다. 행 위로 솟구치도록 넉넉히 덮고, 가운데에서 커지며 사그라든다.
-function BurnFlames({ rect }: { rect: DOMRect }) {
-  // wrap에 어두운 백드롭 + isolation → screen 블렌드가 이 안에서만 합성되어
-  // 라이트 모드(흰 배경)에서도 불꽃이 씻겨나가지 않고 살아난다.
-  return (
-    <div
-      className="burn-fire-wrap"
-      aria-hidden
-      style={{
-        left: rect.left - rect.width * 0.06,
-        top: rect.top - rect.height * 1.35,
-        width: rect.width * 1.12,
-        height: rect.height * 2.6,
-      }}
-    >
-      <video className="burn-fire" src="/fire.mp4" autoPlay muted loop playsInline />
     </div>
   )
 }
