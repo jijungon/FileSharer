@@ -1505,30 +1505,52 @@ export default function Files() {
       {flames.map((f) => (
         <BurnFlames key={f.id} rect={f.rect} />
       ))}
-      {/* 불 영상 백그라운드 프리로드 — 첫 삭제부터 지연 없이 불이 뜨도록 캐시를 데운다 */}
-      <video className="fire-preload" src="/fire.mp4" preload="auto" muted playsInline aria-hidden />
     </div>
   )
 }
 
 // 삭제되는 행 위에 얹는 '실제로 일렁이는 불꽃' 오버레이. fixed로 행의 화면 좌표에 맞춘다.
-// 삭제되는 행 위에 실제 불 영상(fire.mp4)을 얹는다. 검은 배경은 screen 블렌드로
-// 빠지고 불꽃만 남는다. 행 위로 솟구치도록 넉넉히 덮고, 가운데에서 커지며 사그라든다.
 function BurnFlames({ rect }: { rect: DOMRect }) {
-  // wrap에 어두운 백드롭 + isolation → screen 블렌드가 이 안에서만 합성되어
-  // 라이트 모드(흰 배경)에서도 불꽃이 씻겨나가지 않고 살아난다.
   return (
     <div
-      className="burn-fire-wrap"
+      className="burn-flames"
+      style={{ left: rect.left, top: rect.top, width: rect.width, height: rect.height }}
       aria-hidden
-      style={{
-        left: rect.left - rect.width * 0.06,
-        top: rect.top - rect.height * 1.35,
-        width: rect.width * 1.12,
-        height: rect.height * 2.6,
-      }}
     >
-      <video className="burn-fire" src="/fire.mp4" autoPlay muted loop playsInline />
+      {Array.from({ length: 20 }).map((_, i) => {
+        const t = i / 19 // 가로 위치 0..1
+        const center = 1 - Math.abs(t - 0.5) * 2 // 중앙 1 → 가장자리 0
+        const jitter = ((i * 37) % 5) * 13 // 불꽃마다 살짝 들쭉날쭉
+        const h = 66 + center * center * 188 + jitter // 중앙 불길이 가장 높이 솟음
+        return (
+          <span
+            key={i}
+            className="flame"
+            style={{
+              left: `${t * 100}%`,
+              height: `${h}%`,
+              animationDelay: `${(i % 5) * -0.09}s`,
+              animationDuration: `${0.32 + (i % 4) * 0.05}s`,
+            }}
+          />
+        )
+      })}
+      {Array.from({ length: 12 }).map((_, i) => {
+        const t = 0.5 + (((i % 5) - 2) / 5) * 0.6 // 불티는 중앙 쪽에서 더 튀어오른다
+        return (
+          <span
+            key={`e${i}`}
+            className="ember"
+            style={
+              {
+                left: `${t * 100}%`,
+                animationDelay: `${(i % 5) * 0.1}s`,
+                '--ex': `${(i % 2 ? 1 : -1) * (5 + (i % 3) * 7)}px`,
+              } as React.CSSProperties
+            }
+          />
+        )
+      })}
     </div>
   )
 }
