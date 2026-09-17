@@ -4,7 +4,11 @@ WORKDIR /web
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
 COPY frontend/ ./
-# 버전 뱃지는 frontend/package.json 버전을 vite.config가 직접 읽어 주입(빌드 컨텍스트에 있음).
+# 버전 뱃지 = 머지된 PR 번호. CI(image 잡)가 머지 커밋의 (#NN)에서 뽑아
+# APP_VERSION=v0.0.<PR번호> 로 주입한다. 값이 없으면(로컬/직접푸시) vite.config가
+# frontend/package.json 버전으로 폴백.
+ARG APP_VERSION=""
+ENV APP_VERSION=$APP_VERSION
 RUN npm run build
 
 # ── Stage 2: 백엔드 + 정적파일 → 단일 이미지 ───────────────

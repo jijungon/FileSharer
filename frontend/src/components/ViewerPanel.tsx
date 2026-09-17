@@ -22,6 +22,23 @@ const EDITOR_DARK = EditorView.theme(
   },
   { dark: true },
 )
+
+// 라이트 모드 에디터 테마 (흰 바탕 + 진한 골드 커서/활성줄, 어두운 글자로 대비 확보)
+const EDITOR_LIGHT = EditorView.theme(
+  {
+    '&': { color: '#1d1d1f', backgroundColor: '#ffffff' },
+    '.cm-content': { caretColor: '#9a7526', padding: '8px 0' },
+    '.cm-cursor, .cm-dropCursor': { borderLeftColor: '#9a7526' },
+    '.cm-selectionBackground, &.cm-focused .cm-selectionBackground, .cm-content ::selection': {
+      backgroundColor: '#ece0c4',
+    },
+    '.cm-gutters': { backgroundColor: '#ffffff', color: '#adacb4', border: 'none' },
+    '.cm-activeLine': { backgroundColor: 'rgba(154, 117, 38, 0.06)' },
+    '.cm-activeLineGutter': { backgroundColor: 'rgba(154, 117, 38, 0.09)', color: '#9a7526' },
+    '.cm-selectionMatch': { backgroundColor: 'rgba(154, 117, 38, 0.18)' },
+  },
+  { dark: false },
+)
 import {
   fetchText,
   isAudio,
@@ -39,6 +56,25 @@ import MarkdownPreview from './MarkdownPreview'
 
 const AUTOSAVE_KEY = 'filesharer.autosave'
 const MAX_EDIT_BYTES = 5 * 1024 * 1024
+
+// 현재 앱 테마(라이트/다크)를 구독한다. Files.tsx의 토글이 <html data-theme>를 바꾸므로
+// 에디터가 열려 있는 동안 토글해도 즉시 반영되도록 MutationObserver로 감시한다.
+function useAppTheme(): 'light' | 'dark' {
+  const [theme, setTheme] = useState<'light' | 'dark'>(() =>
+    typeof document !== 'undefined' && document.documentElement.dataset.theme === 'light'
+      ? 'light'
+      : 'dark',
+  )
+  useEffect(() => {
+    const el = document.documentElement
+    const obs = new MutationObserver(() =>
+      setTheme(el.dataset.theme === 'light' ? 'light' : 'dark'),
+    )
+    obs.observe(el, { attributes: true, attributeFilter: ['data-theme'] })
+    return () => obs.disconnect()
+  }, [])
+  return theme
+}
 
 interface Props {
   node: NodeInfo
@@ -248,6 +284,7 @@ function DownloadCard({ node, onClose }: Props) {
 }
 
 function TextEditor({ node, fullscreen, onToggleFullscreen, onNodeUpdated, onClose }: Props) {
+  const appTheme = useAppTheme() // 라이트/다크 토글에 따라 에디터 테마도 전환
   const [text, setText] = useState<string | null>(null)
   const [loadError, setLoadError] = useState('')
   const [dirty, setDirty] = useState(false)
@@ -454,7 +491,7 @@ function TextEditor({ node, fullscreen, onToggleFullscreen, onNodeUpdated, onClo
             <CodeMirror
               value={text}
               height="100%"
-              theme={EDITOR_DARK}
+              theme={appTheme === 'light' ? EDITOR_LIGHT : EDITOR_DARK}
               extensions={[markdown()]}
               onChange={onChange}
               basicSetup={{ lineNumbers: true, foldGutter: false }}

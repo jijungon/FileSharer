@@ -111,6 +111,23 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+      # 앱 버전 = 머지된 PR 번호. 규칙: "버전 == PR 번호"(무슨 일이 있어도 자동 일치).
+      # squash 머지 커밋의 제목 끝에 GitHub이 붙이는 (#NN)에서 뽑는다(제목 줄만 보고 마지막
+      # #숫자 채택 → 본문의 다른 이슈참조에 안 휘둘림). 못 찾으면 빈 값 → package.json 폴백.
+      - name: 앱 버전 산출 (머지 커밋 (#NN) → v0.0.NN)
+        id: appver
+        env:
+          HEAD_MSG: ${{ github.event.head_commit.message }}
+        run: |
+          SUBJECT=$(printf '%s' "$HEAD_MSG" | head -1)
+          NUM=$(printf '%s' "$SUBJECT" | grep -oE '#[0-9]+' | tail -1 | tr -d '#')
+          if [ -n "$NUM" ]; then
+            echo "value=v0.0.$NUM" >> "$GITHUB_OUTPUT"
+            echo "앱 버전 = v0.0.$NUM (PR #$NUM)"
+          else
+            echo "value=" >> "$GITHUB_OUTPUT"
+            echo "PR 번호 못 찾음 → package.json 버전으로 폴백"
+          fi
       # PR은 amd64만 빌드해 빠르게 검증, main push면 amd64+arm64 멀티아치로 GHCR에 push
       - name: 빌드 (main push면 GHCR push까지)
         uses: docker/build-push-action@v7
@@ -118,6 +135,8 @@ jobs:
           context: .
           platforms: ${{ github.event_name == 'push' && 'linux/amd64,linux/arm64' || 'linux/amd64' }}
           push: ${{ github.event_name == 'push' }}
+          build-args: |
+            APP_VERSION=${{ steps.appver.outputs.value }}
           tags: |
             ghcr.io/jijungon/filesharer:latest
             ghcr.io/jijungon/filesharer:${{ github.sha }}

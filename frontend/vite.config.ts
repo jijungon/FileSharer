@@ -6,8 +6,9 @@ import pkg from './package.json'
 
 declare const process: { env: Record<string, string | undefined> }
 
-// 배포 버전 라벨 = package.json 버전(semver). 릴리스마다 여기 버전을 올리면 화면 뱃지에 반영된다.
-// (도커/CI에서 굳이 git이나 build-arg가 필요 없음 — 소스가 곧 버전.) 필요 시 APP_VERSION로 덮어쓰기.
+// 배포 버전 라벨 = 머지된 PR 번호("버전 == PR 번호" 규칙). prod 빌드에선 CI(ci.yml image 잡)가
+// 머지 커밋의 (#NN)을 뽑아 APP_VERSION=v0.0.NN 로 주입한다(Dockerfile ARG→ENV 경유).
+// APP_VERSION이 없을 때(로컬 dev·직접 푸시)만 package.json 버전으로 폴백.
 const appVersion = process.env.APP_VERSION || `v${pkg.version}`
 
 // https://vite.dev/config/
