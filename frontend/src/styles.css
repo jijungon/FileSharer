@@ -430,20 +430,72 @@ button:focus-visible {
   margin-bottom: var(--sp-sm);
 }
 
-/* 목록 새로고침 버튼(툴바 최좌측, 아이콘). 새로고침 중엔 회전. */
-.toolbar-refresh {
-  padding: 7px 11px;
-  font-size: 15px;
-  line-height: 1;
+/* 툴바 아이콘 버튼(VS Code풍) — 정사각 버튼 + 라인 아이콘, 호버 시 골드 */
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  padding: 7px;
+  color: var(--ink-muted-80);
+  background: var(--surface-tile);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-sm);
 }
-.toolbar-refresh .spin {
-  display: inline-block;
+.icon-btn:hover:not(:disabled) {
+  color: var(--primary);
+  border-color: var(--primary);
+  background: var(--surface-raised);
+}
+.icon-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.icon-btn svg {
+  display: block;
+}
+/* 새로고침 회전 — SVG는 fill-box로 중심 기준 회전 */
+.icon-btn .spin {
   animation: refresh-spin 0.7s linear infinite;
+  transform-origin: center;
+  transform-box: fill-box;
 }
 @keyframes refresh-spin {
   to {
     transform: rotate(360deg);
   }
+}
+
+/* 업로드(파일/폴더) 드롭다운 */
+.upload-menu-wrap {
+  position: relative;
+  display: inline-flex;
+}
+.upload-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 20;
+  min-width: 150px;
+  padding: 4px;
+  background: var(--canvas);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.upload-menu button {
+  text-align: left;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--ink);
+  font-size: 14px;
+}
+.upload-menu button:hover {
+  background: var(--surface-tile);
 }
 
 .toolbar-notice {

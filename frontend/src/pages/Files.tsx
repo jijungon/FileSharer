@@ -48,6 +48,62 @@ type SortDir = 'asc' | 'desc'
 // 동시 업로드 개수 상한. 큰 파일(수백 MB)이 대역폭을 나눠 쓰므로 과하지 않게 3.
 const UPLOAD_CONCURRENCY = 3
 
+// 툴바용 라인 아이콘(VS Code풍, currentColor 단색). stroke 기반이라 테마색을 따른다.
+const svgProps = {
+  width: 16,
+  height: 16,
+  viewBox: '0 0 24 24',
+  fill: 'none',
+  stroke: 'currentColor',
+  strokeWidth: 2,
+  strokeLinecap: 'round' as const,
+  strokeLinejoin: 'round' as const,
+  'aria-hidden': true,
+}
+function IconRefresh({ className }: { className?: string }) {
+  return (
+    <svg {...svgProps} className={className}>
+      <path d="M21 12a9 9 0 1 1-2.64-6.36" />
+      <path d="M21 3v6h-6" />
+    </svg>
+  )
+}
+function IconFolderPlus() {
+  return (
+    <svg {...svgProps}>
+      <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+      <line x1="12" y1="11" x2="12" y2="17" />
+      <line x1="9" y1="14" x2="15" y2="14" />
+    </svg>
+  )
+}
+function IconUpload() {
+  return (
+    <svg {...svgProps}>
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+      <polyline points="7 9 12 4 17 9" />
+      <line x1="12" y1="4" x2="12" y2="16" />
+    </svg>
+  )
+}
+function IconFilePlus() {
+  return (
+    <svg {...svgProps}>
+      <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" />
+      <polyline points="14 3 14 8 19 8" />
+      <line x1="12" y1="12" x2="12" y2="18" />
+      <line x1="9" y1="15" x2="15" y2="15" />
+    </svg>
+  )
+}
+function IconChevronDown() {
+  return (
+    <svg {...svgProps} width={12} height={12}>
+      <polyline points="6 9 12 15 18 9" />
+    </svg>
+  )
+}
+
 function compareNodes(a: NodeInfo, b: NodeInfo, key: SortKey, dir: SortDir): number {
   // 폴더는 항상 먼저 (그룹 고정) — 정렬 방향과 무관
   if (a.type !== b.type) return a.type === 'folder' ? -1 : 1
@@ -96,6 +152,7 @@ export default function Files() {
   const [dragOverTrash, setDragOverTrash] = useState(false)
   const [treeVersion, setTreeVersion] = useState(0)
   const [refreshing, setRefreshing] = useState(false) // 새로고침 버튼 회전 표시
+  const [uploadMenuOpen, setUploadMenuOpen] = useState(false) // 업로드(파일/폴더) 드롭다운
   const [checked, setChecked] = useState<Set<string>>(new Set()) // 다중선택된 노드 id
   const fileInput = useRef<HTMLInputElement>(null)
   const folderInput = useRef<HTMLInputElement | null>(null)
@@ -281,6 +338,14 @@ export default function Files() {
       setRefreshing(false)
     }
   }
+
+  // 업로드 드롭다운: 바깥 클릭 시 닫기(토글 버튼은 stopPropagation으로 자기 클릭 제외)
+  useEffect(() => {
+    if (!uploadMenuOpen) return
+    const close = () => setUploadMenuOpen(false)
+    window.addEventListener('click', close)
+    return () => window.removeEventListener('click', close)
+  }, [uploadMenuOpen])
 
   // 공간·폴더 이동이나 휴지통 토글 시 다중선택·검색 해제(다른 목록의 잔상 방지)
   useEffect(() => {
@@ -990,27 +1055,64 @@ export default function Files() {
         >
           <div className="toolbar">
             <button
-              className="btn-utility toolbar-refresh"
+              className="icon-btn toolbar-refresh"
               onClick={refreshCurrent}
               disabled={refreshing}
-              title="목록 새로고침"
+              title="새로고침"
               aria-label="목록 새로고침"
             >
-              <span className={refreshing ? 'spin' : ''}>⟳</span>
+              <IconRefresh className={refreshing ? 'spin' : ''} />
             </button>
             {!trashMode && !favMode && !recentMode && (
               <>
-                <button className="btn-utility" onClick={onNewFolder}>
-                  ＋ 새 폴더
+                <button className="icon-btn" onClick={onNewFolder} title="새 폴더" aria-label="새 폴더">
+                  <IconFolderPlus />
                 </button>
-                <button className="btn-utility" onClick={() => fileInput.current?.click()}>
-                  ↑ 업로드
-                </button>
-                <button className="btn-utility" onClick={() => folderInput.current?.click()}>
-                  ↑ 폴더 업로드
-                </button>
-                <button className="btn-utility" onClick={onNewMd}>
-                  ✎ 새 MD
+                <div className="upload-menu-wrap">
+                  <button
+                    className="icon-btn upload-toggle"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setUploadMenuOpen((o) => !o)
+                    }}
+                    title="업로드"
+                    aria-label="업로드"
+                    aria-haspopup="menu"
+                    aria-expanded={uploadMenuOpen}
+                  >
+                    <IconUpload />
+                    <IconChevronDown />
+                  </button>
+                  {uploadMenuOpen && (
+                    <div className="upload-menu" role="menu" onClick={(e) => e.stopPropagation()}>
+                      <button
+                        role="menuitem"
+                        onClick={() => {
+                          setUploadMenuOpen(false)
+                          fileInput.current?.click()
+                        }}
+                      >
+                        📄 파일 업로드
+                      </button>
+                      <button
+                        role="menuitem"
+                        onClick={() => {
+                          setUploadMenuOpen(false)
+                          folderInput.current?.click()
+                        }}
+                      >
+                        📁 폴더 업로드
+                      </button>
+                    </div>
+                  )}
+                </div>
+                <button
+                  className="icon-btn"
+                  onClick={onNewMd}
+                  title="새 MD 문서"
+                  aria-label="새 MD 문서"
+                >
+                  <IconFilePlus />
                 </button>
                 <input
                   ref={fileInput}
