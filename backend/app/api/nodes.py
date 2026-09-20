@@ -167,6 +167,31 @@ def space_folders(
     return [{"id": n.id, "name": n.name, "parent_id": n.parent_id} for n in rows]
 
 
+@router.get("/spaces/{space_id}/tree")
+def space_tree(
+    space_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)
+) -> list[dict]:
+    """공간의 모든 비삭제 노드(파일+폴더)를 평면 목록으로 — 사이드바 파일 트리 탐색기용.
+    파일 클릭 시 열 수 있도록 type/mime/size도 함께 준다."""
+    space = get_space_checked(db, user, space_id)
+    rows = db.scalars(
+        select(Node)
+        .where(Node.space_id == space.id, Node.deleted_at.is_(None))
+        .order_by(Node.name)
+    ).all()
+    return [
+        {
+            "id": n.id,
+            "name": n.name,
+            "parent_id": n.parent_id,
+            "type": n.type,
+            "mime": n.mime,
+            "size": n.size,
+        }
+        for n in rows
+    ]
+
+
 @router.get("/spaces/{space_id}/search")
 def search_nodes(
     space_id: str,

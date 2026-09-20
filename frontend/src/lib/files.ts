@@ -32,11 +32,25 @@ export interface FolderRow {
   parent_id: string | null
 }
 
+// 사이드바 파일 트리(파일+폴더 전체). 파일 클릭 시 열 수 있게 type/mime/size 포함.
+export interface TreeRow {
+  id: string
+  name: string
+  parent_id: string | null
+  type: 'folder' | 'file'
+  mime: string
+  size: number
+}
+
 export const listSpaceChildren = (spaceId: string) =>
   api<NodeInfo[]>(`/api/spaces/${spaceId}/children`)
 
 export const listSpaceFolders = (spaceId: string) =>
   api<FolderRow[]>(`/api/spaces/${spaceId}/folders`)
+
+/** 공간의 파일+폴더 전체(트리 탐색기용). */
+export const listSpaceTree = (spaceId: string) =>
+  api<TreeRow[]>(`/api/spaces/${spaceId}/tree`)
 
 export const listNodeChildren = (nodeId: string) => api<NodeInfo[]>(`/api/nodes/${nodeId}/children`)
 
