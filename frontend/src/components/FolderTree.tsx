@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
-import { FolderRow, listSpaceFolders } from '../lib/files'
+import { listSpaceTree, TreeRow } from '../lib/files'
 
-interface TreeNode extends FolderRow {
+interface TreeNode extends TreeRow {
   children: TreeNode[]
 }
 
-function buildTree(rows: FolderRow[]): TreeNode[] {
+function buildTree(rows: TreeRow[]): TreeNode[] {
   const byId = new Map<string, TreeNode>()
   rows.forEach((r) => byId.set(r.id, { ...r, children: [] }))
   const roots: TreeNode[] = []
@@ -14,8 +14,12 @@ function buildTree(rows: FolderRow[]): TreeNode[] {
     if (parent) parent.children.push(node)
     else roots.push(node)
   })
+  // 폴더 먼저, 그다음 파일 — 각 그룹 내 이름순(파일 목록과 동일한 정렬)
   const sortRec = (nodes: TreeNode[]) => {
-    nodes.sort((a, b) => a.name.localeCompare(b.name, 'ko'))
+    nodes.sort((a, b) => {
+      if (a.type !== b.type) return a.type === 'folder' ? -1 : 1
+      return a.name.localeCompare(b.name, 'ko')
+    })
     nodes.forEach((n) => sortRec(n.children))
   }
   sortRec(roots)
@@ -25,25 +29,55 @@ function buildTree(rows: FolderRow[]): TreeNode[] {
 interface Props {
   spaceId: string
   currentFolderId: string | null // null = 공간 루트
+  selectedFileId?: string | null // 지금 열려 있는 파일(강조)
+  favIds?: Set<string> // 즐겨찾기된 노드 id (컨텍스트 메뉴 라벨용)
   version: number // 구조 변경 시 증가 → 다시 로드
   onOpenFolder: (folderId: string) => void
+  onOpenFile: (row: TreeRow) => void
   onDropToFolder?: (draggedId: string, targetFolderId: string | null) => void
+  // 우클릭 컨텍스트 메뉴 동작(파일목록 표를 대체 — 이름변경/즐겨찾기/삭제)
+  onRename?: (row: TreeRow) => void
+  onToggleFavorite?: (row: TreeRow) => void
+  onDelete?: (row: TreeRow) => void
 }
 
 export default function FolderTree({
   spaceId,
   currentFolderId,
+  selectedFileId,
+  favIds,
   version,
   onOpenFolder,
+  onOpenFile,
   onDropToFolder,
+  onRename,
+  onToggleFavorite,
+  onDelete,
 }: Props) {
-  const [rows, setRows] = useState<FolderRow[]>([])
+  const [rows, setRows] = useState<TreeRow[]>([])
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [dragOverId, setDragOverId] = useState<string | null>(null) // 드래그가 올라온 폴더(드롭 대상 강조)
+  // 우클릭 컨텍스트 메뉴: 대상 행 + 화면 좌표
+  const [menu, setMenu] = useState<{ row: TreeRow; x: number; y: number } | null>(null)
+
+  // 메뉴 바깥 클릭/스크롤/Esc 시 닫기
+  useEffect(() => {
+    if (!menu) return
+    const close = () => setMenu(null)
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setMenu(null)
+    window.addEventListener('click', close)
+    window.addEventListener('resize', close)
+    window.addEventListener('keydown', onKey)
+    return () => {
+      window.removeEventListener('click', close)
+      window.removeEventListener('resize', close)
+      window.removeEventListener('keydown', onKey)
+    }
+  }, [menu])
 
   useEffect(() => {
     let alive = true
-    listSpaceFolders(spaceId)
+    listSpaceTree(spaceId)
       .then((r) => alive && setRows(r))
       .catch(() => alive && setRows([]))
     return () => {
@@ -62,8 +96,7 @@ export default function FolderTree({
     if (!currentFolderId) return
     setExpanded((prev) => {
       const next = new Set(prev)
-      // 현재 폴더 자신도 펼쳐서 그 안의 하위 폴더가 트리에 보이도록
-      next.add(currentFolderId)
+      next.add(currentFolderId) // 현재 폴더 자신도 펼쳐 그 안이 보이도록
       let cur: string | null | undefined = parentOf.get(currentFolderId)
       let hops = 0
       while (cur && hops < 100) {
@@ -108,36 +141,91 @@ export default function FolderTree({
   }
 
   function renderNode(node: TreeNode) {
+    const isFolder = node.type === 'folder'
     const isOpen = expanded.has(node.id)
     const hasChildren = node.children.length > 0
+    const active = isFolder ? node.id === currentFolderId : node.id === selectedFileId
     return (
       <li key={node.id} className="tree-li">
         <div
-          className={`tree-row${node.id === currentFolderId ? ' active' : ''}${
+          className={`tree-row${active ? ' active' : ''}${
             dragOverId === node.id ? ' drag-over' : ''
           }`}
-          {...dropHandlers(node.id)}
+          {...(isFolder ? dropHandlers(node.id) : {})}
+          onContextMenu={(e) => {
+            if (!onRename && !onDelete && !onToggleFavorite) return
+            e.preventDefault()
+            setMenu({ row: node, x: e.clientX, y: e.clientY })
+          }}
         >
           <button
             className="tree-caret"
-            onClick={() => hasChildren && toggle(node.id)}
-            style={{ visibility: hasChildren ? 'visible' : 'hidden' }}
+            onClick={() => isFolder && hasChildren && toggle(node.id)}
+            style={{ visibility: isFolder && hasChildren ? 'visible' : 'hidden' }}
             aria-label={isOpen ? '접기' : '펼치기'}
+            tabIndex={isFolder && hasChildren ? 0 : -1}
           >
             {isOpen ? '▾' : '▸'}
           </button>
-          <button className="tree-name" onClick={() => onOpenFolder(node.id)} title={node.name}>
+          <span className="tree-icon" aria-hidden="true">
+            {isFolder ? '📁' : '📄'}
+          </span>
+          <button
+            className="tree-name"
+            onClick={() => (isFolder ? (onOpenFolder(node.id), toggle(node.id)) : onOpenFile(node))}
+            title={node.name}
+          >
             {node.name}
           </button>
         </div>
-        {isOpen && hasChildren && (
+        {isFolder && isOpen && hasChildren && (
           <ul className="tree-branch">{node.children.map(renderNode)}</ul>
         )}
       </li>
     )
   }
 
-  if (tree.length === 0) return null
-
-  return <ul className="folder-tree tree-branch">{tree.map(renderNode)}</ul>
+  return (
+    <>
+      {tree.length > 0 && <ul className="folder-tree tree-branch">{tree.map(renderNode)}</ul>}
+      {menu && (
+        <div
+          className="tree-menu"
+          style={{ position: 'fixed', top: menu.y, left: menu.x }}
+          role="menu"
+          onClick={(e) => e.stopPropagation()}
+          onContextMenu={(e) => e.preventDefault()}
+        >
+          <button
+            role="menuitem"
+            onClick={() => {
+              onRename?.(menu.row)
+              setMenu(null)
+            }}
+          >
+            ✎ 이름 변경
+          </button>
+          <button
+            role="menuitem"
+            onClick={() => {
+              onToggleFavorite?.(menu.row)
+              setMenu(null)
+            }}
+          >
+            {favIds?.has(menu.row.id) ? '★ 즐겨찾기 해제' : '☆ 즐겨찾기'}
+          </button>
+          <button
+            role="menuitem"
+            className="danger"
+            onClick={() => {
+              onDelete?.(menu.row)
+              setMenu(null)
+            }}
+          >
+            🗑 삭제
+          </button>
+        </div>
+      )}
+    </>
+  )
 }

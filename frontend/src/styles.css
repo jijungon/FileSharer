@@ -508,6 +508,38 @@ button:focus-visible {
   background: var(--surface-tile);
 }
 
+/* 트리 우클릭 컨텍스트 메뉴(이름변경/즐겨찾기/삭제) — fixed 위치는 인라인 스타일 */
+.tree-menu {
+  z-index: 50;
+  min-width: 150px;
+  padding: 4px;
+  background: var(--canvas);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.3);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.tree-menu button {
+  text-align: left;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--ink);
+  font-size: 13px;
+  white-space: nowrap;
+}
+.tree-menu button:hover {
+  background: var(--surface-tile);
+}
+.tree-menu button.danger {
+  color: var(--danger);
+}
+.tree-menu button.danger:hover {
+  background: color-mix(in srgb, var(--danger) 14%, var(--canvas));
+}
+
 .toolbar-notice {
   margin-left: auto;
   color: var(--primary);
@@ -1734,6 +1766,14 @@ button:focus-visible {
   font-size: 9px;
   padding: 2px 0;
   text-align: center;
+}
+
+/* 트리 파일/폴더 아이콘 */
+.tree-icon {
+  font-size: 12px;
+  line-height: 1;
+  flex: none;
+  margin-right: 2px;
 }
 
 .tree-name {

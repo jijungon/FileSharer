@@ -8,6 +8,29 @@ def upload(client, url, name, content=b"hello", mime="text/plain"):
     return client.post(url, files={"file": (name, io.BytesIO(content), mime)})
 
 
+def test_space_tree_returns_files_and_folders(admin_client):
+    """사이드바 트리 탐색기용 /tree — 파일+폴더 전체를 type/parent와 함께 평면으로."""
+    pid = spaces_of(admin_client)["personal"]["id"]
+    folder = admin_client.post("/api/nodes", json={"space_id": pid, "name": "폴더A"}).json()
+    upload(admin_client, f"/api/nodes/{folder['id']}/files", "안.md")  # 폴더 안 파일
+    upload(admin_client, f"/api/spaces/{pid}/files", "루트.txt")  # 루트 파일
+
+    tree = admin_client.get(f"/api/spaces/{pid}/tree").json()
+    by_name = {n["name"]: n for n in tree}
+    assert by_name["폴더A"]["type"] == "folder" and by_name["폴더A"]["parent_id"] is None
+    assert by_name["루트.txt"]["type"] == "file" and by_name["루트.txt"]["parent_id"] is None
+    assert by_name["안.md"]["type"] == "file" and by_name["안.md"]["parent_id"] == folder["id"]
+
+
+def test_space_tree_excludes_trashed(admin_client):
+    """휴지통으로 옮긴 항목은 트리에서 빠진다."""
+    pid = spaces_of(admin_client)["personal"]["id"]
+    node = upload(admin_client, f"/api/spaces/{pid}/files", "삭제될것.txt").json()
+    assert any(n["id"] == node["id"] for n in admin_client.get(f"/api/spaces/{pid}/tree").json())
+    admin_client.delete(f"/api/nodes/{node['id']}")
+    assert all(n["id"] != node["id"] for n in admin_client.get(f"/api/spaces/{pid}/tree").json())
+
+
 def setup_people(admin_client, db):
     """admin + A(팀원) + B(비팀원) + 개발팀. 반환: (a_spaces 함수, ids)."""
     a = admin_client.post(

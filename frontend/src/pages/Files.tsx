@@ -34,6 +34,7 @@ import {
   moveNode,
   NodeInfo,
   purgeNode,
+  TreeRow,
   recordView,
   removeFavorite,
   renameNode,
@@ -476,6 +477,22 @@ export default function Files() {
     }
   }
 
+  // 사이드바 트리에서 파일 클릭 → 뷰어로 연다(TreeRow만으로 동작, openLocated 파일 분기와 동일)
+  async function openFileFromTree(row: TreeRow) {
+    setSearchQ('')
+    setFavMode(false)
+    setRecentMode(false)
+    try {
+      const found = await getNodePath(row.id)
+      setSpaceId(found.space_id)
+      setPath(found.ancestors)
+      setSelected(found.node)
+      navigate(`/files/${row.id}`)
+    } catch {
+      flash('항목을 열 수 없습니다')
+    }
+  }
+
   // 즐겨찾기 뷰 열기/토글
   async function toggleFavView() {
     if (favMode) {
@@ -696,6 +713,22 @@ export default function Files() {
     if (!window.confirm(`"${node.name}"을(를) 휴지통으로 이동할까요?`)) return
     await guard(() => deleteNode(node.id))
     if (selected?.id === node.id) setSelected(null)
+  }
+
+  // ── 사이드바 트리 우클릭 메뉴 동작(파일목록 표 대체) ──
+  async function renameFromTree(row: TreeRow) {
+    const name = window.prompt('새 이름', row.name)?.trim()
+    if (!name || name === row.name) return
+    await guard(() => renameNode(row.id, name)) // guard가 reload + treeVersion 갱신
+  }
+  async function deleteFromTree(row: TreeRow) {
+    if (!window.confirm(`"${row.name}"을(를) 휴지통으로 이동할까요?`)) return
+    await guard(() => deleteNode(row.id))
+    if (selected?.id === row.id) setSelected(null) // 열려 있던 파일이면 뷰어 닫기
+  }
+  function toggleFavFromTree(row: TreeRow) {
+    // toggleFav는 node.id만 사용 — TreeRow에 NodeInfo 필수 필드만 채워 넘긴다
+    toggleFav({ ...row, space_id: spaceId ?? '', created_at: null, updated_at: null })
   }
 
   async function onMove(draggedId: string, targetFolderId: string | null) {
@@ -975,9 +1008,15 @@ export default function Files() {
                 <FolderTree
                   spaceId={s.id}
                   currentFolderId={currentFolder?.id ?? null}
+                  selectedFileId={selected?.id ?? null}
+                  favIds={favIds}
                   version={treeVersion}
                   onOpenFolder={openFolderById}
+                  onOpenFile={openFileFromTree}
                   onDropToFolder={(id, target) => onMove(id, target)}
+                  onRename={renameFromTree}
+                  onToggleFavorite={toggleFavFromTree}
+                  onDelete={deleteFromTree}
                 />
               )}
             </div>
