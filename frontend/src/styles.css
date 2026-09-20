@@ -405,6 +405,16 @@ button:focus-visible {
 }
 
 /* 사이드바 섹션 구분선(즐겨찾기 ─ 최근 ─ 폴더 트리) */
+/* 사이드바 상단 아이콘 툴바(새로고침·새 폴더·업로드·새 MD) */
+.sidebar-toolbar {
+  display: flex;
+  gap: 4px;
+  padding: 0 4px 2px;
+}
+.sidebar-toolbar .icon-btn {
+  flex: 1;
+}
+
 .sidebar-divider {
   height: 1px;
   margin: 8px 8px;

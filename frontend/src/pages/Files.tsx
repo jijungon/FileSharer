@@ -97,13 +97,6 @@ function IconFilePlus() {
     </svg>
   )
 }
-function IconChevronDown() {
-  return (
-    <svg {...svgProps} width={12} height={12}>
-      <polyline points="6 9 12 15 18 9" />
-    </svg>
-  )
-}
 
 function compareNodes(a: NodeInfo, b: NodeInfo, key: SortKey, dir: SortDir): number {
   // 폴더는 항상 먼저 (그룹 고정) — 정렬 방향과 무관
@@ -152,10 +145,8 @@ export default function Files() {
   const [dragOverTrash, setDragOverTrash] = useState(false)
   const [treeVersion, setTreeVersion] = useState(0)
   const [refreshing, setRefreshing] = useState(false) // 새로고침 버튼 회전 표시
-  const [uploadMenuOpen, setUploadMenuOpen] = useState(false) // 업로드(파일/폴더) 드롭다운
   const [checked, setChecked] = useState<Set<string>>(new Set()) // 다중선택된 노드 id
   const fileInput = useRef<HTMLInputElement>(null)
-  const folderInput = useRef<HTMLInputElement | null>(null)
   const restoredFromUrl = useRef(false)
   const navSynced = useRef(false) // 부팅 완료 후 브라우저 뒤로/앞으로(URL) 동기화 활성화
 
@@ -339,13 +330,6 @@ export default function Files() {
     }
   }
 
-  // 업로드 드롭다운: 바깥 클릭 시 닫기(토글 버튼은 stopPropagation으로 자기 클릭 제외)
-  useEffect(() => {
-    if (!uploadMenuOpen) return
-    const close = () => setUploadMenuOpen(false)
-    window.addEventListener('click', close)
-    return () => window.removeEventListener('click', close)
-  }, [uploadMenuOpen])
 
   // 공간·폴더 이동이나 휴지통 토글 시 다중선택·검색 해제(다른 목록의 잔상 방지)
   useEffect(() => {
@@ -952,6 +936,52 @@ export default function Files() {
           className="sidebar"
           style={fullscreen && viewerOpen ? { display: 'none' } : undefined}
         >
+          {/* 상단 아이콘 툴바 — 새로고침 · 새 폴더 · 업로드(단일) · 새 MD */}
+          <div className="sidebar-toolbar">
+            <button
+              className="icon-btn toolbar-refresh"
+              onClick={refreshCurrent}
+              disabled={refreshing}
+              title="새로고침"
+              aria-label="목록 새로고침"
+            >
+              <IconRefresh className={refreshing ? 'spin' : ''} />
+            </button>
+            {!trashMode && !favMode && !recentMode && (
+              <>
+                <button className="icon-btn" onClick={onNewFolder} title="새 폴더" aria-label="새 폴더">
+                  <IconFolderPlus />
+                </button>
+                <button
+                  className="icon-btn"
+                  onClick={() => fileInput.current?.click()}
+                  title="업로드 (폴더는 끌어다 놓기)"
+                  aria-label="업로드"
+                >
+                  <IconUpload />
+                </button>
+                <button
+                  className="icon-btn"
+                  onClick={onNewMd}
+                  title="새 MD 문서"
+                  aria-label="새 MD 문서"
+                >
+                  <IconFilePlus />
+                </button>
+                <input
+                  ref={fileInput}
+                  type="file"
+                  multiple
+                  hidden
+                  onChange={(e) => {
+                    if (e.target.files) uploadAll(e.target.files)
+                    e.target.value = ''
+                  }}
+                />
+              </>
+            )}
+          </div>
+          <div className="sidebar-divider" />
           <button
             className={`space-item sidebar-fav${favMode ? ' active' : ''}`}
             onClick={toggleFavView}
@@ -1087,95 +1117,6 @@ export default function Files() {
           }}
         >
           <div className="toolbar">
-            <button
-              className="icon-btn toolbar-refresh"
-              onClick={refreshCurrent}
-              disabled={refreshing}
-              title="새로고침"
-              aria-label="목록 새로고침"
-            >
-              <IconRefresh className={refreshing ? 'spin' : ''} />
-            </button>
-            {!trashMode && !favMode && !recentMode && (
-              <>
-                <button className="icon-btn" onClick={onNewFolder} title="새 폴더" aria-label="새 폴더">
-                  <IconFolderPlus />
-                </button>
-                <div className="upload-menu-wrap">
-                  <button
-                    className="icon-btn upload-toggle"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      setUploadMenuOpen((o) => !o)
-                    }}
-                    title="업로드"
-                    aria-label="업로드"
-                    aria-haspopup="menu"
-                    aria-expanded={uploadMenuOpen}
-                  >
-                    <IconUpload />
-                    <IconChevronDown />
-                  </button>
-                  {uploadMenuOpen && (
-                    <div className="upload-menu" role="menu" onClick={(e) => e.stopPropagation()}>
-                      <button
-                        role="menuitem"
-                        onClick={() => {
-                          setUploadMenuOpen(false)
-                          fileInput.current?.click()
-                        }}
-                      >
-                        📄 파일 업로드
-                      </button>
-                      <button
-                        role="menuitem"
-                        onClick={() => {
-                          setUploadMenuOpen(false)
-                          folderInput.current?.click()
-                        }}
-                      >
-                        📁 폴더 업로드
-                      </button>
-                    </div>
-                  )}
-                </div>
-                <button
-                  className="icon-btn"
-                  onClick={onNewMd}
-                  title="새 MD 문서"
-                  aria-label="새 MD 문서"
-                >
-                  <IconFilePlus />
-                </button>
-                <input
-                  ref={fileInput}
-                  type="file"
-                  multiple
-                  hidden
-                  onChange={(e) => {
-                    if (e.target.files) uploadAll(e.target.files)
-                    e.target.value = ''
-                  }}
-                />
-                <input
-                  ref={(el) => {
-                    folderInput.current = el
-                    // webkitdirectory는 React 타입에 없어 마운트 시 직접 세팅 → 폴더 선택창
-                    if (el) {
-                      el.setAttribute('webkitdirectory', '')
-                      el.setAttribute('directory', '')
-                    }
-                  }}
-                  type="file"
-                  multiple
-                  hidden
-                  onChange={(e) => {
-                    if (e.target.files) uploadAll(e.target.files)
-                    e.target.value = ''
-                  }}
-                />
-              </>
-            )}
             {trashMode && <span className="muted">휴지통 — 복원하면 원래 위치로 돌아갑니다</span>}
             {favMode && <span className="muted">즐겨찾기 — ★ 를 눌러 해제, 항목을 눌러 이동</span>}
             {recentMode && <span className="muted">최근 열어본 항목 — 항목을 눌러 다시 열기</span>}
