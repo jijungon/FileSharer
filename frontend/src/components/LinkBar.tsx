@@ -12,6 +12,7 @@ interface Props {
   onDropToCrumb: (draggedId: string, targetIndex: number | null) => void
   activeToken?: string | null // 지금 메모리에 든 임시 토큰 — 서버 업로드 curl 자동 채움
   onActiveToken: (token: string | null) => void // 임시 토큰 발급/해제 반영
+  onLocalUpload?: () => void // 내 PC에서 현재 위치로 업로드(파일 선택창 열기)
 }
 
 export default function LinkBar({
@@ -22,6 +23,7 @@ export default function LinkBar({
   onDropToCrumb,
   activeToken,
   onActiveToken,
+  onLocalUpload,
 }: Props) {
   const [copied, setCopied] = useState(false)
   const [shareOpen, setShareOpen] = useState(false)
@@ -77,15 +79,26 @@ export default function LinkBar({
       </div>
 
       <div className="linkbar-actions">
+        {/* 로컬: 다운로드 · 로컬 업로드 (연한 노랑) */}
         {target && (
           <a href={downloadUrl(target)}>
-            <button className="btn-utility">다운로드</button>
+            <button className="btn-utility btn-tier-local">다운로드</button>
           </a>
         )}
-        {/* 서버(헤드리스) 업로드 — '파일 이동' 묶음(다운로드 옆, 중립색) */}
+        {space && onLocalUpload && (
+          <button
+            className="btn-utility btn-tier-local"
+            onClick={onLocalUpload}
+            title="내 PC에서 이 위치로 업로드 (폴더는 끌어다 놓기)"
+          >
+            ↑ 로컬 업로드
+          </button>
+        )}
+        {space && <span className="action-divider" aria-hidden="true" />}
+        {/* 서버(헤드리스) 업로드 (중간 노랑) */}
         {space && (
           <button
-            className="btn-utility"
+            className="btn-utility btn-tier-server"
             onClick={() => {
               setServerUpOpen((v) => !v)
               setShareOpen(false)
@@ -95,14 +108,14 @@ export default function LinkBar({
             ↥ 서버 업로드
           </button>
         )}
-        {/* 사내 링크 복사 — 공유 링크와 같은 '링크' 묶음이라 같은 accent 색 */}
+        {/* 링크: 사내 링크 복사 · 공유 링크 (진한 노랑) — 서버와는 색으로만 구분(선 없음) */}
         {target && (
-          <button className="btn-primary" onClick={copyInternalLink}>
+          <button className="btn-utility btn-tier-link" onClick={copyInternalLink}>
             {copied ? '복사됨 ✓' : '사내 링크 복사'}
           </button>
         )}
         <button
-          className="btn-primary linkbar-share"
+          className="btn-utility btn-tier-link linkbar-share"
           disabled={!target}
           onClick={() => {
             setShareOpen((v) => !v)

@@ -156,6 +156,48 @@ button:focus-visible {
   font-size: 16px;
 }
 
+/* 액션 바 3단계 노랑 — 로컬(연) · 서버(중) · 링크(진). 크기·모양은 btn-utility 공통, 색만 단계.
+   (반드시 .btn-utility 뒤에 와서 배경/글자색을 덮어써야 한다.) */
+.btn-tier-local,
+.btn-tier-server {
+  color: var(--ink);
+  border: 1px solid transparent;
+  font-weight: 600;
+}
+.btn-tier-local {
+  background: color-mix(in srgb, var(--primary) 22%, var(--surface-tile));
+}
+.btn-tier-local:hover {
+  background: color-mix(in srgb, var(--primary) 34%, var(--surface-tile));
+  border-color: transparent;
+}
+.btn-tier-server {
+  background: color-mix(in srgb, var(--primary) 55%, var(--surface-tile));
+}
+.btn-tier-server:hover {
+  background: color-mix(in srgb, var(--primary) 68%, var(--surface-tile));
+  border-color: transparent;
+}
+.btn-tier-link {
+  background: var(--primary);
+  color: var(--on-primary);
+  border: 1px solid transparent;
+  font-weight: 600;
+}
+.btn-tier-link:hover {
+  background: var(--primary-focus);
+  border-color: transparent;
+}
+
+/* 그룹 구분선(로컬 | 서버 | 링크) */
+.action-divider {
+  width: 1px;
+  align-self: stretch;
+  margin: 3px 5px;
+  background: var(--hairline-strong);
+  flex: none;
+}
+
 /* --- 로그인 화면 --- */
 .login-page {
   min-height: 100vh;
