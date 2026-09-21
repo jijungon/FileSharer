@@ -52,7 +52,6 @@ export default function TokenDrawer({ open, onClose, onActiveToken }: Props) {
 
   return (
     <>
-      {open && <div className="token-drawer-backdrop" onClick={onClose} />}
       <aside
         className={`token-drawer${open ? ' open' : ''}`}
         role="dialog"
