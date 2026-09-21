@@ -22,15 +22,14 @@ test('별표로 즐겨찾기에 추가하고, 즐겨찾기 뷰에서 해제한�
     mimeType: 'text/plain',
     buffer: Buffer.from('x'),
   })
-  // 업로드 진행 행이 사라진 뒤(실제 파일 행으로 교체됨) 별표 버튼을 다룬다
+  // 업로드 진행 패널이 사라진 뒤(실제 파일로 교체됨) 트리 항목을 다룬다
   await expect(page.locator('.upload-row')).toHaveCount(0)
-  const row = page.getByRole('row', { name: new RegExp(fname) })
-  await expect(row).toBeVisible()
+  const item = page.locator('.tree-name').filter({ hasText: fname })
+  await expect(item).toBeVisible()
 
-  // 행 hover 후 ☆ 클릭 → 즐겨찾기 추가(라벨이 '즐겨찾기 해제'로 바뀜)
-  await row.hover()
-  await row.getByRole('button', { name: '즐겨찾기', exact: true }).click()
-  await expect(row.getByRole('button', { name: '즐겨찾기 해제', exact: true })).toBeVisible()
+  // 트리 항목 우클릭 → 컨텍스트 메뉴에서 '☆ 즐겨찾기'
+  await item.click({ button: 'right' })
+  await page.getByRole('menuitem', { name: /즐겨찾기/ }).click()
 
   // 사이드바 즐겨찾기 뷰 → 그 파일이 보인다 (트리 파일명과 겹치지 않게 사이드바 버튼 특정)
   await page.locator('.sidebar-fav').click()

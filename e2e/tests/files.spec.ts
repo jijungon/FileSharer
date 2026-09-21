@@ -17,7 +17,7 @@ test('local login → browse → create folder → upload file', async ({ page }
 
   page.once('dialog', (d) => d.accept('E2E폴더'))
   await page.getByRole('button', { name: /새 폴더/ }).click()
-  await expect(page.getByRole('cell', { name: /E2E폴더/ })).toBeVisible()
+  await expect(page.locator('.tree-name').filter({ hasText: /E2E폴더/ })).toBeVisible()
 
   await page.locator('input[type="file"]:not([webkitdirectory])').setInputFiles({
     name: '스모크.txt',

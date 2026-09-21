@@ -31,9 +31,9 @@ test('업로드 중 파일 목록에 진행 행이 뜨고, 완료되면 실제 �
   await expect(uploadRow).toContainText('진행.txt')
   await expect(uploadRow.locator('.upload-inline-bar')).toBeVisible()
 
-  // 완료되면 진행 행이 사라지고 실제 파일 행으로 바뀐다
+  // 완료되면 진행 행이 사라지고 실제 파일이 트리에 나타난다
   await expect(page.locator('.upload-row')).toHaveCount(0, { timeout: 6000 })
-  await expect(page.getByRole('cell', { name: /진행\.txt/ })).toBeVisible()
+  await expect(page.locator('.tree-name').filter({ hasText: /진행\.txt/ })).toBeVisible()
 })
 
 test('여러 파일 업로드 시 툴바에 전체 개수가 표시되고, 각 파일이 진행 행으로 뜬다', async ({ page }) => {
@@ -54,9 +54,9 @@ test('여러 파일 업로드 시 툴바에 전체 개수가 표시되고, 각 �
   await expect(page.locator('.upload-count')).toContainText('/3')
   await expect(page.locator('.upload-row')).toHaveCount(3)
 
-  // 모두 끝나면 진행 행이 사라지고 실제 파일이 나타난다
+  // 모두 끝나면 진행 행이 사라지고 실제 파일이 트리에 나타난다
   await expect(page.locator('.upload-row')).toHaveCount(0, { timeout: 6000 })
-  await expect(page.getByRole('cell', { name: /다중2\.txt/ })).toBeVisible()
+  await expect(page.locator('.tree-name').filter({ hasText: /다중2\.txt/ })).toBeVisible()
 })
 
 test('일부 업로드가 실패하면 그 행만 실패로 표시되고 나머지는 완료된다', async ({ page }) => {
@@ -89,6 +89,6 @@ test('일부 업로드가 실패하면 그 행만 실패로 표시되고 나머�
   await expect(errorRow.locator('.upload-inline-pct')).toContainText('실패')
   await expect(page.locator('.upload-count')).toContainText('실패 1')
 
-  // 실패해도 성공한 파일은 목록에 나타난다
-  await expect(page.getByRole('cell', { name: /성공A\.txt/ })).toBeVisible()
+  // 실패해도 성공한 파일은 트리에 나타난다
+  await expect(page.locator('.tree-name').filter({ hasText: /성공A\.txt/ })).toBeVisible()
 })

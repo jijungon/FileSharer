@@ -55,6 +55,6 @@ test('new MD: cancel discards without creating a file', async ({ page }) => {
   await expect(modal).toBeVisible()
   await modal.getByRole('button', { name: '취소' }).click()
   await expect(modal).toBeHidden()
-  // 파일이 생성되지 않았다
-  await expect(page.getByRole('cell', { name: /버리는문서\.md/ })).toHaveCount(0)
+  // 파일이 생성되지 않았다(트리에도 없음)
+  await expect(page.locator('.tree-name').filter({ hasText: /버리는문서\.md/ })).toHaveCount(0)
 })

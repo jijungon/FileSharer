@@ -16,7 +16,6 @@ test('sidebar folder tree navigates into folders and back to root', async ({ pag
   // 루트에 폴더 생성
   page.once('dialog', (d) => d.accept(parent))
   await page.getByRole('button', { name: /새 폴더/ }).click()
-  await expect(page.getByRole('cell', { name: parent })).toBeVisible()
 
   // 사이드바 트리에 폴더가 나타난다 → 클릭해 들어가기
   const treeItem = page.locator('.tree-name', { hasText: parent })
@@ -38,8 +37,8 @@ test('sidebar folder tree navigates into folders and back to root', async ({ pag
   await childInTree.click()
   await expect(page.locator('.crumb-current, .crumb', { hasText: child })).toBeVisible()
 
-  // 파일 목록의 '상위 폴더' 행으로 한 단계 위(부모)로 복귀
-  await page.locator('.row-up').click()
+  // 브레드크럼에서 부모를 눌러 한 단계 위(부모)로 복귀
+  await page.locator('.crumb', { hasText: parent }).click()
   await expect(page.locator('.crumb-current, .crumb', { hasText: parent })).toBeVisible()
   await expect(page.locator('.crumb-current', { hasText: child })).toHaveCount(0)
 

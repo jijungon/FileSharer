@@ -431,11 +431,62 @@ button:focus-visible {
   color: var(--ink-muted-48);
 }
 
+/* 사이드바 인라인 최근(MAX 5) */
+.recent-inline {
+  list-style: none;
+  margin: 0 0 2px;
+  padding: 0;
+}
+.recent-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  width: 100%;
+  text-align: left;
+  background: none;
+  color: var(--ink);
+  font-size: 12.5px;
+  padding: 4px 10px 4px 14px;
+  border-radius: var(--radius-sm);
+}
+.recent-item:hover {
+  background: var(--divider-soft);
+}
+.recent-item.active {
+  color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 8%, transparent);
+}
+.recent-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.recent-empty {
+  padding: 2px 14px 6px;
+  font-size: 12px;
+}
+
 .browser {
   flex: 1;
   background: var(--canvas);
   padding: var(--sp-md) var(--sp-lg);
   overflow: auto;
+}
+
+/* 파일 열지 않았을 때 메인 안내(표 제거 후 — 탐색은 왼쪽 트리로) */
+.browser-welcome {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  text-align: center;
+  padding: 40px;
+}
+.browser-welcome-sub {
+  font-size: 12.5px;
+  opacity: 0.8;
 }
 
 .browser.drop-active {
@@ -1875,6 +1926,60 @@ button:focus-visible {
 }
 .upload-row.error .upload-inline-bar::-moz-progress-bar {
   background: var(--danger, #c0392b);
+}
+
+/* 업로드 진행 — 표를 없앤 뒤엔 화면 우하단 플로팅 패널로 보여준다(어느 화면에서나) */
+.upload-panel {
+  position: fixed;
+  right: var(--sp-md);
+  bottom: var(--sp-md);
+  z-index: 60;
+  width: min(360px, calc(100vw - 2 * var(--sp-md)));
+  max-height: 40vh;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-xs);
+  padding: var(--sp-sm) var(--sp-md);
+  background: var(--canvas);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+}
+.upload-panel-head {
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.upload-panel-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-xs);
+}
+.upload-panel-list .upload-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-sm);
+}
+.upload-panel-list .upload-row .node-name {
+  min-width: 0;
+  max-width: 45%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.upload-panel-list .upload-row .upload-inline-wrap {
+  flex: 1;
+}
+
+/* 트리 항목은 끌어서 이동/복사할 수 있다(잡는 손 커서) */
+.folder-tree .tree-row[draggable='true'] {
+  cursor: grab;
+}
+.folder-tree .tree-row[draggable='true']:active {
+  cursor: grabbing;
 }
 
 /* 다중선택 하단 바 (뷰어 자리에 도킹) */

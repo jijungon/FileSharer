@@ -31,14 +31,15 @@ test('파일을 열면 "최근" 뷰에 쌓이고, 클릭하면 다시 열린다'
   await cell.click()
   await expect(page.locator('.viewer-area')).toBeVisible()
 
-  // 사이드바 '최근' 뷰 → 방금 연 파일이 보인다
-  // (트리에 파일까지 표시되므로 /최근/ 정규식은 파일명과도 겹친다 → 사이드바 버튼을 특정)
-  await page.locator('.sidebar-recent').click()
-  const recentRow = page.locator('.search-result', { hasText: fname })
-  await expect(recentRow).toBeVisible()
+  // 사이드바 인라인 '최근'(MAX 5)에 방금 연 파일이 나타난다(직렬 실행이라 최상단)
+  const recentItem = page.locator('.recent-inline .recent-item', { hasText: fname })
+  await expect(recentItem).toBeVisible()
 
-  // 최근 항목 클릭 → 다시 뷰어로 열림
-  await recentRow.click()
-  await expect(page.locator('.search-results')).toHaveCount(0)
+  // 공간 루트로 나가 뷰어를 닫는다
+  await page.locator('.space-item.space-root.active').click()
+  await expect(page.locator('.viewer-area')).toHaveCount(0)
+
+  // 인라인 최근 항목 클릭 → 다시 뷰어로 열림
+  await page.locator('.recent-inline .recent-item', { hasText: fname }).click()
   await expect(page.locator('.viewer-area')).toBeVisible()
 })
