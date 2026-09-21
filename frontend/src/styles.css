@@ -470,6 +470,28 @@ button:focus-visible {
   padding: 10px 6px;
   border-top: 1px solid var(--divider-soft);
 }
+/* 좁은 드로어에서 한글이 글자 단위로 쪼개지지 않게: 라벨은 …로 자르고 범위는 한 줄 유지 */
+.token-table td:first-child {
+  max-width: 130px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.token-table td:nth-child(2) {
+  white-space: nowrap;
+}
+.token-table .token-actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  justify-content: flex-end;
+  white-space: nowrap;
+}
+/* '적용 중'·활성 상태 유틸 버튼 강조(골드 아웃라인) */
+.btn-utility.active {
+  border-color: var(--primary);
+  color: var(--primary);
+}
 
 .linkbar-share:disabled {
   opacity: 0.45;

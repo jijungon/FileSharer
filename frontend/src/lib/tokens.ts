@@ -6,6 +6,7 @@ export interface ApiTokenInfo {
   label: string
   space_id: string | null
   node_id: string | null
+  space: string | null // 토큰이 실제로 속한 공간 id(폴더/공간/개인 해석) — 현재 공간 필터용
   scope_label: string
   created_at: string | null
   last_used_at: string | null

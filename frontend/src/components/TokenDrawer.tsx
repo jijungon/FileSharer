@@ -2,16 +2,34 @@ import { useCallback, useEffect, useState } from 'react'
 import { api, SpaceInfo } from '../lib/api'
 import { ApiTokenInfo, CreatedApiToken, createToken, listTokens, revokeToken } from '../lib/tokens'
 
+// 이번 세션(브라우저 메모리)에 발급해 '원문을 아는' 토큰 — 서버 업로드 자동 채움에 쓸 수 있다.
+// 새로고침하면 사라진다(디스크/스토리지에 저장하지 않음).
+export interface SessionToken {
+  id: string
+  label: string
+  token: string
+}
+
 interface Props {
   open: boolean
   onClose: () => void
-  // 방금 발급한 토큰 원문을 부모로 올려 '서버 업로드 자동 채움'에 쓰게 한다(메모리에만 보관).
-  onActiveToken: (token: string) => void
+  spaceId: string | null // 현재 활성 공간 — 발급 폼 기본값 + 목록 필터
+  sessionTokens: SessionToken[] // 이번 세션에 발급한 토큰(원문 메모리 보관)
+  activeToken: string | null // 서버 업로드에 적용 중인 토큰 원문
+  onTokenCreated: (created: CreatedApiToken) => void // 발급 시: 세션 목록 추가 + 활성화
+  onUseToken: (token: string) => void // 목록에서 '사용' → 활성 토큰 지정
 }
 
-// 서버(헤드리스) 업로드용 API 토큰 관리 — 새 페이지 대신 우측 슬라이드 드로어(토글).
-// 로그인한 사용자가 '자기' 토큰을 발급/조회/회수한다.
-export default function TokenDrawer({ open, onClose, onActiveToken }: Props) {
+// 서버(헤드리스) 업로드용 API 토큰 관리 — 우측 슬라이드 드로어(현재 공간 기준).
+export default function TokenDrawer({
+  open,
+  onClose,
+  spaceId,
+  sessionTokens,
+  activeToken,
+  onTokenCreated,
+  onUseToken,
+}: Props) {
   const [tokens, setTokens] = useState<ApiTokenInfo[]>([])
   const [spaces, setSpaces] = useState<SpaceInfo[]>([])
   const [created, setCreated] = useState<CreatedApiToken | null>(null)
@@ -21,7 +39,6 @@ export default function TokenDrawer({ open, onClose, onActiveToken }: Props) {
     setTokens(await listTokens())
   }, [])
 
-  // 열릴 때 토큰·공간 목록 로드
   useEffect(() => {
     if (!open) return
     setError('')
@@ -30,7 +47,6 @@ export default function TokenDrawer({ open, onClose, onActiveToken }: Props) {
     )
   }, [open, reload])
 
-  // Esc로 닫기
   useEffect(() => {
     if (!open) return
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
@@ -43,90 +59,103 @@ export default function TokenDrawer({ open, onClose, onActiveToken }: Props) {
     setError('')
     try {
       await revokeToken(id)
-      if (created?.id === id) setCreated(null)
       await reload()
     } catch (err) {
       setError(err instanceof Error ? err.message : '회수에 실패했습니다')
     }
   }
 
+  const currentSpace = spaces.find((s) => s.id === spaceId) ?? null
+  const currentSpaceName = currentSpace?.name ?? '내 공간'
+  // 목록만 현재(사이드바) 공간에 해당하는 토큰으로 필터. 발급 폼 드롭다운은 main과 동기화하지 않는다.
+  const shownTokens = tokens.filter((t) => t.space === spaceId)
+
   return (
-    <>
-      <aside
-        className={`token-drawer${open ? ' open' : ''}`}
-        role="dialog"
-        aria-label="API 토큰"
-        aria-hidden={!open}
-      >
-        <div className="token-drawer-head">
-          <h2>API 토큰</h2>
-          <button className="btn-utility" onClick={onClose} aria-label="닫기">
-            닫기 ✕
-          </button>
-        </div>
+    <aside
+      className={`token-drawer${open ? ' open' : ''}`}
+      role="dialog"
+      aria-label="API 토큰"
+      aria-hidden={!open}
+    >
+      <div className="token-drawer-head">
+        <h2>API 토큰</h2>
+        <button className="btn-utility" onClick={onClose} aria-label="닫기">
+          닫기 ✕
+        </button>
+      </div>
 
-        <div className="token-drawer-body">
-          <p className="muted" style={{ marginTop: 0 }}>
-            서버(클라우드·IDC)에서 브라우저 없이 파일을 밀어 넣을 때 쓰는 토큰입니다.{' '}
-            <code>Authorization: Bearer &lt;토큰&gt;</code> 헤더로 인증합니다. 토큰은{' '}
-            <strong>발급 직후 한 번만</strong> 표시되며(비밀번호처럼), 서버에는 해시만 저장됩니다.
-          </p>
+      <div className="token-drawer-body">
+        <p className="muted" style={{ marginTop: 0 }}>
+          현재 공간: <strong>{currentSpaceName}</strong> · 서버(클라우드·IDC)에서 브라우저 없이 파일을
+          밀어 넣을 때 쓰는 토큰입니다. <code>Authorization: Bearer &lt;토큰&gt;</code> 헤더로
+          인증하며, 토큰은 <strong>발급 직후 한 번만</strong> 표시됩니다(비밀번호처럼).
+        </p>
 
-          {error && <p style={{ color: '#d70015', fontSize: 14 }}>{error}</p>}
+        {error && <p style={{ color: '#d70015', fontSize: 14 }}>{error}</p>}
 
-          {created && (
-            <CreatedTokenCard created={created} spaces={spaces} onDismiss={() => setCreated(null)} />
-          )}
+        {created && (
+          <CreatedTokenCard created={created} spaces={spaces} onDismiss={() => setCreated(null)} />
+        )}
 
-          <CreateTokenForm
-            spaces={spaces}
-            onCreated={(c) => {
-              setCreated(c)
-              onActiveToken(c.token) // 방금 발급 → 서버 업로드에 자동 적용
-              reload()
-            }}
-            onError={setError}
-          />
+        <CreateTokenForm
+          spaces={spaces}
+          onCreated={(c) => {
+            setCreated(c)
+            onTokenCreated(c) // 세션 목록 추가 + 서버 업로드에 자동 적용
+            reload()
+          }}
+          onError={setError}
+        />
 
-          <h3 className="token-section-title">발급된 토큰</h3>
-          <table className="token-table">
-            <thead>
-              <tr>
-                <th>라벨</th>
-                <th>범위</th>
-                <th>발급</th>
-                <th>마지막 사용</th>
-                <th>만료</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {tokens.map((t) => (
+        <h3 className="token-section-title">발급된 토큰 · {currentSpaceName}</h3>
+        <table className="token-table">
+          <thead>
+            <tr>
+              <th>라벨</th>
+              <th>범위</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {shownTokens.map((t) => {
+              const sess = sessionTokens.find((s) => s.id === t.id)
+              const isActive = sess != null && sess.token === activeToken
+              return (
                 <tr key={t.id}>
                   <td>{t.label || <span className="muted">(무제)</span>}</td>
                   <td>{t.scope_label}</td>
-                  <td>{fmtDate(t.created_at)}</td>
-                  <td>{t.last_used_at ? fmtDate(t.last_used_at) : '—'}</td>
-                  <td>{t.expires_at ? fmtDate(t.expires_at) : '없음'}</td>
-                  <td style={{ textAlign: 'right' }}>
+                  <td className="token-actions">
+                    {sess ? (
+                      <button
+                        className={`btn-utility${isActive ? ' active' : ''}`}
+                        onClick={() => onUseToken(sess.token)}
+                        title="이 토큰을 서버 업로드에 사용"
+                      >
+                        {isActive ? '적용 중 ✓' : '사용'}
+                      </button>
+                    ) : (
+                      <span className="muted" title="발급 시 한 번만 표시됩니다 — 자동 채움하려면 재발급하세요">
+                        재발급 필요
+                      </span>
+                    )}
                     <button className="btn-utility" onClick={() => revoke(t.id)}>
                       회수
                     </button>
                   </td>
                 </tr>
-              ))}
-              {tokens.length === 0 && (
-                <tr>
-                  <td colSpan={6} className="muted" style={{ padding: '14px 6px' }}>
-                    아직 발급된 토큰이 없습니다.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </aside>
-    </>
+              )
+            })}
+            {shownTokens.length === 0 && (
+              <tr>
+                <td colSpan={3} className="muted" style={{ padding: '14px 6px' }}>
+                  이 공간에 발급된 토큰이 없습니다.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </aside>
   )
 }
 
@@ -140,7 +169,7 @@ function CreateTokenForm({
   onError: (msg: string) => void
 }) {
   const [label, setLabel] = useState('')
-  const [scope, setScope] = useState('') // '' = 개인 공간(기본), 그 외 = space_id
+  const [scope, setScope] = useState('') // '' = 개인 공간(기본), 그 외 = space_id (수동 선택)
   const [expires, setExpires] = useState('') // '' = 무기한
 
   async function submit(e: React.FormEvent) {
@@ -154,7 +183,6 @@ function CreateTokenForm({
       })
       onCreated(created)
       setLabel('')
-      setScope('')
       setExpires('')
     } catch (err) {
       onError(err instanceof Error ? err.message : '토큰 발급에 실패했습니다')
@@ -204,8 +232,8 @@ function CreateTokenForm({
         </button>
       </form>
       <p className="muted" style={{ marginBottom: 0 }}>
-        범위를 좁힐수록 안전합니다. 특정 폴더로만 제한하려면 파일 화면의{' '}
-        <strong>서버 업로드</strong> 버튼에서 그 폴더를 열고 발급하세요.
+        범위를 좁힐수록 안전합니다. 특정 폴더로만 제한하려면 파일 화면의 <strong>서버 업로드</strong>{' '}
+        버튼에서 그 폴더를 열고 발급하세요.
       </p>
     </section>
   )
@@ -264,9 +292,4 @@ function CreatedTokenCard({
       </div>
     </section>
   )
-}
-
-function fmtDate(iso: string | null): string {
-  if (!iso) return '—'
-  return iso.slice(0, 10)
 }

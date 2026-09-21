@@ -5,7 +5,7 @@ import FolderTree from '../components/FolderTree'
 import LinkBar from '../components/LinkBar'
 import NewMarkdownModal from '../components/NewMarkdownModal'
 import ViewerPanel from '../components/ViewerPanel'
-import TokenDrawer from '../components/TokenDrawer'
+import TokenDrawer, { SessionToken } from '../components/TokenDrawer'
 import { api, ApiError, Me, SpaceInfo } from '../lib/api'
 import { formatBytes, formatDateTime, formatTrashRemaining } from '../lib/format'
 import {
@@ -138,6 +138,8 @@ export default function Files() {
   const [tokensOpen, setTokensOpen] = useState(false) // API 토큰 드로어(우측 슬라이드, 토글)
   // 방금 발급한 토큰 원문 — 서버 업로드 curl 자동 채움용. 메모리에만 두고 새로고침하면 사라진다.
   const [activeToken, setActiveToken] = useState<string | null>(null)
+  // 이번 세션에 발급한 토큰들(원문 메모리 보관) — 드로어 목록에서 '사용'으로 다시 고를 수 있다.
+  const [sessionTokens, setSessionTokens] = useState<SessionToken[]>([])
   const [sortKey, setSortKey] = useState<SortKey>('name')
   const [sortDir, setSortDir] = useState<SortDir>('asc')
   const [dragOverSpace, setDragOverSpace] = useState<string | null>(null)
@@ -792,6 +794,7 @@ export default function Files() {
           onDropToCrumb={(id, idx) => onMove(id, idx === null ? null : path[idx].id)}
           activeToken={activeToken}
           onOpenTokens={() => setTokensOpen(true)}
+          onClearToken={() => setActiveToken(null)}
         />
       )}
 
@@ -1186,6 +1189,7 @@ export default function Files() {
               onNavigate={crumbNavigate}
               activeToken={activeToken}
               onOpenTokens={() => setTokensOpen(true)}
+              onClearToken={() => setActiveToken(null)}
               fullscreen={fullscreen}
               onToggleFullscreen={() => setFullscreen((f) => !f)}
               onNodeUpdated={(fresh) => {
@@ -1234,7 +1238,17 @@ export default function Files() {
       <TokenDrawer
         open={tokensOpen}
         onClose={() => setTokensOpen(false)}
-        onActiveToken={setActiveToken}
+        spaceId={spaceId}
+        sessionTokens={sessionTokens}
+        activeToken={activeToken}
+        onTokenCreated={(c) => {
+          setSessionTokens((prev) => [
+            ...prev.filter((s) => s.id !== c.id),
+            { id: c.id, label: c.label, token: c.token },
+          ])
+          setActiveToken(c.token)
+        }}
+        onUseToken={setActiveToken}
       />
     </div>
   )

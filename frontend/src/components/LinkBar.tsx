@@ -12,6 +12,7 @@ interface Props {
   onDropToCrumb: (draggedId: string, targetIndex: number | null) => void
   activeToken?: string | null // 방금 발급한 토큰 — 서버 업로드 curl 자동 채움
   onOpenTokens?: () => void // API 토큰 드로어 열기
+  onClearToken?: () => void // 적용 토큰 해제
 }
 
 export default function LinkBar({
@@ -22,6 +23,7 @@ export default function LinkBar({
   onDropToCrumb,
   activeToken,
   onOpenTokens,
+  onClearToken,
 }: Props) {
   const [copied, setCopied] = useState(false)
   const [shareOpen, setShareOpen] = useState(false)
@@ -117,6 +119,7 @@ export default function LinkBar({
             label={currentLabel}
             activeToken={activeToken}
             onOpenTokens={onOpenTokens}
+            onClearToken={onClearToken}
             onClose={() => setServerUpOpen(false)}
           />
         )}

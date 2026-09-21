@@ -48,12 +48,27 @@ def _iso(dt) -> str | None:
     return as_utc(dt).isoformat() if dt else None
 
 
+def _effective_space_id(db: Session, token: ApiToken) -> str | None:
+    """토큰이 실제로 속한 공간 id(폴더범위=그 폴더의 공간 · 공간범위=그 공간 · null=소유자 개인공간).
+    프론트에서 '현재 공간의 토큰만' 필터링하는 데 쓴다."""
+    if token.node_id:
+        node = db.get(Node, token.node_id)
+        return node.space_id if node else None
+    if token.space_id:
+        return token.space_id
+    personal = db.scalar(
+        select(Space).where(Space.type == "personal", Space.user_id == token.user_id)
+    )
+    return personal.id if personal else None
+
+
 def _token_out(db: Session, token: ApiToken) -> dict:
     return {
         "id": token.id,
         "label": token.label,
         "space_id": token.space_id,
         "node_id": token.node_id,
+        "space": _effective_space_id(db, token),
         "scope_label": _scope_label(db, token),
         "created_at": _iso(token.created_at),
         "last_used_at": _iso(token.last_used_at),

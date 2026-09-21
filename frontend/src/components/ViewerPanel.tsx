@@ -89,6 +89,7 @@ interface Props {
   onClose: () => void
   activeToken?: string | null // 방금 발급한 토큰 — 서버 업로드 curl 자동 채움
   onOpenTokens?: () => void // API 토큰 드로어 열기
+  onClearToken?: () => void // 적용 토큰 해제
 }
 
 // 편집/미리보기 상단 경로(예전 LinkBar의 브레드크럼). 파일을 열면 LinkBar를 숨기고
@@ -127,12 +128,14 @@ function FileActions({
   path,
   activeToken,
   onOpenTokens,
+  onClearToken,
 }: {
   node: NodeInfo
   space: SpaceInfo | null
   path: NodeInfo[]
   activeToken?: string | null
   onOpenTokens?: () => void
+  onClearToken?: () => void
 }) {
   const [copied, setCopied] = useState(false)
   const [shareOpen, setShareOpen] = useState(false)
@@ -179,6 +182,7 @@ function FileActions({
           label={folder?.name ?? space.name}
           activeToken={activeToken}
           onOpenTokens={onOpenTokens}
+          onClearToken={onClearToken}
           onClose={() => setServerUpOpen(false)}
         />
       )}
@@ -203,6 +207,7 @@ function ViewerToolbar({
   extraStatus,
   activeToken,
   onOpenTokens,
+  onClearToken,
   children,
 }: {
   node: NodeInfo
@@ -218,6 +223,7 @@ function ViewerToolbar({
   extraStatus?: ReactNode
   activeToken?: string | null
   onOpenTokens?: () => void
+  onClearToken?: () => void
   children?: ReactNode
 }) {
   return (
@@ -235,6 +241,7 @@ function ViewerToolbar({
         path={path}
         activeToken={activeToken}
         onOpenTokens={onOpenTokens}
+        onClearToken={onClearToken}
       />
       {children}
       <button className="btn-utility" onClick={onToggleFullscreen}>
@@ -272,6 +279,7 @@ function MediaPreview({
   onToggleFullscreen,
   activeToken,
   onOpenTokens,
+  onClearToken,
 }: Props & { kind: MediaKind }) {
   const raw = `/api/files/${node.id}/raw`
   // 영상 재생은 preview.mp4로 — 브라우저가 못 푸는 오디오 코덱(AC-3 등)이면 서버가 AAC로 변환해 준다.
@@ -288,6 +296,7 @@ function MediaPreview({
         onClose={onClose}
         activeToken={activeToken}
         onOpenTokens={onOpenTokens}
+        onClearToken={onClearToken}
         status={formatBytes(node.size)}
         extraStatus={
           kind === 'html' ? (
@@ -365,6 +374,7 @@ function OfficePreview({
   onToggleFullscreen,
   activeToken,
   onOpenTokens,
+  onClearToken,
 }: Props) {
   const [state, setState] = useState<'loading' | 'ready' | 'error'>('loading')
   const [pdfUrl, setPdfUrl] = useState('')
@@ -410,6 +420,7 @@ function OfficePreview({
         onClose={onClose}
         activeToken={activeToken}
         onOpenTokens={onOpenTokens}
+        onClearToken={onClearToken}
         status={formatBytes(node.size)}
         extraStatus={<span className="editor-status">PDF로 변환됨</span>}
       />
@@ -480,6 +491,7 @@ function TextEditor({
   onClose,
   activeToken,
   onOpenTokens,
+  onClearToken,
 }: Props) {
   const appTheme = useAppTheme() // 라이트/다크 토글에 따라 에디터 테마도 전환
   const [text, setText] = useState<string | null>(null)
@@ -696,6 +708,7 @@ function TextEditor({
         onClose={onClose}
         activeToken={activeToken}
         onOpenTokens={onOpenTokens}
+        onClearToken={onClearToken}
         status={status}
         statusClass={
           [dirty && !saving ? 'dirty' : '', savedFlash ? 'saved' : '']

@@ -7,6 +7,7 @@ interface Props {
   label: string // 현재 위치 표시용(공간·폴더 이름)
   activeToken?: string | null // 방금 발급해 메모리에 든 토큰 — 있으면 curl에 자동 채움
   onOpenTokens?: () => void // 'API 토큰' 드로어 열기
+  onClearToken?: () => void // 적용된 토큰 해제 → <TOKEN> 자리표시자로 복귀
   onClose: () => void
 }
 
@@ -18,6 +19,7 @@ export default function ServerUploadPopover({
   label,
   activeToken,
   onOpenTokens,
+  onClearToken,
   onClose,
 }: Props) {
   const [copied, setCopied] = useState('')
@@ -51,9 +53,14 @@ export default function ServerUploadPopover({
 
       {activeToken ? (
         <p className="muted" style={{ margin: '2px 0' }}>
-          방금 발급한 토큰(<code>{masked}</code>)이 아래 curl에 적용됐습니다. 바로 복사해 쓰세요.
+          적용된 토큰: <code>{masked}</code>{' '}
+          <button type="button" className="linklike" onClick={onClearToken}>
+            해제
+          </button>
           <br />
-          <span style={{ fontSize: 12 }}>이 브라우저에서만 임시 적용 · 새로고침하면 해제됩니다.</span>
+          <span style={{ fontSize: 12 }}>
+            이 브라우저에서만 임시 적용 · 새로고침/해제 시 &lt;TOKEN&gt;으로 돌아갑니다.
+          </span>
         </p>
       ) : (
         <p className="muted" style={{ margin: '2px 0' }}>
