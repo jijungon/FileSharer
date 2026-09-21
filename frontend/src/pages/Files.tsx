@@ -561,8 +561,13 @@ export default function Files() {
 
   // 여러 파일을 최대 UPLOAD_CONCURRENCY개씩 병렬 업로드. 각 항목은 진행 패널에
   // 추가되고, 완료/실패로 표시된 뒤 배치가 끝나면 잠시 후 패널에서 제거된다.
-  async function runUploads(entries: { file: File; relPath?: string }[]) {
-    if (!spaceId || entries.length === 0) return
+  async function runUploads(
+    entries: { file: File; relPath?: string }[],
+    target?: { spaceId: string; parentId: string | null },
+  ) {
+    // 대상 미지정이면 '지금 보고 있는 위치'. 지정되면(트리 폴더/공간 드롭) 그 위치로.
+    const dest = target ?? { spaceId: spaceId ?? '', parentId: currentFolder?.id ?? null }
+    if (!dest.spaceId || entries.length === 0) return
     const items = entries.map((e) => ({
       id: `${e.file.name}:${Date.now()}:${Math.random().toString(36).slice(2)}`,
       file: e.file,
@@ -576,7 +581,7 @@ export default function Files() {
     await runWithConcurrency(items, UPLOAD_CONCURRENCY, async (it) => {
       try {
         await uploadFile(
-          { spaceId: spaceId!, parentId: currentFolder?.id ?? null },
+          { spaceId: dest.spaceId, parentId: dest.parentId },
           it.file,
           it.relPath,
           (loaded, total) => setUploads((u) => setProgress(u, it.id, loaded, total)),
@@ -593,13 +598,18 @@ export default function Files() {
     // 실제 목록을 받아오며 업로드 행을 같은 렌더에서 교체(중간 상태로 같은
     // 파일이 두 번 보이지 않게). flushSync로 setItems+제거를 한 커밋에 묶는다.
     const ids = new Set(items.map((it) => it.id))
+    // 드롭 대상이 '지금 보고 있는 위치'일 때만 현재 목록을 즉시 새로고침(다른 폴더면 트리만 갱신).
+    const isCurrentDest =
+      dest.spaceId === spaceId && dest.parentId === (currentFolder?.id ?? null)
     let fresh: NodeInfo[] | null = null
-    try {
-      fresh = currentFolder
-        ? await listNodeChildren(currentFolder.id)
-        : await listSpaceChildren(spaceId)
-    } catch {
-      /* 목록 새로고침 실패는 무시 — 다음 네비게이션에서 갱신됨 */
+    if (isCurrentDest) {
+      try {
+        fresh = currentFolder
+          ? await listNodeChildren(currentFolder.id)
+          : await listSpaceChildren(dest.spaceId)
+      } catch {
+        /* 목록 새로고침 실패는 무시 — 다음 네비게이션에서 갱신됨 */
+      }
     }
     flushSync(() => {
       if (fresh) setItems(fresh)
@@ -607,13 +617,19 @@ export default function Files() {
     })
   }
 
-  async function uploadAll(files: FileList | File[]) {
-    if (!spaceId) return
+  async function uploadAll(
+    files: FileList | File[],
+    target?: { spaceId: string; parentId: string | null },
+  ) {
+    if (!spaceId && !target) return
     const { ok, tooBig } = partitionBySize(Array.from(files), maxUploadMb, (f) => f.size)
     if (tooBig.length)
       flash(`${maxUploadMb}MB 초과로 제외됨: ${tooBig.map((f) => f.name).join(', ')}`)
     // 폴더 선택 업로드면 webkitRelativePath에 'folder/sub/file' 경로가 담긴다
-    await runUploads(ok.map((f) => ({ file: f, relPath: f.webkitRelativePath || undefined })))
+    await runUploads(
+      ok.map((f) => ({ file: f, relPath: f.webkitRelativePath || undefined })),
+      target,
+    )
   }
 
   // 드롭된 폴더를 하위까지 재귀로 읽어 상대경로와 함께 업로드
@@ -645,14 +661,37 @@ export default function Files() {
     }
   }
 
-  async function uploadDropped(entries: FileSystemEntry[]) {
-    if (!spaceId) return
+  async function uploadDropped(
+    entries: FileSystemEntry[],
+    target?: { spaceId: string; parentId: string | null },
+  ) {
+    if (!spaceId && !target) return
     const collected: { file: File; relPath: string }[] = []
     for (const entry of entries) await walkEntry(entry, '', collected)
     const { ok, tooBig } = partitionBySize(collected, maxUploadMb, (c) => c.file.size)
     if (tooBig.length)
       flash(`${maxUploadMb}MB 초과로 제외됨: ${tooBig.map((c) => c.file.name).join(', ')}`)
-    await runUploads(ok.map((c) => ({ file: c.file, relPath: c.relPath })))
+    await runUploads(ok.map((c) => ({ file: c.file, relPath: c.relPath })), target)
+  }
+
+  // 드롭 이벤트에서 로컬 파일/폴더를 '동기적으로' 뽑아낸다(핸들러 종료 후 items가 무효화됨).
+  function extractDrop(e: React.DragEvent): { entries: FileSystemEntry[]; files: File[] } {
+    const entries = e.dataTransfer.items
+      ? Array.from(e.dataTransfer.items)
+          .map((it) => it.webkitGetAsEntry?.() ?? null)
+          .filter((x): x is FileSystemEntry => x !== null)
+      : []
+    return { entries, files: Array.from(e.dataTransfer.files) }
+  }
+
+  // 트리의 특정 폴더·공간 위로 로컬 파일/폴더를 드롭 → 그 위치로 업로드(다중·폴더 재귀 지원).
+  function uploadToTarget(
+    target: { spaceId: string; parentId: string | null },
+    e: React.DragEvent,
+  ) {
+    const { entries, files } = extractDrop(e)
+    if (entries.length > 0) uploadDropped(entries, target)
+    else if (files.length > 0) uploadAll(files, target)
   }
 
   // 드래그로 휴지통에 놓아 삭제(복원 가능하므로 확인창 없음).
@@ -879,25 +918,31 @@ export default function Files() {
                 }
                 onClick={() => switchSpace(s.id)}
                 onDragOver={(e) => {
-                  if (e.dataTransfer.types.includes('application/x-node-id')) {
+                  const t = e.dataTransfer.types
+                  if (t.includes('application/x-node-id') || t.includes('Files')) {
                     e.preventDefault()
                     setDragOverSpace(s.id)
                   }
                 }}
                 onDragLeave={() => setDragOverSpace((cur) => (cur === s.id ? null : cur))}
                 onDrop={(e) => {
-                  const ids = draggedIds(e)
                   setDragOverSpace(null)
-                  if (ids.length === 0) return
-                  e.preventDefault()
-                  // 활성 공간 위에 놓으면 그 공간 최상위로 이동, 다른 공간이면 복사
-                  if (s.id === spaceId) onMove(ids[0], null)
-                  else copyToSpace(ids[0], s.id, s.name)
+                  const ids = draggedIds(e)
+                  if (ids.length > 0) {
+                    e.preventDefault()
+                    // 활성 공간 위에 놓으면 그 공간 최상위로 이동, 다른 공간이면 복사
+                    if (s.id === spaceId) onMove(ids[0], null)
+                    else copyToSpace(ids[0], s.id, s.name)
+                  } else if (e.dataTransfer.types.includes('Files')) {
+                    e.preventDefault()
+                    // 로컬 파일/폴더 → 이 공간 최상위로 업로드
+                    uploadToTarget({ spaceId: s.id, parentId: null }, e)
+                  }
                 }}
                 title={
                   s.id === spaceId
-                    ? '여기로 놓으면 이 공간 최상위로 이동'
-                    : `여기로 항목을 끌어다 놓으면 ${s.name}(으)로 복사`
+                    ? '항목을 놓으면 이 공간 최상위로 이동 · 로컬 파일을 놓으면 업로드'
+                    : `항목을 놓으면 ${s.name}(으)로 복사 · 로컬 파일을 놓으면 업로드`
                 }
               >
                 {s.name}
@@ -912,6 +957,9 @@ export default function Files() {
                   onOpenFolder={openFolderById}
                   onOpenFile={openFileFromTree}
                   onDropToFolder={(id, target) => onMove(id, target)}
+                  onUploadFiles={(folderId, e) =>
+                    uploadToTarget({ spaceId: s.id, parentId: folderId }, e)
+                  }
                   onRename={renameFromTree}
                   onToggleFavorite={toggleFavFromTree}
                   onDelete={deleteFromTree}

@@ -55,7 +55,8 @@ test('임시 토큰 발급(버튼) → 한 토큰으로 여러 파일 Bearer 업
   }
 
   // '해제'하면 curl이 다시 <TOKEN> 자리표시자로 돌아간다(브라우저 메모리에서 비움).
-  await page.getByRole('button', { name: '해제' }).click()
+  // 팝오버로 범위를 좁힌다 — 트리의 '즐겨찾기 해제' 별표 버튼과 이름이 겹쳐(부분일치) 오탐되지 않게.
+  await page.locator('.share-popover').getByRole('button', { name: '해제', exact: true }).click()
   await expect(page.getByTestId('server-upload-curl')).toContainText('<TOKEN>')
 
   // 외부 Bearer 업로드는 UI가 모르니 새로고침으로 트리를 최신화하고 파일들을 확인.

@@ -92,3 +92,40 @@ test('일부 업로드가 실패하면 그 행만 실패로 표시되고 나머�
   // 실패해도 성공한 파일은 트리에 나타난다
   await expect(page.locator('.tree-name').filter({ hasText: /성공A\.txt/ })).toBeVisible()
 })
+
+test('로컬 파일을 트리의 폴더에 끌어다 놓으면 그 폴더 안으로 업로드된다', async ({ page }) => {
+  await loginAsAdmin(page)
+  const spaces = await page.request.get('/api/spaces').then((r) => r.json())
+  const pid = spaces.find((s: { type: string }) => s.type === 'personal').id
+  const name = `드롭대상-${Date.now()}`
+  const folder = await page.request
+    .post('/api/nodes', { data: { space_id: pid, name } })
+    .then((r) => r.json())
+
+  // 개인 공간을 활성화(트리에 방금 만든 폴더가 보이도록 새로 로드)
+  await page.reload()
+  await page.locator('button.space-root').filter({ hasText: '내 공간' }).click()
+  const row = page.locator('.tree-row').filter({ hasText: name })
+  await expect(row).toBeVisible()
+
+  // 로컬 파일 하나를 DataTransfer로 만들어 폴더 행에 dragover→drop
+  const dt = await page.evaluateHandle(() => {
+    const d = new DataTransfer()
+    d.items.add(new File(['dropped-body'], 'dropped.txt', { type: 'text/plain' }))
+    return d
+  })
+  await row.dispatchEvent('dragover', { dataTransfer: dt })
+  await row.dispatchEvent('drop', { dataTransfer: dt })
+
+  // 그 폴더 '안'에 dropped.txt 가 생겨야 한다(업로드는 비동기 → poll)
+  await expect
+    .poll(
+      () =>
+        page.request
+          .get(`/api/nodes/${folder.id}/children`)
+          .then((r) => r.json())
+          .then((kids: { name: string }[]) => kids.map((n) => n.name)),
+      { timeout: 6000 },
+    )
+    .toContain('dropped.txt')
+})
