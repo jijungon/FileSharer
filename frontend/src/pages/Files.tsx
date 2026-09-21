@@ -863,6 +863,7 @@ export default function Files() {
           )}
           <div className="sidebar-divider" />
           <div className="sidebar-section-label">공간 · 폴더</div>
+          <div className="sidebar-scroll">
           {spaces.map((s) => (
             <div key={s.id}>
               <button
@@ -914,6 +915,7 @@ export default function Files() {
               )}
             </div>
           ))}
+          </div>
           <div className="sidebar-foot">
             <button
               className={`space-item sidebar-trash${trashMode ? ' active' : ''}${
