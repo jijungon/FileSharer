@@ -78,16 +78,11 @@ export default function LinkBar({
 
       <div className="linkbar-actions">
         {target && (
-          <>
-            <a href={downloadUrl(target)}>
-              <button className="btn-utility">다운로드</button>
-            </a>
-            <button className="btn-utility" onClick={copyInternalLink}>
-              {copied ? '복사됨 ✓' : '사내 링크 복사'}
-            </button>
-          </>
+          <a href={downloadUrl(target)}>
+            <button className="btn-utility">다운로드</button>
+          </a>
         )}
-        {/* 현재 폴더로의 서버(헤드리스) 업로드 — 다운로드/공유와 같은 액션 묶음, 공유 링크 바로 옆 */}
+        {/* 서버(헤드리스) 업로드 — '파일 이동' 묶음(다운로드 옆, 중립색) */}
         {space && (
           <button
             className="btn-utility"
@@ -98,6 +93,12 @@ export default function LinkBar({
             title="이 폴더로 서버에서 파일 올리기 (API 토큰)"
           >
             ↥ 서버 업로드
+          </button>
+        )}
+        {/* 사내 링크 복사 — 공유 링크와 같은 '링크' 묶음이라 같은 accent 색 */}
+        {target && (
+          <button className="btn-primary" onClick={copyInternalLink}>
+            {copied ? '복사됨 ✓' : '사내 링크 복사'}
           </button>
         )}
         <button

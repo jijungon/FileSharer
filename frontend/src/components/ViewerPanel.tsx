@@ -119,7 +119,7 @@ function CrumbPath({
   )
 }
 
-// 파일 액션(다운로드 · 사내 링크 복사 · 서버 업로드 · 공유 링크) — 예전 LinkBar에서 옮겨왔다.
+// 파일 액션(다운로드 · 서버 업로드 · 사내 링크 복사 · 공유 링크) — 예전 LinkBar에서 옮겨왔다.
 // 서버 업로드는 '이 파일이 있는 폴더'가 대상(파일 자체가 아니라 폴더로 push). 공유 링크 바로 옆.
 function FileActions({
   node,
@@ -148,9 +148,6 @@ function FileActions({
       <a href={downloadUrl(node)}>
         <button className="btn-utility">다운로드</button>
       </a>
-      <button className="btn-utility" onClick={copyInternalLink}>
-        {copied ? '복사됨 ✓' : '사내 링크 복사'}
-      </button>
       {space && (
         <button
           className="btn-utility"
@@ -163,6 +160,9 @@ function FileActions({
           ↥ 서버 업로드
         </button>
       )}
+      <button className="btn-primary" onClick={copyInternalLink}>
+        {copied ? '복사됨 ✓' : '사내 링크 복사'}
+      </button>
       <button
         className="btn-primary linkbar-share"
         onClick={() => {
