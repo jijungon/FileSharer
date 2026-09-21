@@ -1,6 +1,8 @@
 """서버(헤드리스) 업로드용 API 토큰 — 발급→업로드→회수 전 과정과 범위·인증 경계."""
 
 import io
+import tarfile
+import zipfile
 from datetime import UTC, datetime, timedelta
 
 from fastapi.testclient import TestClient
@@ -328,3 +330,82 @@ def test_token_routed_upload_requires_token_not_session(admin_client):
         files={"file": ("s.log", io.BytesIO(b"x"), "text/plain")},
     )
     assert res.status_code == 401
+
+
+def _targz(files: dict[str, bytes]) -> bytes:
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w:gz") as tf:
+        for name, data in files.items():
+            info = tarfile.TarInfo(name)
+            info.size = len(data)
+            tf.addfile(info, io.BytesIO(data))
+    return buf.getvalue()
+
+
+def _zip(files: dict[str, bytes]) -> bytes:
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        for name, data in files.items():
+            zf.writestr(name, data)
+    return buf.getvalue()
+
+
+def test_upload_extract_targz_preserves_structure(admin_client):
+    """?extract=tar — tar.gz를 올리면 서버가 풀어 하위 폴더 구조를 그대로 만든다."""
+    pid = spaces_of(admin_client)["personal"]["id"]
+    tok = make_token(admin_client)
+    bare = bare_client(admin_client)
+    blob = _targz({"mydir/a.log": b"a", "mydir/sub/b.log": b"bb"})
+    res = bare.post(
+        "/api/upload?extract=tar",
+        headers={"Authorization": f"Bearer {tok['token']}"},
+        files={"file": ("mydir.tgz", io.BytesIO(blob), "application/gzip")},
+    )
+    assert res.status_code == 201, res.text
+    assert len(res.json()) == 2  # 파일 2개 모두 노드로
+    names = {n["name"] for n in admin_client.get(f"/api/spaces/{pid}/tree").json()}
+    assert {"mydir", "sub", "a.log", "b.log"} <= names  # 폴더 구조 재현
+
+
+def test_upload_extract_zip(admin_client):
+    """?extract=zip 도 동일하게 풀린다."""
+    pid = spaces_of(admin_client)["personal"]["id"]
+    tok = make_token(admin_client)
+    bare = bare_client(admin_client)
+    blob = _zip({"z/one.txt": b"1", "z/two.txt": b"2"})
+    res = bare.post(
+        "/api/upload?extract=zip",
+        headers={"Authorization": f"Bearer {tok['token']}"},
+        files={"file": ("z.zip", io.BytesIO(blob), "application/zip")},
+    )
+    assert res.status_code == 201, res.text
+    assert len(res.json()) == 2
+    names = {n["name"] for n in admin_client.get(f"/api/spaces/{pid}/tree").json()}
+    assert {"z", "one.txt", "two.txt"} <= names
+
+
+def test_upload_extract_skips_macos_junk(admin_client):
+    """macOS 아카이브 메타데이터(._* , __MACOSX/)는 풀 때 건너뛴다 — 진짜 파일만 남는다."""
+    tok = make_token(admin_client)
+    bare = bare_client(admin_client)
+    blob = _targz({"d/real.log": b"x", "d/._real.log": b"junk", "__MACOSX/d/._real.log": b"j"})
+    res = bare.post(
+        "/api/upload?extract=tar",
+        headers={"Authorization": f"Bearer {tok['token']}"},
+        files={"file": ("d.tgz", io.BytesIO(blob), "application/gzip")},
+    )
+    assert res.status_code == 201, res.text
+    assert [n["name"] for n in res.json()] == ["real.log"]
+
+
+def test_upload_extract_rejects_path_traversal(admin_client):
+    """압축 안에 '../' 경로 탈출이 있으면 422로 거부(서버 밖으로 못 쓴다)."""
+    tok = make_token(admin_client)
+    bare = bare_client(admin_client)
+    blob = _targz({"../evil.log": b"x"})
+    res = bare.post(
+        "/api/upload?extract=tar",
+        headers={"Authorization": f"Bearer {tok['token']}"},
+        files={"file": ("evil.tgz", io.BytesIO(blob), "application/gzip")},
+    )
+    assert res.status_code == 422

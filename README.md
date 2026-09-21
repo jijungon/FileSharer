@@ -54,6 +54,23 @@ curl -H "Authorization: Bearer <TOKEN>" -F file=@a.log https://file.rgrg.im/api/
 curl -H "Authorization: Bearer <TOKEN>" -F file=@a.log https://file.rgrg.im/api/spaces/<SPACE_ID>/files
 ```
 
+**Whole folder** — three ways (the 서버 업로드 popover shows the `tar` one):
+
+```bash
+# ① tar로 묶어 보내면 서버가 풀어준다(구조 유지) — 진짜 한 명령. ?extract=tar 또는 ?extract=zip
+tar czf - mydir | curl -H "Authorization: Bearer <TOKEN>" -F file=@- "https://file.rgrg.im/api/upload?extract=tar"
+
+# ② 표준 도구만(스크립트 불필요): 파일마다 rel_path로 구조 유지
+find mydir -type f -exec curl -sS -H "Authorization: Bearer <TOKEN>" \
+  -F "file=@{}" -F "rel_path={}" https://file.rgrg.im/api/upload \;
+
+# ③ 저장소 스크립트: 폴더 안의 모든 파일을 알아서 전송(구조 유지)
+FS_BASE=https://file.rgrg.im FS_TOKEN=<TOKEN> ./scripts/fs-upload.sh --dir ./mydir
+```
+
+Server-side extraction (`?extract=tar` / `?extract=zip`) rejects path traversal (`../`) and
+symlinks, skips non-regular entries, and caps entry count and total size.
+
 **3) CLI uploader** (in this repo, dependency-light — bash+curl, or Python stdlib). With a scoped
 token you **don't need `--folder/--space`** (the token carries the destination); pass them only to
 target an explicit place. Prefer `FS_TOKEN` over `--token` (argv is visible in `ps`):
@@ -61,6 +78,7 @@ target an explicit place. Prefer `FS_TOKEN` over `--token` (argv is visible in `
 ```bash
 FS_BASE=https://file.rgrg.im FS_TOKEN=<TOKEN> ./scripts/fs-upload.sh a.log b.log report.csv
 FS_BASE=https://file.rgrg.im FS_TOKEN=<TOKEN> python3 scripts/fs_upload.py report.csv
+# whole folder:  --dir ./mydir   (every file inside, structure preserved)
 # explicit location still works:  --folder <FOLDER_ID>   |   --space <SPACE_ID>
 # optional: --rel-path 2026/09/ creates intermediate folders server-side (single file only)
 ```
