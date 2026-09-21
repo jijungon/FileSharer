@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { listSpaceTree, TreeRow } from '../lib/files'
 
 interface TreeNode extends TreeRow {
@@ -59,6 +59,25 @@ export default function FolderTree({
   const [dragOverId, setDragOverId] = useState<string | null>(null) // 드래그가 올라온 폴더(드롭 대상 강조)
   // 우클릭 컨텍스트 메뉴: 대상 행 + 화면 좌표
   const [menu, setMenu] = useState<{ row: TreeRow; x: number; y: number } | null>(null)
+  const menuRef = useRef<HTMLDivElement>(null)
+  const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(null)
+
+  // 메뉴가 뷰포트 밖(특히 화면 하단·우측)으로 넘치면 안쪽으로 당겨 항상 보이게 한다.
+  // (커서가 트리 맨 아래 항목이면 기본 위치에선 마지막 '삭제' 항목이 화면 밖으로 나갔다.)
+  useLayoutEffect(() => {
+    if (!menu) {
+      setMenuPos(null)
+      return
+    }
+    const el = menuRef.current
+    const w = el?.offsetWidth ?? 180
+    const h = el?.offsetHeight ?? 150
+    const pad = 8
+    setMenuPos({
+      left: Math.max(pad, Math.min(menu.x, window.innerWidth - w - pad)),
+      top: Math.max(pad, Math.min(menu.y, window.innerHeight - h - pad)),
+    })
+  }, [menu])
 
   // 메뉴 바깥 클릭/스크롤/Esc 시 닫기
   useEffect(() => {
@@ -140,6 +159,36 @@ export default function FolderTree({
     }
   }
 
+  // 트리 항목을 잡아 폴더(이동)·다른 공간(복사)·휴지통(삭제)으로 끌어다 놓을 수 있게 한다.
+  // 표를 없앤 뒤 유일한 이동 수단 — 사이드바/공간/휴지통 드롭 핸들러가 읽는 payload를 심는다.
+  function rowDragStart(e: React.DragEvent, node: TreeNode) {
+    e.dataTransfer.setData('application/x-node-id', node.id)
+    e.dataTransfer.setData('application/x-node-ids', JSON.stringify([node.id]))
+    e.dataTransfer.effectAllowed = 'copyMove'
+    // 기본 고스트는 뒤(드롭 위치)를 가리므로 커서 옆 작은 칩으로 대체(#81)
+    if (typeof document !== 'undefined' && e.dataTransfer.setDragImage) {
+      const chip = document.createElement('div')
+      chip.className = 'drag-chip'
+      const icon = document.createElement('span')
+      icon.className = 'drag-chip__icon'
+      icon.textContent = node.type === 'folder' ? '📁' : '📄'
+      const name = document.createElement('span')
+      name.className = 'drag-chip__name'
+      name.textContent = node.name
+      chip.append(icon, name)
+      chip.style.position = 'absolute'
+      chip.style.top = '-1000px'
+      chip.style.left = '-1000px'
+      document.body.appendChild(chip)
+      try {
+        e.dataTransfer.setDragImage(chip, 14, 18)
+      } catch {
+        /* 미지원 환경 — 기본 고스트로 폴백 */
+      }
+      setTimeout(() => chip.remove(), 0)
+    }
+  }
+
   function renderNode(node: TreeNode) {
     const isFolder = node.type === 'folder'
     const isOpen = expanded.has(node.id)
@@ -151,6 +200,8 @@ export default function FolderTree({
           className={`tree-row${active ? ' active' : ''}${
             dragOverId === node.id ? ' drag-over' : ''
           }`}
+          draggable
+          onDragStart={(e) => rowDragStart(e, node)}
           {...(isFolder ? dropHandlers(node.id) : {})}
           onContextMenu={(e) => {
             if (!onRename && !onDelete && !onToggleFavorite) return
@@ -190,8 +241,9 @@ export default function FolderTree({
       {tree.length > 0 && <ul className="folder-tree tree-branch">{tree.map(renderNode)}</ul>}
       {menu && (
         <div
+          ref={menuRef}
           className="tree-menu"
-          style={{ position: 'fixed', top: menu.y, left: menu.x }}
+          style={{ position: 'fixed', top: menuPos?.top ?? menu.y, left: menuPos?.left ?? menu.x }}
           role="menu"
           onClick={(e) => e.stopPropagation()}
           onContextMenu={(e) => e.preventDefault()}

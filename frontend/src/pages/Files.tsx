@@ -221,12 +221,11 @@ export default function Files() {
         }
         const savedSpace = spacesRes.find((s) => s.id === saved.spaceId)?.id
         setSpaceId((prev) => prev ?? savedSpace ?? spacesRes[0]?.id ?? null)
-        if (saved.view === 'recent') {
-          setRecentMode(true)
-          listRecent()
-            .then(setRecentItems)
-            .catch(() => setRecentItems([]))
-        } else if (saved.view === 'fav') {
+        // 최근은 이제 사이드바 인라인(MAX 5)이므로 항상 로드해 둔다(별도 뷰 아님)
+        listRecent()
+          .then(setRecentItems)
+          .catch(() => setRecentItems([]))
+        if (saved.view === 'fav') {
           setFavMode(true)
           listFavorites()
             .then(setFavItems)
@@ -314,14 +313,14 @@ export default function Files() {
     reload()
   }, [reload])
 
-  // 새로고침 버튼: 현재 보고 있는 목록(즐겨찾기/최근/휴지통·폴더)을 서버에서 다시 불러온다.
+  // 새로고침 버튼: 현재 보고 있는 목록 + 사이드바 인라인 최근 + 폴더 트리를 다시 불러온다.
   async function refreshCurrent() {
     if (refreshing) return
     setRefreshing(true)
     try {
       if (favMode) setFavItems(await listFavorites())
-      else if (recentMode) setRecentItems(await listRecent())
       else await reload()
+      listRecent().then(setRecentItems).catch(() => {}) // 사이드바 인라인 최근 갱신
       setTreeVersion((v) => v + 1) // 사이드바 폴더 트리도 갱신
     } catch {
       /* reload/loader 내부에서 에러 표시 처리 */
@@ -337,10 +336,14 @@ export default function Files() {
     setSearchQ('')
   }, [spaceId, currentFolder?.id, trashMode])
 
-  // 파일을 열면(뷰어에 뜨면) '최근 열어본 항목'에 기록. id/type만 의존(같은 파일 재렌더엔 중복 기록 안 함)
+  // 파일을 열면(뷰어에 뜨면) '최근 열어본 항목'에 기록 후, 사이드바 인라인 최근을 갱신.
+  // id/type만 의존(같은 파일 재렌더엔 중복 기록 안 함)
   useEffect(() => {
     if (selected && selected.type === 'file') {
-      recordView(selected.id).catch(() => {})
+      recordView(selected.id)
+        .then(() => listRecent())
+        .then(setRecentItems)
+        .catch(() => {})
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selected?.id, selected?.type])
@@ -494,26 +497,6 @@ export default function Files() {
       setFavItems(await listFavorites())
     } catch {
       setFavItems([])
-    }
-  }
-
-  // 최근 열어본 항목 뷰 열기/토글
-  async function toggleRecentView() {
-    if (recentMode) {
-      setRecentMode(false)
-      return
-    }
-    setTrashMode(false)
-    setFavMode(false)
-    setSelected(null)
-    setSearchQ('')
-    setPath([]) // 루트 뷰 진입: URL nodeId 비우기(새로고침 복원, [nodeId] 효과의 모드 리셋 방지)
-    navigate('/files')
-    setRecentMode(true)
-    try {
-      setRecentItems(await listRecent())
-    } catch {
-      setRecentItems([])
     }
   }
 
@@ -989,12 +972,27 @@ export default function Files() {
             ★ 즐겨찾기
           </button>
           <div className="sidebar-divider" />
-          <button
-            className={`space-item sidebar-recent${recentMode ? ' active' : ''}`}
-            onClick={toggleRecentView}
-          >
-            🕘 최근
-          </button>
+          <div className="sidebar-section-label">🕘 최근</div>
+          {recentItems.length === 0 ? (
+            <div className="recent-empty muted">열어본 파일이 없습니다</div>
+          ) : (
+            <ul className="recent-inline">
+              {recentItems.slice(0, 5).map((n) => (
+                <li key={n.id}>
+                  <button
+                    className={`recent-item${selected?.id === n.id ? ' active' : ''}`}
+                    onClick={() => openLocated(n)}
+                    title={n.name}
+                  >
+                    <span className="tree-icon" aria-hidden="true">
+                      {n.type === 'folder' ? '📁' : '📄'}
+                    </span>
+                    <span className="recent-name">{n.name}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
           <div className="sidebar-divider" />
           <div className="sidebar-section-label">공간 · 폴더</div>
           {spaces.map((s) => (
@@ -1178,25 +1176,6 @@ export default function Files() {
                 ))}
               </ul>
             </div>
-          ) : recentMode ? (
-            <div className="search-results">
-              <div className="search-results-head muted">
-                {recentItems.length > 0
-                  ? `최근 열어본 항목 ${recentItems.length}개`
-                  : '최근 열어본 항목이 없습니다 — 파일을 열면 여기 쌓입니다'}
-              </div>
-              <ul className="search-results-list">
-                {recentItems.map((node) => (
-                  <li key={node.id} className="search-result" onClick={() => openLocated(node)}>
-                    <span className="node-icon">{node.type === 'folder' ? '📁' : '📄'}</span>
-                    <span className="search-result-name">{node.name}</span>
-                    <span className="search-result-path muted">
-                      {node.path ? node.path : '(루트)'}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </div>
           ) : searchResults !== null ? (
             <div className="search-results">
               <div className="search-results-head muted">
@@ -1220,7 +1199,7 @@ export default function Files() {
                 ))}
               </ul>
             </div>
-          ) : (
+          ) : trashMode ? (
           <table className="file-table">
             <thead>
               <tr>
@@ -1506,6 +1485,13 @@ export default function Files() {
               )}
             </tbody>
           </table>
+          ) : (
+            <div className="browser-welcome muted">
+              <p>왼쪽 트리에서 파일을 선택해 여세요.</p>
+              <p className="browser-welcome-sub">
+                추가는 왼쪽 상단 아이콘(＋폴더 · ↑업로드 · ＋MD), 이름 변경·삭제는 항목 우클릭.
+              </p>
+            </div>
           )}
         </main>
         )}
@@ -1558,6 +1544,29 @@ export default function Files() {
                   >
                     ×
                   </button>
+                </li>
+              ))}
+          </ul>
+        </div>
+      )}
+      {uploads.length > 0 && (
+        <div className="upload-panel" aria-label="업로드 진행">
+          <div className="upload-panel-head muted">
+            업로드 {uploadStats.done}/{uploadStats.total}
+            {uploadStats.failed > 0 && ` · 실패 ${uploadStats.failed}`} · {uploadStats.percent}%
+          </div>
+          <ul className="upload-panel-list">
+            {uploads
+              // 완료된 업로드가 실제 목록에 이미 나타났으면 진행 행을 숨긴다(잔상 방지)
+              .filter((u) => !(u.done && items.some((it) => it.name === u.name)))
+              .map((u) => (
+                <li key={u.id} className={`upload-row${u.error ? ' error' : ''}`}>
+                  <span className="node-icon">{u.error ? '⚠️' : '📄'}</span>
+                  <span className="node-name">{u.name}</span>
+                  <div className="upload-inline-wrap">
+                    <progress className="upload-inline-bar" value={u.loaded} max={u.total || 1} />
+                    <span className="upload-inline-pct">{u.error ? '실패' : `${percent(u)}%`}</span>
+                  </div>
                 </li>
               ))}
           </ul>
