@@ -364,13 +364,40 @@ button:focus-visible {
 }
 
 .sidebar {
-  width: 220px;
+  width: 220px; /* 기본값 — 인라인 style(sidebarWidth)이 덮어씀 */
+  flex: 0 0 auto; /* 드래그로 정한 폭 유지(줄어들지 않게) */
+  min-width: 0;
   padding: var(--sp-md);
   display: flex;
   flex-direction: column;
   gap: 4px;
-  border-right: 1px solid var(--hairline);
   background: var(--canvas-parchment);
+}
+
+/* 사이드바 ↔ 본문 경계선(드래그로 폭 조절) */
+.sidebar-resizer {
+  flex: 0 0 auto;
+  width: 6px;
+  cursor: col-resize;
+  position: relative;
+  z-index: 5;
+  background: transparent;
+}
+.sidebar-resizer::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 2.5px;
+  width: 1px;
+  background: var(--hairline);
+  transition: background 0.12s ease;
+}
+.sidebar-resizer:hover::before,
+.sidebar-resizer:active::before {
+  left: 2px;
+  width: 2px;
+  background: var(--primary);
 }
 
 .space-item {
@@ -1800,7 +1827,7 @@ button:focus-visible {
 
 /* --- 사이드바 폴더 트리 (dirtree식 연결선 ├── └── │) --- */
 .folder-tree {
-  margin: 2px 0 6px 10px;
+  margin: 2px 0 6px 6px;
 }
 .folder-tree,
 .tree-branch {
@@ -1810,11 +1837,11 @@ button:focus-visible {
   margin-bottom: 0;
 }
 .tree-branch {
-  padding-left: 14px; /* 하위 레벨 들여쓰기(연결선 폭) */
+  padding-left: 8px; /* 하위 레벨 들여쓰기(연결선 폭) — VS Code 정도로 완만하게 */
 }
 .tree-li {
   position: relative;
-  padding-left: 14px; /* 노드 앞 연결선(엘보) 자리 */
+  padding-left: 11px; /* 노드 앞 연결선(엘보) 자리 */
 }
 /* 형제를 잇는 세로선 │ */
 .tree-li::before {
@@ -1832,7 +1859,7 @@ button:focus-visible {
   position: absolute;
   left: 0;
   top: 13px;
-  width: 10px;
+  width: 7px;
   border-top: 1px solid var(--hairline);
   pointer-events: none;
 }
