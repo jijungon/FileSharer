@@ -36,9 +36,10 @@ test('API 토큰 발급 → Bearer 업로드 → 회수(401) 전체 흐름', asy
   const token = ((await tokenValue.textContent()) ?? '').trim()
   expect(token.startsWith('fsk_')).toBeTruthy()
 
-  // 방금 발급한 토큰이 '서버 업로드' 팝오버 curl에 자동 채워진다(드로어 닫고 확인)
-  await page.getByRole('button', { name: 'API 토큰' }).click() // 드로어 토글로 닫기
-  await page.getByRole('button', { name: /서버 업로드/ }).click()
+  // 방금 발급한 토큰이 '서버 업로드' 팝오버 curl에 자동 채워진다(드로어 닫고 확인).
+  // 버튼은 이름(title)이 겹칠 수 있어 '보이는 텍스트'로 특정한다.
+  await page.keyboard.press('Escape') // 드로어 닫기(Esc)
+  await page.getByRole('button').filter({ hasText: '서버 업로드' }).click()
   await expect(page.locator('.share-popover code').filter({ hasText: 'Bearer' })).toContainText(
     token,
   )
@@ -62,7 +63,7 @@ test('API 토큰 발급 → Bearer 업로드 → 회수(401) 전체 흐름', asy
 
   // 파일을 열면 에디터 툴바에도 '서버 업로드' 버튼이 있다(폴더뷰뿐 아니라 파일뷰에도)
   await fileCell(page, uploadName).click()
-  await expect(page.getByRole('button', { name: /서버 업로드/ })).toBeVisible()
+  await expect(page.getByRole('button').filter({ hasText: '서버 업로드' })).toBeVisible()
 
   // 회수 후 같은 토큰으로 재업로드하면 401
   const tokenId = await page.request
