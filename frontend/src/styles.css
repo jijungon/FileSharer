@@ -35,6 +35,8 @@
   --radius-lg: 6px;
   --radius-pill: 9999px; /* 진짜 둥근 것(점·아바타)만 */
 
+  --token-drawer-w: min(440px, 40vw); /* API 토큰 드로어 폭(본문 push 폭과 동일) */
+
   --sp-xxs: 4px;
   --sp-xs: 8px;
   --sp-sm: 12px;
@@ -251,6 +253,11 @@ button:focus-visible {
   display: flex;
   flex-direction: column;
   background: var(--canvas-parchment);
+  transition: padding-right 0.22s ease;
+}
+/* API 토큰 드로어가 열리면 본문을 왼쪽으로 밀어 뒤가 보이게 한다(오버레이가 아니라 push) */
+.shell.drawer-open {
+  padding-right: var(--token-drawer-w);
 }
 
 .topbar {
@@ -371,20 +378,14 @@ button:focus-visible {
   text-decoration: underline;
 }
 
-/* ── API 토큰: 우측 슬라이드 드로어 ── */
-.token-drawer-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 90;
-  background: rgba(0, 0, 0, 0.35);
-}
+/* ── API 토큰: 우측 슬라이드 드로어(본문을 밀어냄 — .shell.drawer-open) ── */
 .token-drawer {
   position: fixed;
   top: 0;
   right: 0;
   bottom: 0;
   z-index: 91;
-  width: min(560px, 92vw);
+  width: var(--token-drawer-w);
   display: flex;
   flex-direction: column;
   background: var(--canvas);

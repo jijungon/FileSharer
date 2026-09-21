@@ -744,7 +744,7 @@ export default function Files() {
   const viewerOpen = !!selected && selected.type === 'file' && !trashMode && !favMode
 
   return (
-    <div className="shell">
+    <div className={`shell${tokensOpen ? ' drawer-open' : ''}`}>
       <header className="topbar">
         <h2 className="logo">
           FileSharer <span className="app-version">{__APP_VERSION__}</span>
