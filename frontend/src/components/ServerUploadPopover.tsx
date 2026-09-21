@@ -33,6 +33,8 @@ export default function ServerUploadPopover({
   const tokenForCurl = activeToken || '<TOKEN>'
   // 파일 여러 개는 -F file=@ 를 여러 번 붙이면 한 요청에 모두 올라간다.
   const curl = `curl -H "Authorization: Bearer ${tokenForCurl}" -F file=@a.log -F file=@b.log ${endpoint}`
+  // 폴더째: tar로 묶어 보내면 서버가 ?extract=tar 로 풀어 하위 구조까지 재현한다.
+  const tarCurl = `tar czf - mydir | curl -H "Authorization: Bearer ${tokenForCurl}" -F file=@- "${endpoint}?extract=tar"`
   // 표시용 마스킹: fsk_<id>. 까지만 보여주고 나머지 비밀은 가린다.
   const masked = activeToken
     ? `${activeToken.slice(0, activeToken.indexOf('.') + 1 || 12)}••••••`
@@ -111,7 +113,7 @@ export default function ServerUploadPopover({
         </button>
       </div>
 
-      <label className="share-label">curl 한 줄</label>
+      <label className="share-label">curl 한 줄 (파일 · 여러 개 가능)</label>
       <div className="share-copyrow">
         <code data-testid="server-upload-curl">{curl}</code>
         <button className="btn-primary" onClick={() => copy(curl, 'curl')}>
@@ -119,10 +121,17 @@ export default function ServerUploadPopover({
         </button>
       </div>
 
+      <label className="share-label">폴더째 (tar로 묶어 보내면 서버가 해제 · 구조 유지)</label>
+      <div className="share-copyrow">
+        <code data-testid="server-upload-tar">{tarCurl}</code>
+        <button className="btn-utility" onClick={() => copy(tarCurl, 'tar')}>
+          {copied === 'tar' ? '복사됨 ✓' : '복사'}
+        </button>
+      </div>
+
       <p className="muted" style={{ margin: '4px 0 0' }}>
-        여러 파일은 위 curl처럼 <code>-F file=@</code> 를 여러 번 붙이면 한 요청에 올라갑니다 · 폴더째
-        올릴 땐 저장소의 <code>scripts/fs-upload.sh</code> · 토큰은 발급 직후 한 번만 표시되고 서버엔
-        해시만 저장됩니다.
+        단일 파일은 <code>-F file=@a.log</code> 하나 · <code>mydir</code>는 올릴 폴더 경로로 바꾸세요 ·
+        토큰은 발급 직후 한 번만 표시되고 서버엔 해시만 저장됩니다.
       </p>
     </div>
   )

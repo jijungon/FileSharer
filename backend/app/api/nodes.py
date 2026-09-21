@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from ..config import get_settings
 from ..deps import Principal, current_principal, current_user, get_db
 from ..models import Favorite, Node, NodeView, Space, User, email_nickname, utcnow
-from ..services import audit, locks
+from ..services import archive, audit, locks
 from ..services import tokens as tokens_svc
 from ..services.media import (
     TranscodeError,
@@ -563,6 +563,62 @@ def _upload_one(
     return node
 
 
+def _extract_archive(
+    db: Session,
+    user: User,
+    space: Space,
+    base_parent_id: str | None,
+    upload: UploadFile,
+    *,
+    kind: str,
+    via: str = "",
+) -> list[dict]:
+    """업로드된 아카이브를 풀어 각 파일을 노드로 만든다(하위 폴더 구조 유지).
+
+    안전성(경로 탈출·심볼릭·항목 수)은 services.archive 가 담당하고, 여기선 파일당·총
+    용량 상한을 스토리지 스트림으로 강제한다. 반환은 만들어진 노드 목록.
+    """
+    settings = get_settings()
+    storage = build_storage(settings)
+    max_bytes = settings.max_upload_mb * 1024 * 1024
+    total_cap = max_bytes * 50  # 압축 폭탄 방지용 총량 상한(대략)
+    total = 0
+    outs: list[dict] = []
+    for rel, stream in archive.iter_archive_files(upload.file, kind):
+        parent_id = _resolve_upload_parent(db, user, space, base_parent_id, rel)
+        try:
+            key, size, sha = storage.put_stream(stream, max_bytes)
+        except FileTooLargeError:
+            raise HTTPException(
+                status_code=413,
+                detail=f"항목이 너무 큽니다(파일당 최대 {settings.max_upload_mb}MB): {rel}",
+            ) from None
+        total += size
+        if total > total_cap:
+            raise HTTPException(status_code=413, detail="압축 해제 총 용량이 상한을 초과했습니다")
+        name = unique_name(db, space.id, parent_id, clean_name(PurePosixPath(rel).name))
+        mime = mimetypes.guess_type(name)[0] or "application/octet-stream"
+        node = Node(
+            space_id=space.id,
+            parent_id=parent_id,
+            type="file",
+            name=name,
+            size=size,
+            mime=mime,
+            storage_key=key,
+            sha256=sha,
+            created_by=user.id,
+        )
+        db.add(node)
+        db.flush()
+        detail = f"{name} ({size}B) · 압축해제" + (f" · 토큰:{via}" if via else "")
+        audit.log(db, "upload", user_id=user.id, node_id=node.id, detail=detail)
+        outs.append(node_out(node))
+    if not outs:
+        raise HTTPException(status_code=422, detail="아카이브에 풀 파일이 없습니다")
+    return outs
+
+
 def _do_upload(
     db: Session,
     user: User,
@@ -572,11 +628,18 @@ def _do_upload(
     rel_path: str | None = None,
     *,
     via: str = "",
+    extract: str = "",
 ) -> dict | list[dict]:
-    """한 요청에 담긴 파일(들)을 모두 업로드. 하위호환을 위해 1개면 단일 객체,
-    2개 이상이면 목록을 반환한다. rel_path(중간 폴더 자동 생성)는 파일이 하나일 때만 유효."""
+    """한 요청에 담긴 파일(들)을 업로드. extract가 있으면 각 업로드를 아카이브로 보고 풀어(구조
+    유지) 만든 노드 목록을 반환한다. 평범한 업로드는 1개면 단일 객체·2개 이상이면 목록,
+    rel_path(중간 폴더 자동 생성)는 파일이 하나일 때만 유효."""
     if not uploads:
         raise HTTPException(status_code=422, detail="올릴 파일이 없습니다")
+    if extract:
+        outs: list[dict] = []
+        for up in uploads:
+            outs.extend(_extract_archive(db, user, space, parent_id, up, kind=extract, via=via))
+        return outs
     if rel_path and len(uploads) > 1:
         raise HTTPException(
             status_code=422, detail="rel_path는 파일이 하나일 때만 쓸 수 있습니다"
@@ -601,6 +664,7 @@ def upload_to_space_root(
     space_id: str,
     file: list[UploadFile],
     rel_path: str = Form(""),
+    extract: str = "",  # ?extract=tar|zip 이면 업로드를 아카이브로 보고 서버에서 푼다
     principal: Principal = Depends(current_principal),
     db: Session = Depends(get_db),
 ) -> dict | list[dict]:
@@ -608,7 +672,10 @@ def upload_to_space_root(
     space = get_space_checked(db, principal.user, space_id)
     if principal.token is not None:
         tokens_svc.enforce_scope(db, principal.token, space, None)
-    return _do_upload(db, principal.user, space, None, file, rel_path, via=_via_label(principal))
+    return _do_upload(
+        db, principal.user, space, None, file, rel_path,
+        via=_via_label(principal), extract=extract,
+    )
 
 
 @router.post("/nodes/{node_id}/files", status_code=201)
@@ -616,6 +683,7 @@ def upload_to_folder(
     node_id: str,
     file: list[UploadFile],
     rel_path: str = Form(""),
+    extract: str = "",  # ?extract=tar|zip 이면 업로드를 아카이브로 보고 서버에서 푼다
     principal: Principal = Depends(current_principal),
     db: Session = Depends(get_db),
 ) -> dict | list[dict]:
@@ -627,7 +695,8 @@ def upload_to_folder(
     if principal.token is not None:
         tokens_svc.enforce_scope(db, principal.token, space, parent.id)
     return _do_upload(
-        db, principal.user, space, parent.id, file, rel_path, via=_via_label(principal)
+        db, principal.user, space, parent.id, file, rel_path,
+        via=_via_label(principal), extract=extract,
     )
 
 
@@ -635,6 +704,7 @@ def upload_to_folder(
 def upload_via_token(
     file: list[UploadFile],
     rel_path: str = Form(""),
+    extract: str = "",  # ?extract=tar|zip 이면 업로드를 아카이브로 보고 서버에서 푼다
     principal: Principal = Depends(current_principal),
     db: Session = Depends(get_db),
 ) -> dict | list[dict]:
@@ -650,7 +720,8 @@ def upload_via_token(
         )
     space, parent_id = tokens_svc.resolve_upload_target(db, token)
     return _do_upload(
-        db, principal.user, space, parent_id, file, rel_path, via=_via_label(principal)
+        db, principal.user, space, parent_id, file, rel_path,
+        via=_via_label(principal), extract=extract,
     )
 
 

@@ -37,6 +37,8 @@ test('임시 토큰 발급(버튼) → 한 토큰으로 여러 파일 Bearer 업
   const endpoint = curl.split(/\s+/).pop() ?? ''
   expect(token.startsWith('fsk_')).toBeTruthy()
   expect(endpoint).toContain('/api/upload')
+  // 폴더째(tar → 서버 해제) 예시도 함께 노출된다.
+  await expect(page.getByTestId('server-upload-tar')).toContainText('extract=tar')
 
   // 쿠키 없는 컨텍스트 = 순수 Bearer 인증. '같은 임시 토큰'으로 파일 여러 개를 연속 업로드.
   const api = await request.newContext({ baseURL: BASE })

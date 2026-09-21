@@ -73,8 +73,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--token", default=os.environ.get("FS_TOKEN", ""), help="API 토큰 (또는 FS_TOKEN, 권장)")
     parser.add_argument("--folder", help="(선택) 명시 폴더 node id — 없으면 토큰 범위로")
     parser.add_argument("--space", help="(선택) 명시 공간 루트 space id — 없으면 토큰 범위로")
+    parser.add_argument(
+        "--dir", dest="dirs", action="append", default=[],
+        help="폴더 통째로 — 안의 모든 파일을 구조 유지하며 업로드(여러 번 지정 가능)",
+    )
     parser.add_argument("--rel-path", dest="rel_path", help="서버측 상대경로(중간 폴더 자동 생성)")
-    parser.add_argument("files", nargs="+", help="올릴 파일 경로(들)")
+    parser.add_argument("files", nargs="*", help="올릴 파일 경로(들)")
     args = parser.parse_args(argv)
 
     if not args.base:
@@ -83,6 +87,10 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("--token 또는 환경변수 FS_TOKEN 이 필요합니다")
     if args.folder and args.space:
         parser.error("--folder 와 --space 는 함께 쓸 수 없습니다")
+    if not args.files and not args.dirs:
+        parser.error("올릴 파일이나 --dir 폴더를 지정하세요")
+    if args.rel_path and (len(args.files) > 1 or args.dirs):
+        parser.error("--rel-path 는 파일이 하나일 때만 쓸 수 있습니다(--dir와 함께 못 씀)")
 
     base = args.base.rstrip("/")
     if args.folder:
@@ -93,15 +101,25 @@ def main(argv: list[str] | None = None) -> int:
         url_path = "/api/upload"  # 목적지는 토큰 범위가 정한다
 
     rc = 0
-    for name in args.files:
-        path = Path(name)
-        if not path.is_file():
-            print(f"건너뜀(파일 없음): {name}", file=sys.stderr)
+    # 업로드 대상 (경로, rel_path) 목록. --dir 는 폴더의 부모 기준 상대경로로 구조를 유지한다.
+    targets: list[tuple[Path, str | None]] = [(Path(n), args.rel_path) for n in args.files]
+    for d in args.dirs:
+        dp = Path(d)
+        if not dp.is_dir():
+            print(f"건너뜀(폴더 없음): {d}", file=sys.stderr)
             rc = 1
             continue
-        print(f"↥ {name} → {base}{url_path}")
+        for f in sorted(p for p in dp.rglob("*") if p.is_file()):
+            targets.append((f, str(f.relative_to(dp.parent))))
+
+    for path, rel in targets:
+        if not path.is_file():
+            print(f"건너뜀(파일 없음): {path}", file=sys.stderr)
+            rc = 1
+            continue
+        print(f"↥ {rel or path.name} → {base}{url_path}")
         try:
-            node = upload_one(base, url_path, args.token, path, args.rel_path)
+            node = upload_one(base, url_path, args.token, path, rel)
             print(f"  ok: {node.get('name')} ({node.get('size')}B) id={node.get('id')}")
         except urllib.error.HTTPError as exc:
             detail = ""
