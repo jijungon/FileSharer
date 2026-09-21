@@ -230,3 +230,101 @@ def test_short_lived_token_rejected_after_expiry(admin_client, db):
     bare = bare_client(admin_client)
     res = upload_with_token(bare, f"/api/spaces/{pid}/files", tok["token"])
     assert res.status_code == 401
+
+
+def _multi(names):
+    return [(("file"), (n, io.BytesIO(f"body-{n}".encode()), "text/plain")) for n in names]
+
+
+def test_multiple_files_in_one_request_returns_list(admin_client):
+    """한 요청에 file 필드 여러 개 → 모두 업로드되고 '목록'으로 응답(단일 토큰, 한 번에)."""
+    pid = spaces_of(admin_client)["personal"]["id"]
+    tok = make_token(admin_client, expires_in_minutes=10)
+    bare = bare_client(admin_client)
+    res = bare.post(
+        f"/api/spaces/{pid}/files",
+        headers={"Authorization": f"Bearer {tok['token']}"},
+        files=_multi(["m1.log", "m2.log", "m3.log"]),
+    )
+    assert res.status_code == 201, res.text
+    body = res.json()
+    assert isinstance(body, list)
+    assert {n["name"] for n in body} == {"m1.log", "m2.log", "m3.log"}
+
+
+def test_single_file_still_returns_object(admin_client):
+    """하위호환: 파일 하나면 예전처럼 '단일 객체'를 반환(목록 아님) — 프론트/스크립트 무영향."""
+    pid = spaces_of(admin_client)["personal"]["id"]
+    tok = make_token(admin_client)
+    bare = bare_client(admin_client)
+    res = upload_with_token(bare, f"/api/spaces/{pid}/files", tok["token"], name="solo.log")
+    assert res.status_code == 201
+    body = res.json()
+    assert isinstance(body, dict)
+    assert body["name"] == "solo.log"
+
+
+def test_rel_path_rejected_with_multiple_files(admin_client):
+    """rel_path(중간 폴더 생성)는 파일 하나일 때만 — 여러 개면 422."""
+    pid = spaces_of(admin_client)["personal"]["id"]
+    tok = make_token(admin_client)
+    bare = bare_client(admin_client)
+    res = bare.post(
+        f"/api/spaces/{pid}/files",
+        headers={"Authorization": f"Bearer {tok['token']}"},
+        files=_multi(["a.log", "b.log"]),
+        data={"rel_path": "2026/09/"},
+    )
+    assert res.status_code == 422
+
+
+def test_token_routed_upload_folder_scope(admin_client):
+    """/api/upload — URL에 id 없이 '토큰 범위'가 목적지. 폴더범위 토큰은 그 폴더로 들어간다."""
+    pid = spaces_of(admin_client)["personal"]["id"]
+    folder = admin_client.post("/api/nodes", json={"space_id": pid, "name": "inbox"}).json()
+    tok = make_token(admin_client, node_id=folder["id"], expires_in_minutes=10)
+    bare = bare_client(admin_client)
+    res = bare.post(
+        "/api/upload",
+        headers={"Authorization": f"Bearer {tok['token']}"},
+        files=_multi(["r1.log", "r2.log"]),
+    )
+    assert res.status_code == 201, res.text
+    assert len(res.json()) == 2
+    kids = {n["name"] for n in admin_client.get(f"/api/nodes/{folder['id']}/children").json()}
+    assert {"r1.log", "r2.log"} <= kids
+
+
+def test_token_routed_upload_space_and_null_scope(admin_client):
+    """/api/upload — 공간범위 토큰은 그 공간 루트, 범위없음 토큰은 개인 공간 루트로."""
+    sp = spaces_of(admin_client)
+    pid, oid = sp["personal"]["id"], sp["org"]["id"]
+    bare = bare_client(admin_client)
+
+    otok = make_token(admin_client, space_id=oid)
+    r1 = bare.post(
+        "/api/upload",
+        headers={"Authorization": f"Bearer {otok['token']}"},
+        files={"file": ("o.log", io.BytesIO(b"x"), "text/plain")},
+    )
+    assert r1.status_code == 201
+    assert r1.json()["name"] == "o.log"  # 단일=객체
+    assert any(n["name"] == "o.log" for n in admin_client.get(f"/api/spaces/{oid}/tree").json())
+
+    ptok = make_token(admin_client)  # 범위없음 → 개인 공간
+    r2 = bare.post(
+        "/api/upload",
+        headers={"Authorization": f"Bearer {ptok['token']}"},
+        files={"file": ("p.log", io.BytesIO(b"x"), "text/plain")},
+    )
+    assert r2.status_code == 201
+    assert any(n["name"] == "p.log" for n in admin_client.get(f"/api/spaces/{pid}/tree").json())
+
+
+def test_token_routed_upload_requires_token_not_session(admin_client):
+    """/api/upload 는 목적지를 정할 토큰이 필요 — 세션 쿠키만으론 401."""
+    res = admin_client.post(  # admin_client=세션 쿠키 있음, Bearer 없음
+        "/api/upload",
+        files={"file": ("s.log", io.BytesIO(b"x"), "text/plain")},
+    )
+    assert res.status_code == 401

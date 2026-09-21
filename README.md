@@ -38,23 +38,31 @@ plaintext is shown **once only** — the server stores just a scrypt hash. Token
 expires (nothing to clean up). For unattended automation, mint a longer-lived token directly via
 `POST /api/tokens` (`expires_in_days`, or omit for no expiry).
 
-**2) curl one-liner** (target the current folder or the space root — the 서버 업로드 popover
-shows the exact endpoint for where you are):
+**2) curl one-liner** — the 서버 업로드 popover fills this in for you. The **destination rides in
+the token** (wherever you clicked 서버 업로드), so the URL is just `/api/upload` — no folder/space
+id needed. List several `-F file=@…` to send **multiple files in one request**:
 
 ```bash
-# into a folder
+# destination = token's scope · several files in one request
+curl -H "Authorization: Bearer <TOKEN>" -F file=@a.log -F file=@b.log https://file.rgrg.im/api/upload
+```
+
+Or target an explicit location (the token must be in scope). One `file` field per request here:
+
+```bash
 curl -H "Authorization: Bearer <TOKEN>" -F file=@a.log https://file.rgrg.im/api/nodes/<FOLDER_ID>/files
-# into a space root
 curl -H "Authorization: Bearer <TOKEN>" -F file=@a.log https://file.rgrg.im/api/spaces/<SPACE_ID>/files
 ```
 
-**3) CLI uploader** (in this repo, dependency-light — bash+curl, or Python stdlib). Prefer the
-`FS_TOKEN` env var over `--token` (argv is visible in `ps`):
+**3) CLI uploader** (in this repo, dependency-light — bash+curl, or Python stdlib). With a scoped
+token you **don't need `--folder/--space`** (the token carries the destination); pass them only to
+target an explicit place. Prefer `FS_TOKEN` over `--token` (argv is visible in `ps`):
 
 ```bash
-FS_BASE=https://file.rgrg.im FS_TOKEN=<TOKEN> ./scripts/fs-upload.sh --folder <FOLDER_ID> a.log b.log
-FS_BASE=https://file.rgrg.im FS_TOKEN=<TOKEN> python3 scripts/fs_upload.py --space <SPACE_ID> report.csv
-# optional: --rel-path 2026/09/ creates intermediate folders server-side (single file)
+FS_BASE=https://file.rgrg.im FS_TOKEN=<TOKEN> ./scripts/fs-upload.sh a.log b.log report.csv
+FS_BASE=https://file.rgrg.im FS_TOKEN=<TOKEN> python3 scripts/fs_upload.py report.csv
+# explicit location still works:  --folder <FOLDER_ID>   |   --space <SPACE_ID>
+# optional: --rel-path 2026/09/ creates intermediate folders server-side (single file only)
 ```
 
 **Scope & security**

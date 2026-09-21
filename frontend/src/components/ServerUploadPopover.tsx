@@ -28,11 +28,11 @@ export default function ServerUploadPopover({
   const [error, setError] = useState('')
 
   const origin = window.location.origin
-  const endpoint = folderId
-    ? `${origin}/api/nodes/${folderId}/files`
-    : `${origin}/api/spaces/${spaceId}/files`
+  // 목적지는 '토큰'에 담겨 있다(발급한 위치 = 업로드 위치) → URL엔 폴더/공간 id가 없다.
+  const endpoint = `${origin}/api/upload`
   const tokenForCurl = activeToken || '<TOKEN>'
-  const curl = `curl -H "Authorization: Bearer ${tokenForCurl}" -F file=@a.log ${endpoint}`
+  // 파일 여러 개는 -F file=@ 를 여러 번 붙이면 한 요청에 모두 올라간다.
+  const curl = `curl -H "Authorization: Bearer ${tokenForCurl}" -F file=@a.log -F file=@b.log ${endpoint}`
   // 표시용 마스킹: fsk_<id>. 까지만 보여주고 나머지 비밀은 가린다.
   const masked = activeToken
     ? `${activeToken.slice(0, activeToken.indexOf('.') + 1 || 12)}••••••`
@@ -76,21 +76,23 @@ export default function ServerUploadPopover({
 
       {activeToken ? (
         <p className="muted" style={{ margin: '2px 0' }}>
-          임시 토큰(<code>{masked}</code>)이 아래 curl에 적용됐습니다. 바로 복사해 쓰세요.{' '}
+          임시 토큰(<code>{masked}</code>)이 적용됐습니다 — 이 토큰은 <strong>{label}</strong>로
+          업로드됩니다(목적지가 토큰에 담김).{' '}
           <button type="button" className="linklike" onClick={() => onActiveToken(null)}>
             해제
           </button>
           <br />
           <span style={{ fontSize: 12 }}>
-            {EXPIRES_MIN}분간 유효 · 그 안에 여러 파일 OK · 지나면 자동 만료(브라우저 메모리에만
+            {EXPIRES_MIN}분간 유효 · 한 토큰으로 여러 파일 OK · 지나면 자동 만료(브라우저 메모리에만
             보관).
           </span>
         </p>
       ) : (
         <>
           <p className="muted" style={{ margin: '2px 0 6px' }}>
-            브라우저 없이 이 위치로 파일을 올립니다. 아래 버튼으로{' '}
+            브라우저 없이 <strong>{label}</strong>로 파일을 올립니다. 아래 버튼으로{' '}
             <strong>{EXPIRES_MIN}분짜리 임시 토큰</strong>을 발급하면 curl에 자동으로 채워집니다.
+            목적지는 토큰에 담겨 URL에 폴더 지정이 필요 없습니다.
           </p>
           <button className="btn-primary" onClick={mint} disabled={minting || !spaceId}>
             {minting ? '발급 중…' : '🔑 임시 토큰 발급'}
@@ -118,8 +120,9 @@ export default function ServerUploadPopover({
       </div>
 
       <p className="muted" style={{ margin: '4px 0 0' }}>
-        여러 파일·폴더는 저장소의 <code>scripts/fs-upload.sh</code> 사용 · 토큰은 발급 직후 한 번만
-        표시되고 서버에는 해시만 저장됩니다.
+        여러 파일은 위 curl처럼 <code>-F file=@</code> 를 여러 번 붙이면 한 요청에 올라갑니다 · 폴더째
+        올릴 땐 저장소의 <code>scripts/fs-upload.sh</code> · 토큰은 발급 직후 한 번만 표시되고 서버엔
+        해시만 저장됩니다.
       </p>
     </div>
   )
