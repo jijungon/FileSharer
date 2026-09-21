@@ -29,10 +29,14 @@ Push files into FileSharer from a headless server (cloud/IDC) with no browser, a
 by an API token (`Authorization: Bearer <token>`). This is the "push" counterpart to the
 share one-liner above.
 
-**1) Issue a token** (in the web UI): open the files screen and click **서버 업로드** (next to
-다운로드 / 공유 링크), or go to **API 토큰** in the top bar. Give it a label and a scope, then
-copy the token. The plaintext token is shown **once only** — the server stores just a scrypt
-hash. Token format is `fsk_<id>.<secret>`.
+**1) Get a temp token** (in the web UI): open the files screen, click **서버 업로드** (next to
+다운로드 / 공유 링크; also in the editor toolbar when a file is open), then click **🔑 임시 토큰
+발급**. A short-lived token (default **10 minutes**, scoped to the folder/space you're viewing) is
+issued and auto-filled into the curl one-liner below — no token-management page to visit. The
+plaintext is shown **once only** — the server stores just a scrypt hash. Token format is
+`fsk_<id>.<secret>`. **One temp token can push several files within its window**, then it just
+expires (nothing to clean up). For unattended automation, mint a longer-lived token directly via
+`POST /api/tokens` (`expires_in_days`, or omit for no expiry).
 
 **2) curl one-liner** (target the current folder or the space root — the 서버 업로드 popover
 shows the exact endpoint for where you are):
@@ -61,8 +65,9 @@ FS_BASE=https://file.rgrg.im FS_TOKEN=<TOKEN> python3 scripts/fs_upload.py --spa
 - Uploads run through the **same validation** as browser uploads (max size, filename sanitizing,
   path-traversal guard) and are recorded in the **audit log** as the token owner, tagged with the
   token label. Tokens are never written to logs, URLs, or error messages.
-- **Revoke** anytime from the API 토큰 screen (or `DELETE /api/tokens/{id}`); revoked/expired
-  tokens are rejected with 401. Optionally set an expiry when issuing.
+- **Auto-expiry is the norm**: temp tokens issued from the UI are short-lived (minutes) and vanish
+  on their own — you don't manage or rotate them. You can also **revoke** immediately via
+  `DELETE /api/tokens/{id}`; revoked/expired tokens are rejected with 401.
 - Never commit real tokens. Use placeholders (`<TOKEN>`) in docs and scripts.
 
 ## Deploy (internal VM)

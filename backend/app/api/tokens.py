@@ -22,6 +22,7 @@ class CreateTokenBody(BaseModel):
     space_id: str | None = None
     node_id: str | None = None
     expires_in_days: int | None = None
+    expires_in_minutes: int | None = None  # 서버 업로드용 짧은 임시 토큰(분 단위). days보다 우선.
 
 
 def _space_label(db: Session, space: Space) -> str:
@@ -86,6 +87,7 @@ def create(
         space_id=space_id,
         node_id=node_id,
         expires_in_days=body.expires_in_days,
+        expires_in_minutes=body.expires_in_minutes,
     )
     audit.log(db, "token_create", user_id=user.id, detail=token.label or token.id)
     return {

@@ -23,6 +23,7 @@ from .permissions import is_descendant
 
 TOKEN_PREFIX = "fsk_"  # FileSharer key. 시크릿 스캐너가 잡아내기 쉽게 고정 접두어를 붙인다.
 _MAX_EXPIRES_DAYS = 365
+_MAX_EXPIRES_MINUTES = 24 * 60  # 서버 업로드용 임시 토큰은 최대 하루(분 단위)
 
 
 @lru_cache(maxsize=1)
@@ -43,6 +44,25 @@ def _split(raw: str) -> tuple[str | None, str]:
     return token_id, secret
 
 
+def _resolve_expiry(days: int | None, minutes: int | None):
+    """만료 시각 계산. 분(minutes)이 우선 — 서버 업로드용 짧은 '임시 토큰'에 쓴다.
+    (예: 10분 발급 → 그 창 안에서 여러 파일 업로드 가능, 지나면 자동 만료.)
+    분·일 모두 없으면 무기한(None)."""
+    if minutes is not None:
+        if not 1 <= minutes <= _MAX_EXPIRES_MINUTES:
+            raise HTTPException(
+                status_code=422, detail=f"만료(분)는 1~{_MAX_EXPIRES_MINUTES} 사이여야 합니다"
+            )
+        return utcnow() + timedelta(minutes=minutes)
+    if days is not None:
+        if not 1 <= days <= _MAX_EXPIRES_DAYS:
+            raise HTTPException(
+                status_code=422, detail=f"만료는 1~{_MAX_EXPIRES_DAYS}일 사이여야 합니다"
+            )
+        return utcnow() + timedelta(days=days)
+    return None
+
+
 def create_token(
     db: Session,
     user: User,
@@ -51,12 +71,10 @@ def create_token(
     space_id: str | None = None,
     node_id: str | None = None,
     expires_in_days: int | None = None,
+    expires_in_minutes: int | None = None,
 ) -> tuple[ApiToken, str]:
     """토큰 생성 → (행, 원문). 원문(plaintext)은 이 반환값에서 단 한 번만 노출된다."""
-    if expires_in_days is not None and not 1 <= expires_in_days <= _MAX_EXPIRES_DAYS:
-        raise HTTPException(
-            status_code=422, detail=f"만료는 1~{_MAX_EXPIRES_DAYS}일 사이여야 합니다"
-        )
+    expires_at = _resolve_expiry(expires_in_days, expires_in_minutes)
     token_id = new_id()
     secret = secrets.token_urlsafe(32)
     token = ApiToken(
@@ -66,7 +84,7 @@ def create_token(
         token_hash=hash_password(secret),
         space_id=space_id,
         node_id=node_id,
-        expires_at=(utcnow() + timedelta(days=expires_in_days)) if expires_in_days else None,
+        expires_at=expires_at,
     )
     db.add(token)
     db.flush()

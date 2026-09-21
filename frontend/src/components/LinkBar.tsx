@@ -10,8 +10,8 @@ interface Props {
   selected: NodeInfo | null
   onNavigate: (index: number | null) => void // null = 공간 루트
   onDropToCrumb: (draggedId: string, targetIndex: number | null) => void
-  activeToken?: string | null // 방금 발급한 토큰 — 서버 업로드 curl 자동 채움
-  onOpenTokens?: () => void // API 토큰 드로어 열기
+  activeToken?: string | null // 지금 메모리에 든 임시 토큰 — 서버 업로드 curl 자동 채움
+  onActiveToken: (token: string | null) => void // 임시 토큰 발급/해제 반영
 }
 
 export default function LinkBar({
@@ -21,7 +21,7 @@ export default function LinkBar({
   onNavigate,
   onDropToCrumb,
   activeToken,
-  onOpenTokens,
+  onActiveToken,
 }: Props) {
   const [copied, setCopied] = useState(false)
   const [shareOpen, setShareOpen] = useState(false)
@@ -116,7 +116,7 @@ export default function LinkBar({
             spaceId={space.id}
             label={currentLabel}
             activeToken={activeToken}
-            onOpenTokens={onOpenTokens}
+            onActiveToken={onActiveToken}
             onClose={() => setServerUpOpen(false)}
           />
         )}

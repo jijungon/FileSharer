@@ -1,7 +1,7 @@
 """서버(헤드리스) 업로드용 API 토큰 — 발급→업로드→회수 전 과정과 범위·인증 경계."""
 
 import io
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 
 from fastapi.testclient import TestClient
 
@@ -188,3 +188,45 @@ def test_token_upload_is_audited_with_label(admin_client):
     assert res.status_code == 201
     rows = admin_client.get("/api/system/audit?action=upload").json()
     assert any("토큰:nightly-backup" in r["detail"] for r in rows)
+
+
+def test_short_lived_token_allows_multiple_uploads(admin_client):
+    """짧은 만료(분) '임시 토큰' 하나로 그 창 안에서 여러 파일을 올릴 수 있어야 한다.
+
+    서버 업로드 UX의 핵심: '임시 토큰 발급' 버튼이 10분짜리 토큰을 만들고,
+    사용자는 그 하나로 파일 여러 개를 밀어넣은 뒤 그냥 만료되게 둔다(단일사용 아님).
+    """
+    pid = spaces_of(admin_client)["personal"]["id"]
+    tok = make_token(admin_client, expires_in_minutes=10, label="temp-upload")
+    assert tok["expires_at"] is not None  # 무기한이 아니라 만료가 설정됨
+    exp = datetime.fromisoformat(tok["expires_at"])
+    assert exp - datetime.now(UTC) < timedelta(minutes=11)  # 일이 아닌 '분' 단위
+    bare = bare_client(admin_client)
+    for i in range(3):
+        res = upload_with_token(bare, f"/api/spaces/{pid}/files", tok["token"], name=f"f{i}.log")
+        assert res.status_code == 201, res.text  # 같은 토큰으로 3번 연속 성공
+    names = {n["name"] for n in admin_client.get(f"/api/spaces/{pid}/tree").json()}
+    assert {"f0.log", "f1.log", "f2.log"} <= names
+
+
+def _mint_status(admin_client, minutes):
+    return admin_client.post("/api/tokens", json={"expires_in_minutes": minutes}).status_code
+
+
+def test_expires_in_minutes_out_of_range_rejected(admin_client):
+    assert _mint_status(admin_client, 0) == 422
+    assert _mint_status(admin_client, 24 * 60 + 1) == 422
+    assert _mint_status(admin_client, 1) == 201  # 경계: 최소 1분
+    assert _mint_status(admin_client, 24 * 60) == 201  # 경계: 최대 하루
+
+
+def test_short_lived_token_rejected_after_expiry(admin_client, db):
+    """분 단위 만료 토큰도 시간이 지나면 401(자동 소멸)."""
+    pid = spaces_of(admin_client)["personal"]["id"]
+    tok = make_token(admin_client, expires_in_minutes=10)
+    row = db.get(ApiToken, tok["id"])
+    row.expires_at = utcnow() - timedelta(minutes=1)  # 강제로 과거로
+    db.commit()
+    bare = bare_client(admin_client)
+    res = upload_with_token(bare, f"/api/spaces/{pid}/files", tok["token"])
+    assert res.status_code == 401
