@@ -209,17 +209,8 @@ export default function FolderTree({
             setMenu({ row: node, x: e.clientX, y: e.clientY })
           }}
         >
-          <button
-            className="tree-caret"
-            onClick={() => isFolder && hasChildren && toggle(node.id)}
-            style={{ visibility: isFolder && hasChildren ? 'visible' : 'hidden' }}
-            aria-label={isOpen ? '접기' : '펼치기'}
-            tabIndex={isFolder && hasChildren ? 0 : -1}
-          >
-            {isOpen ? '▾' : '▸'}
-          </button>
           <span className="tree-icon" aria-hidden="true">
-            {isFolder ? '📁' : '📄'}
+            {isFolder ? (isOpen && hasChildren ? '📂' : '📁') : '📄'}
           </span>
           <button
             className="tree-name"

@@ -140,6 +140,15 @@ export default function Files() {
   const [dragOverTrash, setDragOverTrash] = useState(false)
   const [treeVersion, setTreeVersion] = useState(0)
   const [refreshing, setRefreshing] = useState(false) // 새로고침 버튼 회전 표시
+  // 사이드바 폭(드래그로 조절, localStorage 기억). 잘린 파일 이름을 넓혀 보기 위함.
+  const [sidebarWidth, setSidebarWidth] = useState<number>(() => {
+    try {
+      const v = parseInt(localStorage.getItem('fs:sidebarW') || '', 10)
+      return v >= 160 && v <= 560 ? v : 220
+    } catch {
+      return 220
+    }
+  })
   const fileInput = useRef<HTMLInputElement>(null)
   const restoredFromUrl = useRef(false)
   const navSynced = useRef(false) // 부팅 완료 후 브라우저 뒤로/앞으로(URL) 동기화 활성화
@@ -172,6 +181,33 @@ export default function Files() {
     } catch {
       /* localStorage 불가 — 세션 동안만 적용 */
     }
+  }
+
+  // 사이드바 우측 경계선을 드래그해 폭 조절(160~560px). 놓을 때 localStorage에 저장.
+  function startSidebarResize(e: React.PointerEvent) {
+    e.preventDefault()
+    const startX = e.clientX
+    const startW = sidebarWidth
+    let lastW = startW
+    const overlay = document.createElement('div')
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;cursor:col-resize'
+    document.body.appendChild(overlay)
+    function move(ev: PointerEvent) {
+      lastW = Math.min(560, Math.max(160, startW + (ev.clientX - startX)))
+      setSidebarWidth(lastW)
+    }
+    function up() {
+      overlay.remove()
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', up)
+      try {
+        localStorage.setItem('fs:sidebarW', String(lastW))
+      } catch {
+        /* localStorage 불가 — 세션 동안만 적용 */
+      }
+    }
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', up)
   }
 
   // 초기 로드: me + spaces (+ 딥링크 복원)
@@ -749,7 +785,7 @@ export default function Files() {
       <div className="workspace">
         <aside
           className="sidebar"
-          style={fullscreen && viewerOpen ? { display: 'none' } : undefined}
+          style={fullscreen && viewerOpen ? { display: 'none' } : { width: sidebarWidth }}
         >
           {/* 상단 아이콘 툴바 — 새로고침 · 새 폴더 · 업로드(단일) · 새 MD */}
           <div className="sidebar-toolbar">
@@ -913,6 +949,17 @@ export default function Files() {
             </button>
           </div>
         </aside>
+
+        {/* 사이드바 우측 경계선 — 드래그해 폭 조절(잘린 파일 이름 넓혀 보기) */}
+        {!(fullscreen && viewerOpen) && (
+          <div
+            className="sidebar-resizer"
+            onPointerDown={startSidebarResize}
+            title="드래그해서 사이드바 너비 조절"
+            role="separator"
+            aria-orientation="vertical"
+          />
+        )}
 
         {!viewerOpen && (
           <main
