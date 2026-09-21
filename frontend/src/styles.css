@@ -358,6 +358,118 @@ button:focus-visible {
   white-space: nowrap;
 }
 
+/* 링크처럼 보이는 버튼(팝오버 안 'API 토큰 발급/관리 →') */
+.linklike {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: var(--primary);
+  cursor: pointer;
+}
+.linklike:hover {
+  text-decoration: underline;
+}
+
+/* ── API 토큰: 우측 슬라이드 드로어 ── */
+.token-drawer-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  background: rgba(0, 0, 0, 0.35);
+}
+.token-drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 91;
+  width: min(560px, 92vw);
+  display: flex;
+  flex-direction: column;
+  background: var(--canvas);
+  border-left: 1px solid var(--hairline);
+  box-shadow: -8px 0 24px rgba(0, 0, 0, 0.28);
+  transform: translateX(100%);
+  transition: transform 0.22s ease;
+  visibility: hidden;
+}
+.token-drawer.open {
+  transform: translateX(0);
+  visibility: visible;
+}
+.token-drawer-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--sp-md) var(--sp-lg);
+  border-bottom: 1px solid var(--hairline);
+  flex: none;
+}
+.token-drawer-head h2 {
+  font-size: 20px;
+}
+.token-drawer-body {
+  padding: var(--sp-lg);
+  overflow-y: auto;
+}
+.token-section-title {
+  font-size: 17px;
+  margin: 0 0 var(--sp-sm);
+}
+.token-card {
+  background: var(--canvas-parchment);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-lg);
+  padding: var(--sp-md);
+  margin-bottom: var(--sp-md);
+}
+.token-card--new {
+  background: var(--canvas);
+  border: 2px solid var(--primary);
+}
+.token-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.token-active-note {
+  color: var(--primary);
+  font-size: 13px;
+  margin: 4px 0 8px;
+}
+.token-form {
+  display: flex;
+  gap: var(--sp-sm);
+  flex-wrap: wrap;
+  margin-bottom: var(--sp-sm);
+}
+.token-input {
+  font: inherit;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  padding: 9px 12px;
+  background: var(--surface-pearl);
+  color: var(--ink);
+  flex: 1 1 160px;
+}
+.token-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+.token-table th {
+  text-align: left;
+  color: var(--ink-muted-48);
+  font-weight: 600;
+  font-size: 13px;
+  padding: 8px 6px;
+}
+.token-table td {
+  padding: 10px 6px;
+  border-top: 1px solid var(--divider-soft);
+}
+
 .linkbar-share:disabled {
   opacity: 0.45;
   cursor: not-allowed;
@@ -1025,6 +1137,17 @@ button:focus-visible {
 .editor-toolbar .btn-utility:disabled {
   opacity: 0.4;
 }
+/* 공유 링크(btn-primary)·자동저장 토글도 한 줄 유지(줄바꿈 방지) — 버튼 수가 늘어도 안 눌림 */
+.editor-toolbar .btn-primary {
+  padding: 6px 10px;
+  font-size: 12.5px;
+  white-space: nowrap;
+  flex: none;
+}
+.editor-toolbar .autosave-toggle {
+  flex: none;
+  white-space: nowrap;
+}
 
 /* 에디터 툴바에 통합된 경로(예전 LinkBar 브레드크럼) — 좁으면 줄고 넘치면 …로 잘린다 */
 .editor-crumbs {
@@ -1074,6 +1197,8 @@ button:focus-visible {
   font-size: 12px;
   color: var(--ed-quiet);
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  flex: none;
   transition: color 0.2s ease;
 }
 

@@ -4,6 +4,7 @@ import { useScrollSync } from '../lib/scrollsync'
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { ApiError, SpaceInfo } from '../lib/api'
 import SharePopover from './SharePopover'
+import ServerUploadPopover from './ServerUploadPopover'
 import { acquireLock, downloadUrl, LockState, NodeInfo, releaseLock } from '../lib/files'
 import { formatBytes } from '../lib/format'
 
@@ -86,6 +87,8 @@ interface Props {
   onToggleFullscreen: () => void
   onNodeUpdated: (fresh: NodeInfo) => void
   onClose: () => void
+  activeToken?: string | null // 방금 발급한 토큰 — 서버 업로드 curl 자동 채움
+  onOpenTokens?: () => void // API 토큰 드로어 열기
 }
 
 // 편집/미리보기 상단 경로(예전 LinkBar의 브레드크럼). 파일을 열면 LinkBar를 숨기고
@@ -116,15 +119,30 @@ function CrumbPath({
   )
 }
 
-// 파일 액션(다운로드 · 사내 링크 복사 · 공유 링크) — 예전 LinkBar에서 옮겨왔다.
-function FileActions({ node }: { node: NodeInfo }) {
+// 파일 액션(다운로드 · 사내 링크 복사 · 서버 업로드 · 공유 링크) — 예전 LinkBar에서 옮겨왔다.
+// 서버 업로드는 '이 파일이 있는 폴더'가 대상(파일 자체가 아니라 폴더로 push). 공유 링크 바로 옆.
+function FileActions({
+  node,
+  space,
+  path,
+  activeToken,
+  onOpenTokens,
+}: {
+  node: NodeInfo
+  space: SpaceInfo | null
+  path: NodeInfo[]
+  activeToken?: string | null
+  onOpenTokens?: () => void
+}) {
   const [copied, setCopied] = useState(false)
   const [shareOpen, setShareOpen] = useState(false)
+  const [serverUpOpen, setServerUpOpen] = useState(false)
   async function copyInternalLink() {
     await navigator.clipboard.writeText(`${window.location.origin}/files/${node.id}`)
     setCopied(true)
     setTimeout(() => setCopied(false), 1500)
   }
+  const folder = path.length > 0 ? path[path.length - 1] : null
   return (
     <>
       <a href={downloadUrl(node)}>
@@ -133,9 +151,37 @@ function FileActions({ node }: { node: NodeInfo }) {
       <button className="btn-utility" onClick={copyInternalLink}>
         {copied ? '복사됨 ✓' : '사내 링크 복사'}
       </button>
-      <button className="btn-primary linkbar-share" onClick={() => setShareOpen((v) => !v)}>
+      {space && (
+        <button
+          className="btn-utility"
+          onClick={() => {
+            setServerUpOpen((v) => !v)
+            setShareOpen(false)
+          }}
+          title="이 폴더로 서버에서 파일 올리기 (API 토큰)"
+        >
+          ↥ 서버 업로드
+        </button>
+      )}
+      <button
+        className="btn-primary linkbar-share"
+        onClick={() => {
+          setShareOpen((v) => !v)
+          setServerUpOpen(false)
+        }}
+      >
         공유 링크
       </button>
+      {serverUpOpen && space && (
+        <ServerUploadPopover
+          folderId={folder?.id ?? null}
+          spaceId={space.id}
+          label={folder?.name ?? space.name}
+          activeToken={activeToken}
+          onOpenTokens={onOpenTokens}
+          onClose={() => setServerUpOpen(false)}
+        />
+      )}
       {shareOpen && <SharePopover node={node} onClose={() => setShareOpen(false)} />}
     </>
   )
@@ -155,6 +201,8 @@ function ViewerToolbar({
   status,
   statusClass,
   extraStatus,
+  activeToken,
+  onOpenTokens,
   children,
 }: {
   node: NodeInfo
@@ -168,6 +216,8 @@ function ViewerToolbar({
   status?: ReactNode
   statusClass?: string
   extraStatus?: ReactNode
+  activeToken?: string | null
+  onOpenTokens?: () => void
   children?: ReactNode
 }) {
   return (
@@ -179,7 +229,13 @@ function ViewerToolbar({
       )}
       {extraStatus}
       <span className="toolbar-spacer" />
-      <FileActions node={node} />
+      <FileActions
+        node={node}
+        space={space}
+        path={path}
+        activeToken={activeToken}
+        onOpenTokens={onOpenTokens}
+      />
       {children}
       <button className="btn-utility" onClick={onToggleFullscreen}>
         {fullscreen ? '분할 보기' : '전체화면'}
@@ -214,6 +270,8 @@ function MediaPreview({
   kind,
   fullscreen,
   onToggleFullscreen,
+  activeToken,
+  onOpenTokens,
 }: Props & { kind: MediaKind }) {
   const raw = `/api/files/${node.id}/raw`
   // 영상 재생은 preview.mp4로 — 브라우저가 못 푸는 오디오 코덱(AC-3 등)이면 서버가 AAC로 변환해 준다.
@@ -228,6 +286,8 @@ function MediaPreview({
         fullscreen={fullscreen}
         onToggleFullscreen={onToggleFullscreen}
         onClose={onClose}
+        activeToken={activeToken}
+        onOpenTokens={onOpenTokens}
         status={formatBytes(node.size)}
         extraStatus={
           kind === 'html' ? (
@@ -295,7 +355,17 @@ function HtmlFrame({ node }: { node: NodeInfo }) {
 
 /** 오피스 문서 미리보기 — 서버가 LibreOffice로 변환한 PDF를 받아 보여준다.
  * 변환에 몇 초 걸릴 수 있어 로딩 상태를 표시하고, 실패하면 안내한다. */
-function OfficePreview({ node, space, path, onNavigate, onClose, fullscreen, onToggleFullscreen }: Props) {
+function OfficePreview({
+  node,
+  space,
+  path,
+  onNavigate,
+  onClose,
+  fullscreen,
+  onToggleFullscreen,
+  activeToken,
+  onOpenTokens,
+}: Props) {
   const [state, setState] = useState<'loading' | 'ready' | 'error'>('loading')
   const [pdfUrl, setPdfUrl] = useState('')
   const [err, setErr] = useState('')
@@ -338,6 +408,8 @@ function OfficePreview({ node, space, path, onNavigate, onClose, fullscreen, onT
         fullscreen={fullscreen}
         onToggleFullscreen={onToggleFullscreen}
         onClose={onClose}
+        activeToken={activeToken}
+        onOpenTokens={onOpenTokens}
         status={formatBytes(node.size)}
         extraStatus={<span className="editor-status">PDF로 변환됨</span>}
       />
@@ -406,6 +478,8 @@ function TextEditor({
   onToggleFullscreen,
   onNodeUpdated,
   onClose,
+  activeToken,
+  onOpenTokens,
 }: Props) {
   const appTheme = useAppTheme() // 라이트/다크 토글에 따라 에디터 테마도 전환
   const [text, setText] = useState<string | null>(null)
@@ -620,6 +694,8 @@ function TextEditor({
         fullscreen={fullscreen}
         onToggleFullscreen={onToggleFullscreen}
         onClose={onClose}
+        activeToken={activeToken}
+        onOpenTokens={onOpenTokens}
         status={status}
         statusClass={
           [dirty && !saving ? 'dirty' : '', savedFlash ? 'saved' : '']
