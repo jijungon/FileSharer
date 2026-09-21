@@ -1890,15 +1890,6 @@ button:focus-visible {
   box-shadow: inset 0 0 0 2px var(--primary);
 }
 
-.tree-caret {
-  width: 16px;
-  min-width: 16px;
-  background: none;
-  color: var(--ink-muted-48);
-  font-size: 9px;
-  padding: 2px 0;
-  text-align: center;
-}
 
 /* 트리 파일/폴더 아이콘 */
 .tree-icon {
