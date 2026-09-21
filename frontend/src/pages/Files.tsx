@@ -6,7 +6,6 @@ import LinkBar from '../components/LinkBar'
 import NewMarkdownModal from '../components/NewMarkdownModal'
 import ViewerPanel from '../components/ViewerPanel'
 import { api, ApiError, Me, SpaceInfo } from '../lib/api'
-import { downloadUrlData, supportsDragOut } from '../lib/dragout'
 import { formatBytes, formatDateTime, formatTrashRemaining } from '../lib/format'
 import {
   dropUploads,
@@ -22,7 +21,6 @@ import {
   addFavorite,
   createFolder,
   deleteNode,
-  downloadUrl,
   getNodePath,
   listFavoriteIds,
   listFavorites,
@@ -132,20 +130,16 @@ export default function Files() {
   const [favIds, setFavIds] = useState<Set<string>>(new Set()) // 내 즐겨찾기 노드 id
   const [favMode, setFavMode] = useState(false) // 즐겨찾기 뷰
   const [favItems, setFavItems] = useState<NodeInfo[]>([])
-  const [recentMode, setRecentMode] = useState(false) // 최근 열어본 항목 뷰
   const [recentItems, setRecentItems] = useState<NodeInfo[]>([])
   const [dropActive, setDropActive] = useState(false)
   const [fullscreen, setFullscreen] = useState(false)
   const [bootError, setBootError] = useState('')
-  const [editingId, setEditingId] = useState<string | null>(null)
-  const [editingName, setEditingName] = useState('')
   const [sortKey, setSortKey] = useState<SortKey>('name')
   const [sortDir, setSortDir] = useState<SortDir>('asc')
   const [dragOverSpace, setDragOverSpace] = useState<string | null>(null)
   const [dragOverTrash, setDragOverTrash] = useState(false)
   const [treeVersion, setTreeVersion] = useState(0)
   const [refreshing, setRefreshing] = useState(false) // 새로고침 버튼 회전 표시
-  const [checked, setChecked] = useState<Set<string>>(new Set()) // 다중선택된 노드 id
   const fileInput = useRef<HTMLInputElement>(null)
   const restoredFromUrl = useRef(false)
   const navSynced = useRef(false) // 부팅 완료 후 브라우저 뒤로/앞으로(URL) 동기화 활성화
@@ -253,13 +247,13 @@ export default function Files() {
   // URL에 안 담기므로 localStorage에 저장 → 부팅 시 위 boot()가 복원한다.
   useEffect(() => {
     if (!navSynced.current || !spaceId) return
-    const view = trashMode ? 'trash' : favMode ? 'fav' : recentMode ? 'recent' : 'normal'
+    const view = trashMode ? 'trash' : favMode ? 'fav' : 'normal'
     try {
       localStorage.setItem('fs:view', JSON.stringify({ spaceId, view }))
     } catch {
       /* localStorage 불가 — 저장 생략 */
     }
-  }, [spaceId, trashMode, favMode, recentMode])
+  }, [spaceId, trashMode, favMode])
 
   // 브라우저 뒤로/앞으로: URL(nodeId)이 화면 상태와 어긋나면 URL을 기준으로 복원.
   // 앞으로 이동(폴더 열기 등)은 상태를 먼저 세팅하므로 currentId === nodeId라 건너뛴다.
@@ -330,9 +324,8 @@ export default function Files() {
   }
 
 
-  // 공간·폴더 이동이나 휴지통 토글 시 다중선택·검색 해제(다른 목록의 잔상 방지)
+  // 공간·폴더 이동이나 휴지통 토글 시 검색 해제(다른 목록의 잔상 방지)
   useEffect(() => {
-    setChecked(new Set())
     setSearchQ('')
   }, [spaceId, currentFolder?.id, trashMode])
 
@@ -380,16 +373,7 @@ export default function Files() {
     setFullscreen(false)
     setTrashMode(false)
     setFavMode(false)
-    setRecentMode(false)
     navigate('/files')
-  }
-
-  function openFolder(folder: NodeInfo) {
-    setPath((p) => [...p, folder])
-    setSelected(null)
-    setFavMode(false)
-    setRecentMode(false)
-    navigate(`/files/${folder.id}`)
   }
 
   function selectNode(node: NodeInfo) {
@@ -401,7 +385,6 @@ export default function Files() {
     setSelected(null)
     setFullscreen(false)
     setFavMode(false)
-    setRecentMode(false)
     if (index === null) {
       setPath([])
       navigate('/files')
@@ -410,11 +393,6 @@ export default function Files() {
       setPath(path.slice(0, index + 1))
       navigate(`/files/${target.id}`)
     }
-  }
-
-  // 파일 목록에서 상위 폴더로 (path 마지막 바로 앞; 없으면 공간 루트)
-  function goUp() {
-    crumbNavigate(path.length <= 1 ? null : path.length - 2)
   }
 
   async function guard<T>(action: () => Promise<T>): Promise<T | undefined> {
@@ -435,7 +413,6 @@ export default function Files() {
       setFullscreen(false)
       setTrashMode(false)
       setFavMode(false)
-      setRecentMode(false)
       setPath(found.node.type === 'folder' ? [...found.ancestors, found.node] : found.ancestors)
       navigate(`/files/${id}`)
     } catch {
@@ -447,7 +424,6 @@ export default function Files() {
   async function openLocated(node: NodeInfo) {
     setSearchQ('') // 검색 모드 종료
     setFavMode(false) // 즐겨찾기 뷰 종료
-    setRecentMode(false) // 최근 뷰 종료
     if (node.type === 'folder') {
       openFolderById(node.id)
       return
@@ -468,7 +444,6 @@ export default function Files() {
   async function openFileFromTree(row: TreeRow) {
     setSearchQ('')
     setFavMode(false)
-    setRecentMode(false)
     try {
       const found = await getNodePath(row.id)
       setSpaceId(found.space_id)
@@ -487,7 +462,6 @@ export default function Files() {
       return
     }
     setTrashMode(false)
-    setRecentMode(false)
     setSelected(null)
     setSearchQ('')
     setPath([]) // 루트 뷰 진입: URL nodeId 비우기(새로고침 복원, [nodeId] 효과의 모드 리셋 방지)
@@ -643,23 +617,6 @@ export default function Files() {
     await runUploads(ok.map((c) => ({ file: c.file, relPath: c.relPath })))
   }
 
-  function startRename(node: NodeInfo) {
-    setEditingId(node.id)
-    setEditingName(node.name)
-  }
-
-  function cancelRename() {
-    setEditingId(null)
-    setEditingName('')
-  }
-
-  async function commitRename(node: NodeInfo) {
-    const name = editingName.trim()
-    setEditingId(null)
-    if (!name || name === node.name) return
-    await guard(() => renameNode(node.id, name))
-  }
-
   // 드래그로 휴지통에 놓아 삭제(복원 가능하므로 확인창 없음).
   async function trashByDrag(ids: string[]) {
     if (ids.length === 0) return
@@ -669,17 +626,9 @@ export default function Files() {
       flash(err instanceof Error ? err.message : '삭제에 실패했습니다')
     } finally {
       closeViewerIfAffected(ids)
-      clearChecked()
       reload()
       setTreeVersion((v) => v + 1)
     }
-  }
-
-  // 삭제 버튼 — 휴지통으로 이동(밋밋한 기본 삭제, 모션 없음).
-  async function onDelete(node: NodeInfo) {
-    if (!window.confirm(`"${node.name}"을(를) 휴지통으로 이동할까요?`)) return
-    await guard(() => deleteNode(node.id))
-    if (selected?.id === node.id) setSelected(null)
   }
 
   // ── 사이드바 트리 우클릭 메뉴 동작(파일목록 표 대체) ──
@@ -713,51 +662,6 @@ export default function Files() {
     if (ok) flash(`${spaceName}(으)로 복사했습니다`)
   }
 
-
-  // 드래그 시작: 이 행이 체크돼 있고 여러 개 선택됐으면 선택 전체를, 아니면 이 항목만.
-  function rowDragStart(e: React.DragEvent, node: NodeInfo) {
-    const ids = checked.has(node.id) && checked.size > 1 ? [...checked] : [node.id]
-    e.dataTransfer.setData('application/x-node-id', node.id) // 단일(드래그아웃 호환)
-    e.dataTransfer.setData('application/x-node-ids', JSON.stringify(ids))
-    if (supportsDragOut()) {
-      e.dataTransfer.setData('DownloadURL', downloadUrlData(node, window.location.origin))
-    }
-    e.dataTransfer.effectAllowed = 'copyMove'
-    setDragChip(e, node, ids.length)
-  }
-
-  // 기본 드래그 고스트는 행 전체 폭을 반투명 복사해서, 드롭하려는 위치(폴더 행·사이드바)를
-  // 가려 버린다. 커서 옆에 붙는 작은 칩으로 바꿔 뒤가 보이게 한다. 여러 개면 개수 배지.
-  function setDragChip(e: React.DragEvent, node: NodeInfo, count: number) {
-    if (typeof document === 'undefined' || !e.dataTransfer.setDragImage) return
-    const chip = document.createElement('div')
-    chip.className = 'drag-chip'
-    const icon = document.createElement('span')
-    icon.className = 'drag-chip__icon'
-    icon.textContent = node.type === 'folder' ? '📁' : '📄'
-    const name = document.createElement('span')
-    name.className = 'drag-chip__name'
-    name.textContent = node.name
-    chip.append(icon, name)
-    if (count > 1) {
-      const badge = document.createElement('span')
-      badge.className = 'drag-chip__count'
-      badge.textContent = String(count)
-      chip.append(badge)
-    }
-    // 화면 밖에 붙였다가(스냅샷용) 다음 틱에 제거 — 곧바로 지우면 캡처 전에 사라질 수 있다.
-    chip.style.position = 'absolute'
-    chip.style.top = '-1000px'
-    chip.style.left = '-1000px'
-    document.body.appendChild(chip)
-    try {
-      e.dataTransfer.setDragImage(chip, 14, 18) // 커서를 칩 좌상단 근처에 둔다
-    } catch {
-      /* 미지원 환경 — 기본 고스트로 폴백 */
-    }
-    setTimeout(() => chip.remove(), 0)
-  }
-
   function draggedIds(e: React.DragEvent): string[] {
     const many = e.dataTransfer.getData('application/x-node-ids')
     if (many) {
@@ -771,23 +675,6 @@ export default function Files() {
     return one ? [one] : []
   }
 
-  // ── 다중선택 ──
-  function toggleChecked(id: string) {
-    setChecked((prev) => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
-    })
-  }
-  function clearChecked() {
-    setChecked(new Set())
-  }
-  const allChecked = sortedItems.length > 0 && sortedItems.every((n) => checked.has(n.id))
-  function toggleAll() {
-    setChecked(allChecked ? new Set() : new Set(sortedItems.map((n) => n.id)))
-  }
-
   // 이동·삭제한 항목이 지금 뷰어에 열려 있으면 닫는다.
   // (다중 이동 후 옮긴 파일이 뷰어에 잔상처럼 남아 보이던 문제 방지)
   function closeViewerIfAffected(ids: Iterable<string>) {
@@ -795,58 +682,6 @@ export default function Files() {
     if (selected && set.has(selected.id)) {
       setSelected(null)
       setFullscreen(false)
-    }
-  }
-
-  async function onMoveMany(ids: string[], targetFolderId: string | null) {
-    if (!spaceId) return
-    try {
-      for (const id of ids) {
-        if (id !== targetFolderId) {
-          await moveNode(id, targetFolderId ? { parentId: targetFolderId } : { spaceId })
-        }
-      }
-    } catch (err) {
-      flash(err instanceof Error ? err.message : '이동에 실패했습니다')
-    } finally {
-      closeViewerIfAffected(ids)
-      clearChecked()
-      reload()
-      setTreeVersion((v) => v + 1)
-    }
-  }
-
-  async function copyManyToSpace(ids: string[], targetSpaceId: string, spaceName: string) {
-    if (targetSpaceId === spaceId) return
-    let done = 0
-    try {
-      for (const id of ids) {
-        if (id !== targetSpaceId) {
-          await copyNode(id, { spaceId: targetSpaceId })
-          done += 1
-        }
-      }
-      if (done) flash(`${spaceName}(으)로 ${done}개 복사했습니다`)
-    } catch (err) {
-      flash(err instanceof Error ? err.message : '복사에 실패했습니다')
-    } finally {
-      clearChecked()
-    }
-  }
-
-  async function bulkDelete() {
-    const ids = [...checked]
-    if (ids.length === 0) return
-    if (!window.confirm(`선택한 ${ids.length}개를 휴지통으로 이동할까요?`)) return
-    try {
-      for (const id of ids) await deleteNode(id)
-    } catch (err) {
-      flash(err instanceof Error ? err.message : '삭제에 실패했습니다')
-    } finally {
-      closeViewerIfAffected(ids)
-      clearChecked()
-      reload()
-      setTreeVersion((v) => v + 1)
     }
   }
 
@@ -866,13 +701,7 @@ export default function Files() {
   if (!me) return null
 
   // 파일을 열면 메인 영역이 편집+프리뷰로 바뀐다 → 트리(사이드바) | 편집 | 프리뷰 3분할(VS Code식)
-  const viewerOpen =
-    !!selected &&
-    selected.type === 'file' &&
-    !trashMode &&
-    !favMode &&
-    !recentMode &&
-    checked.size === 0
+  const viewerOpen = !!selected && selected.type === 'file' && !trashMode && !favMode
 
   return (
     <div className="shell">
@@ -930,7 +759,7 @@ export default function Files() {
             >
               <IconRefresh className={refreshing ? 'spin' : ''} />
             </button>
-            {!trashMode && !favMode && !recentMode && (
+            {!trashMode && !favMode && (
               <>
                 <button className="icon-btn" onClick={onNewFolder} title="새 폴더" aria-label="새 폴더">
                   <IconFolderPlus />
@@ -1001,7 +830,7 @@ export default function Files() {
                 className={
                   // 휴지통·즐겨찾기·최근 뷰일 땐 공간을 활성 표시하지 않는다(하이라이트 중복 방지)
                   `space-item space-root${
-                    s.id === spaceId && !trashMode && !favMode && !recentMode ? ' active' : ''
+                    s.id === spaceId && !trashMode && !favMode ? ' active' : ''
                   }` + (dragOverSpace === s.id ? ' drag-over' : '')
                 }
                 onClick={() => switchSpace(s.id)}
@@ -1018,10 +847,7 @@ export default function Files() {
                   if (ids.length === 0) return
                   e.preventDefault()
                   // 활성 공간 위에 놓으면 그 공간 최상위로 이동, 다른 공간이면 복사
-                  if (s.id === spaceId) {
-                    if (ids.length > 1) onMoveMany(ids, null)
-                    else onMove(ids[0], null)
-                  } else if (ids.length > 1) copyManyToSpace(ids, s.id, s.name)
+                  if (s.id === spaceId) onMove(ids[0], null)
                   else copyToSpace(ids[0], s.id, s.name)
                 }}
                 title={
@@ -1057,7 +883,6 @@ export default function Files() {
               onClick={() => {
                 setTrashMode((t) => !t)
                 setFavMode(false)
-                setRecentMode(false)
                 setSelected(null)
                 // 루트 뷰 진입: URL의 nodeId를 비운다. 안 비우면 폴더 안에서 휴지통을 열고
                 // 새로고침할 때 boot()이 URL의 nodeId를 먼저 복원해 이전 폴더로 튄다.
@@ -1117,7 +942,6 @@ export default function Files() {
           <div className="toolbar">
             {trashMode && <span className="muted">휴지통 — 복원하면 원래 위치로 돌아갑니다</span>}
             {favMode && <span className="muted">즐겨찾기 — ★ 를 눌러 해제, 항목을 눌러 이동</span>}
-            {recentMode && <span className="muted">최근 열어본 항목 — 항목을 눌러 다시 열기</span>}
             {uploads.length > 0 && (
               <span className="upload-count muted">
                 업로드 {uploadStats.done}/{uploadStats.total}
@@ -1125,7 +949,7 @@ export default function Files() {
               </span>
             )}
             <span className="toolbar-notice">{notice}</span>
-            {!trashMode && !favMode && !recentMode && (
+            {!trashMode && !favMode && (
               <div className="toolbar-search">
                 <input
                   type="search"
@@ -1203,16 +1027,6 @@ export default function Files() {
           <table className="file-table">
             <thead>
               <tr>
-                <th className="col-check">
-                  {!trashMode && (
-                    <input
-                      type="checkbox"
-                      aria-label="전체 선택"
-                      checked={allChecked}
-                      onChange={toggleAll}
-                    />
-                  )}
-                </th>
                 <SortTh label="이름" col="name" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
                 <SortTh
                   label="올린 날짜"
@@ -1222,19 +1036,8 @@ export default function Files() {
                   sortDir={sortDir}
                   onSort={toggleSort}
                 />
-                {trashMode ? (
-                  // 휴지통에선 '수정한 날짜' 대신 '삭제 예정' 열(남은 시간 정렬 정돈)
-                  <th className="col-remaining">삭제 예정</th>
-                ) : (
-                  <SortTh
-                    label="수정한 날짜"
-                    col="updated"
-                    cls="col-date"
-                    sortKey={sortKey}
-                    sortDir={sortDir}
-                    onSort={toggleSort}
-                  />
-                )}
+                {/* 휴지통 전용 '삭제 예정' 열(자동 완전삭제까지 남은 시간) */}
+                <th className="col-remaining">삭제 예정</th>
                 <SortTh
                   label="크기"
                   col="size"
@@ -1247,156 +1050,11 @@ export default function Files() {
               </tr>
             </thead>
             <tbody>
-              {!trashMode &&
-                !favMode &&
-                !recentMode &&
-                uploads
-                  // 완료된 업로드가 실제 목록에 이미 나타났으면 진행 행을 숨긴다
-                  // (실제 행과 진행 행이 한순간 겹쳐 같은 이름이 두 번 보이던 문제 방지)
-                  .filter((u) => !(u.done && items.some((it) => it.name === u.name)))
-                  .map((u) => (
-                  <tr key={u.id} className={`upload-row${u.error ? ' error' : ''}`}>
-                    <td className="col-check"></td>
-                    <td>
-                      <span className="node-icon">{u.error ? '⚠️' : '📄'}</span>{' '}
-                      <span className="node-name">{u.name}</span>
-                    </td>
-                    <td colSpan={3} className="upload-inline">
-                      <div className="upload-inline-wrap">
-                        <progress
-                          className="upload-inline-bar"
-                          value={u.loaded}
-                          max={u.total || 1}
-                        />
-                        <span className="upload-inline-pct">
-                          {u.error ? '실패' : `${percent(u)}%`}
-                        </span>
-                      </div>
-                    </td>
-                    <td className="col-actions"></td>
-                  </tr>
-                ))}
-              {!trashMode && currentFolder && (
-                <tr
-                  className="row-up"
-                  onClick={goUp}
-                  title="상위 폴더로"
-                  onDragOver={(e) => {
-                    if (e.dataTransfer.types.includes('application/x-node-id')) e.preventDefault()
-                  }}
-                  onDrop={(e) => {
-                    const ids = draggedIds(e)
-                    if (ids.length > 0) {
-                      e.preventDefault()
-                      const target = currentFolder.parent_id ?? null
-                      if (ids.length > 1) onMoveMany(ids, target)
-                      else onMove(ids[0], target)
-                    }
-                  }}
-                >
-                  <td className="col-check"></td>
-                  <td>
-                    <span className="node-icon">↑</span> <span className="node-name">상위 폴더</span>
-                  </td>
-                  <td className="col-date"></td>
-                  <td className="col-date"></td>
-                  <td className="col-size"></td>
-                  <td className="col-actions"></td>
-                </tr>
-              )}
               {sortedItems.map((node) => (
-                <tr
-                  key={node.id}
-                  data-nid={node.id}
-                  className={
-                    (selected?.id === node.id ? 'row-selected' : '') +
-                    (checked.has(node.id) ? ' row-checked' : '')
-                  }
-                  draggable={!trashMode}
-                  onDragStart={(e) => rowDragStart(e, node)}
-                  onDragOver={(e) => {
-                    if (
-                      node.type === 'folder' &&
-                      e.dataTransfer.types.includes('application/x-node-id')
-                    )
-                      e.preventDefault()
-                  }}
-                  onDrop={(e) => {
-                    const ids = draggedIds(e)
-                    if (ids.length > 0 && node.type === 'folder') {
-                      e.preventDefault()
-                      if (ids.length > 1) onMoveMany(ids, node.id)
-                      else onMove(ids[0], node.id)
-                    }
-                  }}
-                  onClick={() => {
-                    if (trashMode || editingId === node.id) return
-                    // 이미 선택 모드면 행 클릭이 체크 토글, 아니면 뷰어로 열기
-                    if (checked.size > 0) toggleChecked(node.id)
-                    else selectNode(node)
-                  }}
-                  onDoubleClick={() => !trashMode && node.type === 'folder' && openFolder(node)}
-                >
-                  <td className="col-check">
-                    {!trashMode && (
-                      <input
-                        type="checkbox"
-                        // 라벨에 파일명을 넣지 않는다 — 넣으면 이 셀의 접근성 이름이
-                        // "파일명 선택"이 되어 이름으로 셀/행을 찾는 기존 테스트와 충돌한다.
-                        aria-label="행 선택"
-                        checked={checked.has(node.id)}
-                        onClick={(e) => e.stopPropagation()}
-                        onChange={() => toggleChecked(node.id)}
-                      />
-                    )}
-                  </td>
+                <tr key={node.id}>
                   <td>
-                    {!trashMode && (
-                      <button
-                        className={`fav-star${favIds.has(node.id) ? ' on' : ''}`}
-                        title={favIds.has(node.id) ? '즐겨찾기 해제' : '즐겨찾기'}
-                        aria-label={favIds.has(node.id) ? '즐겨찾기 해제' : '즐겨찾기'}
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          toggleFav(node)
-                        }}
-                      >
-                        {favIds.has(node.id) ? '★' : '☆'}
-                      </button>
-                    )}
                     <span className="node-icon">{node.type === 'folder' ? '📁' : '📄'}</span>{' '}
-                    {editingId === node.id ? (
-                      <input
-                        className="name-input"
-                        autoFocus
-                        value={editingName}
-                        onChange={(e) => setEditingName(e.target.value)}
-                        onClick={(e) => e.stopPropagation()}
-                        onFocus={(e) => e.currentTarget.select()}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') {
-                            e.preventDefault()
-                            commitRename(node)
-                          } else if (e.key === 'Escape') {
-                            e.preventDefault()
-                            cancelRename()
-                          }
-                        }}
-                        onBlur={() => commitRename(node)}
-                      />
-                    ) : (
-                      <span
-                        className="node-name"
-                        onDoubleClick={(e) => {
-                          if (!trashMode) {
-                            e.stopPropagation()
-                            startRename(node)
-                          }
-                        }}
-                      >
-                        {node.name}
-                      </span>
-                    )}
+                    <span className="node-name">{node.name}</span>
                   </td>
                   <td className="col-date muted">
                     {node.uploader && (
@@ -1406,80 +1064,39 @@ export default function Files() {
                     )}
                     {formatDateTime(node.created_at)}
                   </td>
-                  {trashMode ? (
-                    <td className="col-remaining">
-                      <TrashRemaining purgeAt={node.purge_at} />
-                    </td>
-                  ) : (
-                    <td className="col-date muted">
-                      {node.editor && (
-                        <span className="by-name" title={`수정한 사람: ${node.editor}`}>
-                          {node.editor}
-                        </span>
-                      )}
-                      {formatDateTime(node.updated_at)}
-                    </td>
-                  )}
+                  <td className="col-remaining">
+                    <TrashRemaining purgeAt={node.purge_at} />
+                  </td>
                   <td className="col-size muted">
                     {node.type === 'file' ? formatBytes(node.size) : '—'}
                   </td>
                   <td className="col-actions">
-                    {trashMode ? (
-                      <>
-                        <button
-                          className="row-action"
-                          onClick={() => guard(() => restoreNode(node.id))}
-                        >
-                          복원
-                        </button>
-                        <button
-                          className="row-action danger"
-                          onClick={() => {
-                            if (
-                              window.confirm(
-                                `"${node.name}"을(를) 완전히 삭제할까요? 되돌릴 수 없습니다.`,
-                              )
-                            )
-                              guard(() => purgeNode(node.id))
-                          }}
-                        >
-                          완전 삭제
-                        </button>
-                      </>
-                    ) : (
-                      <>
-                        <a href={downloadUrl(node)} onClick={(e) => e.stopPropagation()}>
-                          <button className="row-action">↓</button>
-                        </a>
-                        <button
-                          className="row-action"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            startRename(node)
-                          }}
-                        >
-                          이름
-                        </button>
-                        <button
-                          className="row-action"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            onDelete(node)
-                          }}
-                        >
-                          삭제
-                        </button>
-                      </>
-                    )}
+                    <button
+                      className="row-action"
+                      onClick={() => guard(() => restoreNode(node.id))}
+                    >
+                      복원
+                    </button>
+                    <button
+                      className="row-action danger"
+                      onClick={() => {
+                        if (
+                          window.confirm(
+                            `"${node.name}"을(를) 완전히 삭제할까요? 되돌릴 수 없습니다.`,
+                          )
+                        )
+                          guard(() => purgeNode(node.id))
+                      }}
+                    >
+                      완전 삭제
+                    </button>
                   </td>
                 </tr>
               ))}
-              {sortedItems.length === 0 && (trashMode || uploads.length === 0) && (
+              {sortedItems.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="empty">
-                    {trashMode
-                      ? '휴지통이 비어 있습니다'
-                      : '비어 있습니다 — 파일을 끌어다 놓거나 업로드를 누르세요'}
+                  <td colSpan={5} className="empty">
+                    휴지통이 비어 있습니다
                   </td>
                 </tr>
               )}
@@ -1514,41 +1131,6 @@ export default function Files() {
           </div>
         )}
       </div>
-      {!trashMode && checked.size > 0 && (
-        <div className="bulk-bar" aria-label="선택 항목">
-          <div className="bulk-bar-head">
-            <strong>{checked.size}개 선택됨</strong>
-            <span className="muted">
-              폴더 행이나 왼쪽 공간으로 끌어다 놓으면 이동·복사됩니다
-            </span>
-            <div className="bulk-bar-actions">
-              <button className="btn-utility danger" onClick={bulkDelete}>
-                🗑 선택 삭제
-              </button>
-              <button className="btn-utility" onClick={clearChecked}>
-                선택 해제
-              </button>
-            </div>
-          </div>
-          <ul className="bulk-bar-list">
-            {sortedItems
-              .filter((n) => checked.has(n.id))
-              .map((n) => (
-                <li key={n.id}>
-                  <span className="node-icon">{n.type === 'folder' ? '📁' : '📄'}</span>
-                  <span className="node-name">{n.name}</span>
-                  <button
-                    className="bulk-remove"
-                    title="목록에서 빼기"
-                    onClick={() => toggleChecked(n.id)}
-                  >
-                    ×
-                  </button>
-                </li>
-              ))}
-          </ul>
-        </div>
-      )}
       {uploads.length > 0 && (
         <div className="upload-panel" aria-label="업로드 진행">
           <div className="upload-panel-head muted">
