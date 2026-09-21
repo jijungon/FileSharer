@@ -1,8 +1,9 @@
 import { markdown } from '@codemirror/lang-markdown'
 import CodeMirror, { EditorView } from '@uiw/react-codemirror'
 import { useScrollSync } from '../lib/scrollsync'
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { ApiError } from '../lib/api'
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
+import { ApiError, SpaceInfo } from '../lib/api'
+import SharePopover from './SharePopover'
 import { acquireLock, downloadUrl, LockState, NodeInfo, releaseLock } from '../lib/files'
 import { formatBytes } from '../lib/format'
 
@@ -78,10 +79,116 @@ function useAppTheme(): 'light' | 'dark' {
 
 interface Props {
   node: NodeInfo
+  space: SpaceInfo | null
+  path: NodeInfo[]
+  onNavigate: (index: number | null) => void
   fullscreen: boolean
   onToggleFullscreen: () => void
   onNodeUpdated: (fresh: NodeInfo) => void
   onClose: () => void
+}
+
+// 편집/미리보기 상단 경로(예전 LinkBar의 브레드크럼). 파일을 열면 LinkBar를 숨기고
+// 이 경로를 에디터 툴바에 넣어 한 줄로 통합한다(폴더 클릭 시 그 폴더로 이동 → 뷰어 닫힘).
+function CrumbPath({
+  space,
+  path,
+  onNavigate,
+}: {
+  space: SpaceInfo | null
+  path: NodeInfo[]
+  onNavigate: (index: number | null) => void
+}) {
+  return (
+    <nav className="editor-crumbs" aria-label="경로">
+      <button className="crumb" onClick={() => onNavigate(null)}>
+        {space?.name ?? '…'}
+      </button>
+      {path.map((folder, i) => (
+        <span key={folder.id} className="editor-crumb-seg">
+          <span className="crumb-sep">/</span>
+          <button className="crumb" onClick={() => onNavigate(i)}>
+            {folder.name}
+          </button>
+        </span>
+      ))}
+    </nav>
+  )
+}
+
+// 파일 액션(다운로드 · 사내 링크 복사 · 공유 링크) — 예전 LinkBar에서 옮겨왔다.
+function FileActions({ node }: { node: NodeInfo }) {
+  const [copied, setCopied] = useState(false)
+  const [shareOpen, setShareOpen] = useState(false)
+  async function copyInternalLink() {
+    await navigator.clipboard.writeText(`${window.location.origin}/files/${node.id}`)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 1500)
+  }
+  return (
+    <>
+      <a href={downloadUrl(node)}>
+        <button className="btn-utility">다운로드</button>
+      </a>
+      <button className="btn-utility" onClick={copyInternalLink}>
+        {copied ? '복사됨 ✓' : '사내 링크 복사'}
+      </button>
+      <button className="btn-primary linkbar-share" onClick={() => setShareOpen((v) => !v)}>
+        공유 링크
+      </button>
+      {shareOpen && <SharePopover node={node} onClose={() => setShareOpen(false)} />}
+    </>
+  )
+}
+
+// 뷰어/에디터 공통 상단 툴바. children = 형식별 컨트롤(자동저장·저장, 새 탭 등).
+// 사용자 요청대로 다운로드/링크 버튼을 저장 '왼쪽'에 두려고 파일 액션을 children 앞에 놓는다.
+function ViewerToolbar({
+  node,
+  space,
+  path,
+  onNavigate,
+  fullscreen,
+  onToggleFullscreen,
+  onClose,
+  name,
+  status,
+  statusClass,
+  extraStatus,
+  children,
+}: {
+  node: NodeInfo
+  space: SpaceInfo | null
+  path: NodeInfo[]
+  onNavigate: (index: number | null) => void
+  fullscreen: boolean
+  onToggleFullscreen: () => void
+  onClose: () => void
+  name?: ReactNode
+  status?: ReactNode
+  statusClass?: string
+  extraStatus?: ReactNode
+  children?: ReactNode
+}) {
+  return (
+    <div className="editor-toolbar">
+      <CrumbPath space={space} path={path} onNavigate={onNavigate} />
+      <span className="editor-name">{name ?? node.name}</span>
+      {status != null && (
+        <span className={`editor-status${statusClass ? ` ${statusClass}` : ''}`}>{status}</span>
+      )}
+      {extraStatus}
+      <span className="toolbar-spacer" />
+      <FileActions node={node} />
+      {children}
+      <button className="btn-utility" onClick={onToggleFullscreen}>
+        {fullscreen ? '분할 보기' : '전체화면'}
+      </button>
+      <button className="btn-utility" onClick={onClose}>
+        닫기
+      </button>
+    </div>
+  )
 }
 
 export default function ViewerPanel(props: Props) {
@@ -98,34 +205,45 @@ export default function ViewerPanel(props: Props) {
 
 type MediaKind = 'image' | 'pdf' | 'video' | 'audio' | 'html'
 
-function MediaPreview({ node, onClose, kind, fullscreen, onToggleFullscreen }: Props & { kind: MediaKind }) {
+function MediaPreview({
+  node,
+  space,
+  path,
+  onNavigate,
+  onClose,
+  kind,
+  fullscreen,
+  onToggleFullscreen,
+}: Props & { kind: MediaKind }) {
   const raw = `/api/files/${node.id}/raw`
   // 영상 재생은 preview.mp4로 — 브라우저가 못 푸는 오디오 코덱(AC-3 등)이면 서버가 AAC로 변환해 준다.
   const videoSrc = `/api/files/${node.id}/preview.mp4`
   return (
     <div className="editor-shell">
-      <div className="editor-toolbar">
-        <span className="editor-name">{node.name}</span>
-        <span className="editor-status">{formatBytes(node.size)}</span>
-        {kind === 'html' && (
-          <span className="editor-status" title="업로드된 HTML은 보안을 위해 스크립트 없이 표시됩니다">
-            HTML · 스크립트 미실행
-          </span>
-        )}
-        <span className="toolbar-spacer" />
+      <ViewerToolbar
+        node={node}
+        space={space}
+        path={path}
+        onNavigate={onNavigate}
+        fullscreen={fullscreen}
+        onToggleFullscreen={onToggleFullscreen}
+        onClose={onClose}
+        status={formatBytes(node.size)}
+        extraStatus={
+          kind === 'html' ? (
+            <span
+              className="editor-status"
+              title="업로드된 HTML은 보안을 위해 스크립트 없이 표시됩니다"
+            >
+              HTML · 스크립트 미실행
+            </span>
+          ) : undefined
+        }
+      >
         <a href={raw} target="_blank" rel="noreferrer">
           <button className="btn-utility">새 탭</button>
         </a>
-        <a href={downloadUrl(node)}>
-          <button className="btn-utility">다운로드</button>
-        </a>
-        <button className="btn-utility" onClick={onToggleFullscreen}>
-          {fullscreen ? '분할 보기' : '전체화면'}
-        </button>
-        <button className="btn-utility" onClick={onClose}>
-          닫기
-        </button>
-      </div>
+      </ViewerToolbar>
       {kind === 'image' ? (
         <div className="image-preview">
           <img src={raw} alt={node.name} />
@@ -177,7 +295,7 @@ function HtmlFrame({ node }: { node: NodeInfo }) {
 
 /** 오피스 문서 미리보기 — 서버가 LibreOffice로 변환한 PDF를 받아 보여준다.
  * 변환에 몇 초 걸릴 수 있어 로딩 상태를 표시하고, 실패하면 안내한다. */
-function OfficePreview({ node, onClose, fullscreen, onToggleFullscreen }: Props) {
+function OfficePreview({ node, space, path, onNavigate, onClose, fullscreen, onToggleFullscreen }: Props) {
   const [state, setState] = useState<'loading' | 'ready' | 'error'>('loading')
   const [pdfUrl, setPdfUrl] = useState('')
   const [err, setErr] = useState('')
@@ -212,21 +330,17 @@ function OfficePreview({ node, onClose, fullscreen, onToggleFullscreen }: Props)
 
   return (
     <div className="editor-shell">
-      <div className="editor-toolbar">
-        <span className="editor-name">{node.name}</span>
-        <span className="editor-status">{formatBytes(node.size)}</span>
-        <span className="editor-status">PDF로 변환됨</span>
-        <span className="toolbar-spacer" />
-        <a href={downloadUrl(node)}>
-          <button className="btn-utility">원본 다운로드</button>
-        </a>
-        <button className="btn-utility" onClick={onToggleFullscreen}>
-          {fullscreen ? '분할 보기' : '전체화면'}
-        </button>
-        <button className="btn-utility" onClick={onClose}>
-          닫기
-        </button>
-      </div>
+      <ViewerToolbar
+        node={node}
+        space={space}
+        path={path}
+        onNavigate={onNavigate}
+        fullscreen={fullscreen}
+        onToggleFullscreen={onToggleFullscreen}
+        onClose={onClose}
+        status={formatBytes(node.size)}
+        extraStatus={<span className="editor-status">PDF로 변환됨</span>}
+      />
       {state === 'loading' ? (
         <div className="viewer-card-wrap">
           <p className="muted">PDF로 변환하는 중… (처음 한 번은 몇 초 걸릴 수 있어요)</p>
@@ -283,7 +397,16 @@ function DownloadCard({ node, onClose }: Props) {
   )
 }
 
-function TextEditor({ node, fullscreen, onToggleFullscreen, onNodeUpdated, onClose }: Props) {
+function TextEditor({
+  node,
+  space,
+  path,
+  onNavigate,
+  fullscreen,
+  onToggleFullscreen,
+  onNodeUpdated,
+  onClose,
+}: Props) {
   const appTheme = useAppTheme() // 라이트/다크 토글에 따라 에디터 테마도 전환
   const [text, setText] = useState<string | null>(null)
   const [loadError, setLoadError] = useState('')
@@ -489,16 +612,21 @@ function TextEditor({ node, fullscreen, onToggleFullscreen, onNodeUpdated, onClo
 
   return (
     <div className={`editor-shell${autosave ? ' autosave-on' : ''}`}>
-      <div className="editor-toolbar">
-        <span className="editor-name">{node.name}</span>
-        <span
-          className={`editor-status${dirty && !saving ? ' dirty' : ''}${
-            savedFlash ? ' saved' : ''
-          }`}
-        >
-          {status}
-        </span>
-        <span className="toolbar-spacer" />
+      <ViewerToolbar
+        node={node}
+        space={space}
+        path={path}
+        onNavigate={onNavigate}
+        fullscreen={fullscreen}
+        onToggleFullscreen={onToggleFullscreen}
+        onClose={onClose}
+        status={status}
+        statusClass={
+          [dirty && !saving ? 'dirty' : '', savedFlash ? 'saved' : '']
+            .filter(Boolean)
+            .join(' ') || undefined
+        }
+      >
         <label className="autosave-toggle">
           <span>자동저장</span>
           <button
@@ -519,13 +647,7 @@ function TextEditor({ node, fullscreen, onToggleFullscreen, onNodeUpdated, onClo
         >
           저장 ⌘S
         </button>
-        <button className="btn-utility" onClick={onToggleFullscreen}>
-          {fullscreen ? '분할 보기' : '전체화면'}
-        </button>
-        <button className="btn-utility" onClick={onClose}>
-          닫기
-        </button>
-      </div>
+      </ViewerToolbar>
 
       {readOnly && (
         <div className="lock-banner">

@@ -228,6 +228,19 @@ export default function FolderTree({
           >
             {node.name}
           </button>
+          {onToggleFavorite && (
+            <button
+              className={`tree-fav${favIds?.has(node.id) ? ' on' : ''}`}
+              onClick={(e) => {
+                e.stopPropagation()
+                onToggleFavorite(node)
+              }}
+              title={favIds?.has(node.id) ? '즐겨찾기 해제' : '즐겨찾기'}
+              aria-label={favIds?.has(node.id) ? '즐겨찾기 해제' : '즐겨찾기'}
+            >
+              {favIds?.has(node.id) ? '★' : '☆'}
+            </button>
+          )}
         </div>
         {isFolder && isOpen && hasChildren && (
           <ul className="tree-branch">{node.children.map(renderNode)}</ul>

@@ -735,13 +735,16 @@ export default function Files() {
         </div>
       </header>
 
-      <LinkBar
-        space={space}
-        path={path}
-        selected={selected}
-        onNavigate={crumbNavigate}
-        onDropToCrumb={(id, idx) => onMove(id, idx === null ? null : path[idx].id)}
-      />
+      {/* 파일을 열면(뷰어) LinkBar를 숨긴다 — 경로·다운로드·링크·공유는 에디터 툴바로 통합됨 */}
+      {!viewerOpen && (
+        <LinkBar
+          space={space}
+          path={path}
+          selected={selected}
+          onNavigate={crumbNavigate}
+          onDropToCrumb={(id, idx) => onMove(id, idx === null ? null : path[idx].id)}
+        />
+      )}
 
       <div className="workspace">
         <aside
@@ -766,19 +769,19 @@ export default function Files() {
                 </button>
                 <button
                   className="icon-btn"
-                  onClick={() => fileInput.current?.click()}
-                  title="업로드 (폴더는 끌어다 놓기)"
-                  aria-label="업로드"
-                >
-                  <IconUpload />
-                </button>
-                <button
-                  className="icon-btn"
                   onClick={onNewMd}
                   title="새 MD 문서"
                   aria-label="새 MD 문서"
                 >
                   <IconFilePlus />
+                </button>
+                <button
+                  className="icon-btn"
+                  onClick={() => fileInput.current?.click()}
+                  title="업로드 (폴더는 끌어다 놓기)"
+                  aria-label="업로드"
+                >
+                  <IconUpload />
                 </button>
                 <input
                   ref={fileInput}
@@ -1116,6 +1119,9 @@ export default function Files() {
           <div className="viewer-area">
             <ViewerPanel
               node={selected}
+              space={space}
+              path={path}
+              onNavigate={crumbNavigate}
               fullscreen={fullscreen}
               onToggleFullscreen={() => setFullscreen((f) => !f)}
               onNodeUpdated={(fresh) => {
