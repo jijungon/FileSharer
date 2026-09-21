@@ -5,6 +5,10 @@ interface TreeNode extends TreeRow {
   children: TreeNode[]
 }
 
+// Sticky Scroll: 스크롤 시 상위 폴더 헤더를 트리 상단에 계단식으로 고정한다.
+// 겹치지 않게 depth마다 top을 ROW_H씩 내리므로, .tree-row 높이와 반드시 일치시킨다.
+const ROW_H = 24
+
 function buildTree(rows: TreeRow[]): TreeNode[] {
   const byId = new Map<string, TreeNode>()
   rows.forEach((r) => byId.set(r.id, { ...r, children: [] }))
@@ -189,7 +193,7 @@ export default function FolderTree({
     }
   }
 
-  function renderNode(node: TreeNode) {
+  function renderNode(node: TreeNode, depth = 0) {
     const isFolder = node.type === 'folder'
     const isOpen = expanded.has(node.id)
     const hasChildren = node.children.length > 0
@@ -199,7 +203,8 @@ export default function FolderTree({
         <div
           className={`tree-row${active ? ' active' : ''}${
             dragOverId === node.id ? ' drag-over' : ''
-          }`}
+          }${isFolder ? ' tree-row--sticky' : ''}`}
+          style={isFolder ? { top: depth * ROW_H, zIndex: 60 - depth } : undefined}
           draggable
           onDragStart={(e) => rowDragStart(e, node)}
           {...(isFolder ? dropHandlers(node.id) : {})}
@@ -234,7 +239,9 @@ export default function FolderTree({
           )}
         </div>
         {isFolder && isOpen && hasChildren && (
-          <ul className="tree-branch">{node.children.map(renderNode)}</ul>
+          <ul className="tree-branch">
+            {node.children.map((c) => renderNode(c, depth + 1))}
+          </ul>
         )}
       </li>
     )
@@ -242,7 +249,9 @@ export default function FolderTree({
 
   return (
     <>
-      {tree.length > 0 && <ul className="folder-tree tree-branch">{tree.map(renderNode)}</ul>}
+      {tree.length > 0 && (
+        <ul className="folder-tree tree-branch">{tree.map((n) => renderNode(n, 0))}</ul>
+      )}
       {menu && (
         <div
           ref={menuRef}

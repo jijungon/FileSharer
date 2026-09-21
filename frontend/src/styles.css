@@ -374,6 +374,15 @@ button:focus-visible {
   background: var(--canvas-parchment);
 }
 
+/* 트리 스크롤 영역 — 상단(툴바·즐겨찾기·최근·라벨)과 하단(휴지통)은 고정하고
+   공간·폴더 트리만 이 안에서 스크롤 → 긴 트리 잘림 방지 + Sticky Scroll의 기준 컨테이너 */
+.sidebar-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
 /* 사이드바 ↔ 본문 경계선(드래그로 폭 조절) */
 .sidebar-resizer {
   flex: 0 0 auto;
@@ -1873,7 +1882,15 @@ button:focus-visible {
   display: flex;
   align-items: center;
   gap: 2px;
+  min-height: 24px; /* ROW_H(FolderTree)와 일치 — sticky 헤더 계단 높이 기준 */
   border-radius: var(--radius-sm);
+}
+
+/* Sticky Scroll: 폴더 헤더를 스크롤 상단에 고정(불투명 배경으로 아래 내용 가림).
+   top/z-index는 depth에 따라 인라인으로 지정된다(계단식 쌓임). */
+.tree-row--sticky {
+  position: sticky;
+  background: var(--canvas-parchment);
 }
 
 .tree-row:hover {
