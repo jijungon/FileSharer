@@ -23,6 +23,48 @@ make test                 # backend ruff + pytest (same as CI)
 make prod-check           # build the prod image and smoke-test via compose (8484)
 ```
 
+## 서버(헤드리스) 업로드 — Server-side upload
+
+Push files into FileSharer from a headless server (cloud/IDC) with no browser, authenticated
+by an API token (`Authorization: Bearer <token>`). This is the "push" counterpart to the
+share one-liner above.
+
+**1) Issue a token** (in the web UI): open the files screen and click **서버 업로드** (next to
+다운로드 / 공유 링크), or go to **API 토큰** in the top bar. Give it a label and a scope, then
+copy the token. The plaintext token is shown **once only** — the server stores just a scrypt
+hash. Token format is `fsk_<id>.<secret>`.
+
+**2) curl one-liner** (target the current folder or the space root — the 서버 업로드 popover
+shows the exact endpoint for where you are):
+
+```bash
+# into a folder
+curl -H "Authorization: Bearer <TOKEN>" -F file=@a.log https://file.rgrg.im/api/nodes/<FOLDER_ID>/files
+# into a space root
+curl -H "Authorization: Bearer <TOKEN>" -F file=@a.log https://file.rgrg.im/api/spaces/<SPACE_ID>/files
+```
+
+**3) CLI uploader** (in this repo, dependency-light — bash+curl, or Python stdlib). Prefer the
+`FS_TOKEN` env var over `--token` (argv is visible in `ps`):
+
+```bash
+FS_BASE=https://file.rgrg.im FS_TOKEN=<TOKEN> ./scripts/fs-upload.sh --folder <FOLDER_ID> a.log b.log
+FS_BASE=https://file.rgrg.im FS_TOKEN=<TOKEN> python3 scripts/fs_upload.py --space <SPACE_ID> report.csv
+# optional: --rel-path 2026/09/ creates intermediate folders server-side (single file)
+```
+
+**Scope & security**
+
+- **Scope** is enforced server-side (403 otherwise): a folder-scoped token may upload only into
+  that folder (and its subfolders); a space-scoped token only into that space; a token with no
+  scope only into the owner's personal space (safe default).
+- Uploads run through the **same validation** as browser uploads (max size, filename sanitizing,
+  path-traversal guard) and are recorded in the **audit log** as the token owner, tagged with the
+  token label. Tokens are never written to logs, URLs, or error messages.
+- **Revoke** anytime from the API 토큰 screen (or `DELETE /api/tokens/{id}`); revoked/expired
+  tokens are rejected with 401. Optionally set an expiry when issuing.
+- Never commit real tokens. Use placeholders (`<TOKEN>`) in docs and scripts.
+
 ## Deploy (internal VM)
 
 ```bash

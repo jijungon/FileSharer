@@ -747,6 +747,11 @@ export default function Files() {
         </h2>
         <div className="topbar-right">
           <span className="muted">{me.email}</span>
+          <Link to="/tokens">
+            <button className="btn-utility" title="서버 업로드용 API 토큰 관리">
+              API 토큰
+            </button>
+          </Link>
           {me.role === 'admin' && (
             <Link to="/admin">
               <button className="btn-utility">관리</button>

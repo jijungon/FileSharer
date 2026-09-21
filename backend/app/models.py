@@ -124,6 +124,31 @@ class ShareLink(Base):
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
 
+class ApiToken(Base):
+    """서버(헤드리스) 업로드용 API 토큰. 원문은 절대 저장하지 않는다 —
+    토큰은 `fsk_<id>.<secret>` 형태이고, id(=이 행 PK)로 조회한 뒤 secret만
+    scrypt 해시(token_hash)로 상수시간 검증한다. services/tokens.py 참고.
+
+    범위(scope): node_id가 있으면 그 폴더(및 하위)로만, 없고 space_id가 있으면
+    그 공간 전체로, 둘 다 없으면(null scope) 소유자의 개인 공간으로만 업로드 가능.
+    """
+
+    __tablename__ = "api_tokens"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    label: Mapped[str] = mapped_column(String(120), default="")
+    # secret 부분만 scrypt로 해시해 저장(원문·id는 저장 안 함). security.hash_password 재사용.
+    token_hash: Mapped[str] = mapped_column(String(255))
+    # 범위 제한(선택). null이면 소유자 개인 공간으로만 제한(안전한 기본값).
+    space_id: Mapped[str | None] = mapped_column(ForeignKey("spaces.id"), nullable=True)
+    node_id: Mapped[str | None] = mapped_column(ForeignKey("nodes.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
 class Favorite(Base):
     """사용자별 즐겨찾기(별표). (user_id, node_id) 유일."""
 

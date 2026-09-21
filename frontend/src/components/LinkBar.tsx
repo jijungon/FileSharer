@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import ServerUploadPopover from './ServerUploadPopover'
 import SharePopover from './SharePopover'
 import { SpaceInfo } from '../lib/api'
 import { downloadUrl, NodeInfo } from '../lib/files'
@@ -14,8 +15,12 @@ interface Props {
 export default function LinkBar({ space, path, selected, onNavigate, onDropToCrumb }: Props) {
   const [copied, setCopied] = useState(false)
   const [shareOpen, setShareOpen] = useState(false)
+  const [serverUpOpen, setServerUpOpen] = useState(false)
 
   const target = selected ?? (path.length > 0 ? path[path.length - 1] : null)
+  // 서버 업로드는 '현재 디렉터리'가 대상 — 선택 파일이 아니라 지금 보고 있는 폴더/공간 루트.
+  const currentFolder = path.length > 0 ? path[path.length - 1] : null
+  const currentLabel = currentFolder?.name ?? space?.name ?? ''
 
   async function copyInternalLink() {
     if (!target) return
@@ -72,13 +77,37 @@ export default function LinkBar({ space, path, selected, onNavigate, onDropToCru
             </button>
           </>
         )}
+        {/* 현재 폴더로의 서버(헤드리스) 업로드 — 다운로드/공유와 같은 액션 묶음, 공유 링크 바로 옆 */}
+        {space && (
+          <button
+            className="btn-utility"
+            onClick={() => {
+              setServerUpOpen((v) => !v)
+              setShareOpen(false)
+            }}
+            title="이 폴더로 서버에서 파일 올리기 (API 토큰)"
+          >
+            ↥ 서버 업로드
+          </button>
+        )}
         <button
           className="btn-primary linkbar-share"
           disabled={!target}
-          onClick={() => setShareOpen((v) => !v)}
+          onClick={() => {
+            setShareOpen((v) => !v)
+            setServerUpOpen(false)
+          }}
         >
           공유 링크
         </button>
+        {serverUpOpen && space && (
+          <ServerUploadPopover
+            folderId={currentFolder?.id ?? null}
+            spaceId={space.id}
+            label={currentLabel}
+            onClose={() => setServerUpOpen(false)}
+          />
+        )}
         {shareOpen && target && (
           <SharePopover node={target} onClose={() => setShareOpen(false)} />
         )}

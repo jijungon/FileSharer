@@ -17,6 +17,7 @@ from .api.public import router as public_router
 from .api.shares import router as shares_router
 from .api.spaces import router as spaces_router
 from .api.system import router as system_router
+from .api.tokens import router as tokens_router
 from .bootstrap import run_bootstrap
 from .config import get_settings
 from .db import build_engine, make_sessionmaker, run_migrations
@@ -104,6 +105,7 @@ def create_app() -> FastAPI:
     app.include_router(admin_router)
     app.include_router(google_router)
     app.include_router(spaces_router)
+    app.include_router(tokens_router)
     app.include_router(nodes_router)
     app.include_router(shares_router)
     app.include_router(system_router)
