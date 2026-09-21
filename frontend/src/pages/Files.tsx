@@ -76,15 +76,6 @@ function IconFolderPlus() {
     </svg>
   )
 }
-function IconUpload() {
-  return (
-    <svg {...svgProps}>
-      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-      <polyline points="7 9 12 4 17 9" />
-      <line x1="12" y1="4" x2="12" y2="16" />
-    </svg>
-  )
-}
 function IconFilePlus() {
   return (
     <svg {...svgProps}>
@@ -822,6 +813,7 @@ export default function Files() {
           onDropToCrumb={(id, idx) => onMove(id, idx === null ? null : path[idx].id)}
           activeToken={activeToken}
           onActiveToken={setActiveToken}
+          onLocalUpload={() => fileInput.current?.click()}
         />
       )}
 
@@ -830,7 +822,7 @@ export default function Files() {
           className="sidebar"
           style={fullscreen && viewerOpen ? { display: 'none' } : { width: sidebarWidth }}
         >
-          {/* 상단 아이콘 툴바 — 새로고침 · 새 폴더 · 업로드(단일) · 새 MD */}
+          {/* 상단 아이콘 툴바 — 새로고침 · 새 폴더 · 새 MD (업로드 버튼은 액션 바로 이동) */}
           <div className="sidebar-toolbar">
             <button
               className="icon-btn toolbar-refresh"
@@ -854,26 +846,19 @@ export default function Files() {
                 >
                   <IconFilePlus />
                 </button>
-                <button
-                  className="icon-btn"
-                  onClick={() => fileInput.current?.click()}
-                  title="업로드 (폴더는 끌어다 놓기)"
-                  aria-label="업로드"
-                >
-                  <IconUpload />
-                </button>
-                <input
-                  ref={fileInput}
-                  type="file"
-                  multiple
-                  hidden
-                  onChange={(e) => {
-                    if (e.target.files) uploadAll(e.target.files)
-                    e.target.value = ''
-                  }}
-                />
               </>
             )}
+            {/* 로컬 업로드 파일 선택창 — 버튼은 액션 바('로컬 업로드')로 옮겼고 입력만 항상 유지 */}
+            <input
+              ref={fileInput}
+              type="file"
+              multiple
+              hidden
+              onChange={(e) => {
+                if (e.target.files) uploadAll(e.target.files)
+                e.target.value = ''
+              }}
+            />
           </div>
           <div className="sidebar-divider" />
           <button
@@ -1225,6 +1210,7 @@ export default function Files() {
               onNavigate={crumbNavigate}
               activeToken={activeToken}
               onActiveToken={setActiveToken}
+              onLocalUpload={() => fileInput.current?.click()}
               fullscreen={fullscreen}
               onToggleFullscreen={() => setFullscreen((f) => !f)}
               onNodeUpdated={(fresh) => {

@@ -89,6 +89,7 @@ interface Props {
   onClose: () => void
   activeToken?: string | null // 방금 발급한 토큰 — 서버 업로드 curl 자동 채움
   onActiveToken: (token: string | null) => void // 임시 토큰 발급/해제 반영
+  onLocalUpload?: () => void // 내 PC에서 현재 위치로 업로드(파일 선택창 열기)
 }
 
 // 편집/미리보기 상단 경로(예전 LinkBar의 브레드크럼). 파일을 열면 LinkBar를 숨기고
@@ -127,12 +128,14 @@ function FileActions({
   path,
   activeToken,
   onActiveToken,
+  onLocalUpload,
 }: {
   node: NodeInfo
   space: SpaceInfo | null
   path: NodeInfo[]
   activeToken?: string | null
   onActiveToken: (token: string | null) => void
+  onLocalUpload?: () => void
 }) {
   const [copied, setCopied] = useState(false)
   const [shareOpen, setShareOpen] = useState(false)
@@ -145,12 +148,24 @@ function FileActions({
   const folder = path.length > 0 ? path[path.length - 1] : null
   return (
     <>
+      {/* 로컬: 다운로드 · 로컬 업로드 (연한 노랑) */}
       <a href={downloadUrl(node)}>
-        <button className="btn-utility">다운로드</button>
+        <button className="btn-utility btn-tier-local">다운로드</button>
       </a>
+      {onLocalUpload && (
+        <button
+          className="btn-utility btn-tier-local"
+          onClick={onLocalUpload}
+          title="내 PC에서 이 파일의 폴더로 업로드 (폴더는 끌어다 놓기)"
+        >
+          ↑ 로컬 업로드
+        </button>
+      )}
+      <span className="action-divider" aria-hidden="true" />
+      {/* 서버(헤드리스) 업로드 (중간 노랑) */}
       {space && (
         <button
-          className="btn-utility"
+          className="btn-utility btn-tier-server"
           onClick={() => {
             setServerUpOpen((v) => !v)
             setShareOpen(false)
@@ -160,11 +175,12 @@ function FileActions({
           ↥ 서버 업로드
         </button>
       )}
-      <button className="btn-primary" onClick={copyInternalLink}>
+      {/* 링크: 사내 링크 복사 · 공유 링크 (진한 노랑) — 서버와는 색으로만 구분(선 없음) */}
+      <button className="btn-utility btn-tier-link" onClick={copyInternalLink}>
         {copied ? '복사됨 ✓' : '사내 링크 복사'}
       </button>
       <button
-        className="btn-primary linkbar-share"
+        className="btn-utility btn-tier-link linkbar-share"
         onClick={() => {
           setShareOpen((v) => !v)
           setServerUpOpen(false)
@@ -203,6 +219,7 @@ function ViewerToolbar({
   extraStatus,
   activeToken,
   onActiveToken,
+  onLocalUpload,
   children,
 }: {
   node: NodeInfo
@@ -218,6 +235,7 @@ function ViewerToolbar({
   extraStatus?: ReactNode
   activeToken?: string | null
   onActiveToken: (token: string | null) => void
+  onLocalUpload?: () => void
   children?: ReactNode
 }) {
   return (
@@ -235,6 +253,7 @@ function ViewerToolbar({
         path={path}
         activeToken={activeToken}
         onActiveToken={onActiveToken}
+        onLocalUpload={onLocalUpload}
       />
       {children}
       <button className="btn-utility" onClick={onToggleFullscreen}>
@@ -272,6 +291,7 @@ function MediaPreview({
   onToggleFullscreen,
   activeToken,
   onActiveToken,
+  onLocalUpload,
 }: Props & { kind: MediaKind }) {
   const raw = `/api/files/${node.id}/raw`
   // 영상 재생은 preview.mp4로 — 브라우저가 못 푸는 오디오 코덱(AC-3 등)이면 서버가 AAC로 변환해 준다.
@@ -288,6 +308,7 @@ function MediaPreview({
         onClose={onClose}
         activeToken={activeToken}
         onActiveToken={onActiveToken}
+        onLocalUpload={onLocalUpload}
         status={formatBytes(node.size)}
         extraStatus={
           kind === 'html' ? (
@@ -365,6 +386,7 @@ function OfficePreview({
   onToggleFullscreen,
   activeToken,
   onActiveToken,
+  onLocalUpload,
 }: Props) {
   const [state, setState] = useState<'loading' | 'ready' | 'error'>('loading')
   const [pdfUrl, setPdfUrl] = useState('')
@@ -410,6 +432,7 @@ function OfficePreview({
         onClose={onClose}
         activeToken={activeToken}
         onActiveToken={onActiveToken}
+        onLocalUpload={onLocalUpload}
         status={formatBytes(node.size)}
         extraStatus={<span className="editor-status">PDF로 변환됨</span>}
       />
@@ -480,6 +503,7 @@ function TextEditor({
   onClose,
   activeToken,
   onActiveToken,
+  onLocalUpload,
 }: Props) {
   const appTheme = useAppTheme() // 라이트/다크 토글에 따라 에디터 테마도 전환
   const [text, setText] = useState<string | null>(null)
@@ -696,6 +720,7 @@ function TextEditor({
         onClose={onClose}
         activeToken={activeToken}
         onActiveToken={onActiveToken}
+        onLocalUpload={onLocalUpload}
         status={status}
         statusClass={
           [dirty && !saving ? 'dirty' : '', savedFlash ? 'saved' : '']
