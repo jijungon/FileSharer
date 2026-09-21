@@ -10,9 +10,10 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..config import get_settings
-from ..deps import current_user, get_db
+from ..deps import Principal, current_principal, current_user, get_db
 from ..models import Favorite, Node, NodeView, Space, User, email_nickname, utcnow
 from ..services import audit, locks
+from ..services import tokens as tokens_svc
 from ..services.media import (
     TranscodeError,
     audio_codec,
@@ -526,6 +527,8 @@ def _do_upload(
     parent_id: str | None,
     upload: UploadFile,
     rel_path: str | None = None,
+    *,
+    via: str = "",
 ) -> dict:
     parent_id = _resolve_upload_parent(db, user, space, parent_id, rel_path)
     settings = get_settings()
@@ -553,8 +556,18 @@ def _do_upload(
     )
     db.add(node)
     db.flush()
-    audit.log(db, "upload", user_id=user.id, node_id=node.id, detail=f"{name} ({size}B)")
+    # 토큰 업로드면 detail에 토큰 라벨을 남긴다(사용자=토큰 소유자). 토큰 원문은 절대 안 남긴다.
+    detail = f"{name} ({size}B)" + (f" · 토큰:{via}" if via else "")
+    audit.log(db, "upload", user_id=user.id, node_id=node.id, detail=detail)
     return node_out(node)
+
+
+def _via_label(principal: Principal) -> str:
+    """감사 로그용 토큰 라벨(없으면 id 앞 8자). 세션 업로드면 빈 문자열."""
+    token = principal.token
+    if token is None:
+        return ""
+    return token.label or token.id[:8]
 
 
 @router.post("/spaces/{space_id}/files", status_code=201)
@@ -562,11 +575,14 @@ def upload_to_space_root(
     space_id: str,
     file: UploadFile,
     rel_path: str = Form(""),
-    user: User = Depends(current_user),
+    principal: Principal = Depends(current_principal),
     db: Session = Depends(get_db),
 ) -> dict:
-    space = get_space_checked(db, user, space_id)
-    return _do_upload(db, user, space, None, file, rel_path)
+    """세션 쿠키 또는 API 토큰(Bearer)으로 공간 루트에 업로드."""
+    space = get_space_checked(db, principal.user, space_id)
+    if principal.token is not None:
+        tokens_svc.enforce_scope(db, principal.token, space, None)
+    return _do_upload(db, principal.user, space, None, file, rel_path, via=_via_label(principal))
 
 
 @router.post("/nodes/{node_id}/files", status_code=201)
@@ -574,14 +590,19 @@ def upload_to_folder(
     node_id: str,
     file: UploadFile,
     rel_path: str = Form(""),
-    user: User = Depends(current_user),
+    principal: Principal = Depends(current_principal),
     db: Session = Depends(get_db),
 ) -> dict:
-    parent = get_node_checked(db, user, node_id)
+    """세션 쿠키 또는 API 토큰(Bearer)으로 폴더 안에 업로드."""
+    parent = get_node_checked(db, principal.user, node_id)
     if parent.type != "folder":
         raise HTTPException(status_code=400, detail="폴더가 아닙니다")
     space = db.get(Space, parent.space_id)
-    return _do_upload(db, user, space, parent.id, file, rel_path)
+    if principal.token is not None:
+        tokens_svc.enforce_scope(db, principal.token, space, parent.id)
+    return _do_upload(
+        db, principal.user, space, parent.id, file, rel_path, via=_via_label(principal)
+    )
 
 def _node_sha256(storage: StorageBackend, node: Node) -> str:
     """업로드 때 저장한 sha가 있으면 그걸, 없으면(구 데이터) 계산."""

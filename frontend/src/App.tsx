@@ -3,6 +3,7 @@ import Admin from './pages/Admin'
 import Files from './pages/Files'
 import Login from './pages/Login'
 import Share from './pages/Share'
+import Tokens from './pages/Tokens'
 
 export default function App() {
   return (
@@ -11,6 +12,7 @@ export default function App() {
       <Route path="/files" element={<Files />} />
       <Route path="/files/:nodeId" element={<Files />} />
       <Route path="/admin" element={<Admin />} />
+      <Route path="/tokens" element={<Tokens />} />
       <Route path="/s/:token" element={<Share />} />
       <Route path="*" element={<Navigate to="/files" replace />} />
     </Routes>

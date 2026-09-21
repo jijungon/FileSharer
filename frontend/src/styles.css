@@ -351,6 +351,13 @@ button:focus-visible {
   flex-shrink: 0;
 }
 
+/* '서버 업로드'는 다운로드/사내 링크/공유 링크와 같은 액션 묶음(.linkbar-actions)에 나란히.
+   팝오버는 공유 팝오버와 동일하게 .linkbar-actions(position:relative) 기준으로 우상단에 뜬다. */
+.server-upload-link {
+  color: var(--primary);
+  white-space: nowrap;
+}
+
 .linkbar-share:disabled {
   opacity: 0.45;
   cursor: not-allowed;
