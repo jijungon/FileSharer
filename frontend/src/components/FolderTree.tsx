@@ -39,6 +39,7 @@ interface Props {
   onOpenFolder: (folderId: string) => void
   onOpenFile: (row: TreeRow) => void
   onDropToFolder?: (draggedId: string, targetFolderId: string | null) => void
+  onUploadFiles?: (targetFolderId: string, e: React.DragEvent) => void // 로컬 파일/폴더 → 그 폴더로 업로드
   // 우클릭 컨텍스트 메뉴 동작(파일목록 표를 대체 — 이름변경/즐겨찾기/삭제)
   onRename?: (row: TreeRow) => void
   onToggleFavorite?: (row: TreeRow) => void
@@ -54,6 +55,7 @@ export default function FolderTree({
   onOpenFolder,
   onOpenFile,
   onDropToFolder,
+  onUploadFiles,
   onRename,
   onToggleFavorite,
   onDelete,
@@ -143,10 +145,12 @@ export default function FolderTree({
   }
 
   function dropHandlers(targetId: string | null) {
-    if (!onDropToFolder) return {}
+    if (!onDropToFolder && !onUploadFiles) return {}
     return {
       onDragOver: (e: React.DragEvent) => {
-        if (e.dataTransfer.types.includes('application/x-node-id')) {
+        const t = e.dataTransfer.types
+        // 내부 항목 이동(x-node-id) 또는 로컬 파일 업로드(Files) 둘 다 대상 폴더를 강조한다.
+        if (t.includes('application/x-node-id') || t.includes('Files')) {
           e.preventDefault()
           setDragOverId(targetId)
         }
@@ -157,7 +161,10 @@ export default function FolderTree({
         const id = e.dataTransfer.getData('application/x-node-id')
         if (id) {
           e.preventDefault()
-          onDropToFolder(id, targetId)
+          onDropToFolder?.(id, targetId)
+        } else if (targetId && e.dataTransfer.types.includes('Files')) {
+          e.preventDefault()
+          onUploadFiles?.(targetId, e) // 로컬 파일/폴더 → 이 폴더 안으로 업로드
         }
       },
     }
