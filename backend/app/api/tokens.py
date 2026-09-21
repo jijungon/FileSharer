@@ -49,8 +49,10 @@ def _iso(dt) -> str | None:
 
 
 def _effective_space_id(db: Session, token: ApiToken) -> str | None:
-    """토큰이 실제로 속한 공간 id(폴더범위=그 폴더의 공간 · 공간범위=그 공간 · null=소유자 개인공간).
-    프론트에서 '현재 공간의 토큰만' 필터링하는 데 쓴다."""
+    """토큰이 실제로 속한 공간 id — 프론트에서 '현재 공간 토큰만' 필터링하는 데 쓴다.
+
+    폴더범위=그 폴더의 공간 · 공간범위=그 공간 · null(범위 없음)=소유자 개인 공간.
+    """
     if token.node_id:
         node = db.get(Node, token.node_id)
         return node.space_id if node else None
