@@ -17,7 +17,7 @@ from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..models import ApiToken, Space, User, as_utc, new_id, utcnow
+from ..models import ApiToken, Node, Space, User, as_utc, new_id, utcnow
 from ..security import hash_password, verify_password
 from .permissions import is_descendant
 
@@ -129,3 +129,30 @@ def enforce_scope(db: Session, token: ApiToken, space: Space, parent_id: str | N
     )
     if personal is None or space.id != personal.id:
         raise HTTPException(status_code=403, detail="토큰 범위 밖의 공간입니다")
+
+
+def resolve_upload_target(db: Session, token: ApiToken) -> tuple[Space, str | None]:
+    """토큰 범위 → 업로드 목적지 (space, parent_id). URL에 경로 id 없이 토큰만으로 올릴 때 쓴다.
+
+    폴더범위=그 폴더 안 · 공간범위=그 공간 루트 · 범위없음=소유자 개인 공간 루트.
+    대상이 삭제됐으면 404. (범위 검사는 목적지 자체가 범위라 따로 필요 없다.)
+    """
+    if token.node_id:
+        node = db.get(Node, token.node_id)
+        if node is None or node.type != "folder":
+            raise HTTPException(status_code=404, detail="토큰이 가리키는 폴더가 없습니다")
+        space = db.get(Space, node.space_id)
+        if space is None:
+            raise HTTPException(status_code=404, detail="토큰이 가리키는 공간이 없습니다")
+        return space, node.id
+    if token.space_id:
+        space = db.get(Space, token.space_id)
+        if space is None:
+            raise HTTPException(status_code=404, detail="토큰이 가리키는 공간이 없습니다")
+        return space, None
+    personal = db.scalar(
+        select(Space).where(Space.type == "personal", Space.user_id == token.user_id)
+    )
+    if personal is None:
+        raise HTTPException(status_code=404, detail="개인 공간을 찾을 수 없습니다")
+    return personal, None

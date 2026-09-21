@@ -2,18 +2,16 @@
 """fs_upload.py — FileSharer 서버(헤드리스) 업로드 CLI (Python 표준 라이브러리만 사용).
 
 브라우저/세션 없이 API 토큰(Bearer)으로 FileSharer에 파일을 밀어 넣는다. 외부 패키지
-불필요(urllib). 토큰은 파일 화면의 "서버 업로드" 버튼 또는 /tokens 화면에서 발급한다.
+불필요(urllib). 토큰은 파일 화면의 "서버 업로드" 버튼(🔑 임시 토큰 발급)에서 발급한다.
 서버에는 토큰 해시만 저장되고, 원문은 발급 직후 한 번만 표시된다.
 
-사용 예:
-    FS_BASE=https://file.rgrg.im FS_TOKEN=fsk_... \\
-        python3 fs_upload.py --folder <FOLDER_ID> a.log b.log
-    python3 fs_upload.py --base https://file.rgrg.im --token fsk_... \\
-        --space <SPACE_ID> report.csv
+사용 예(범위 토큰이면 --folder/--space 없이 그냥 파일만 나열):
+    FS_BASE=https://file.rgrg.im FS_TOKEN=fsk_... python3 fs_upload.py a.log b.log
+    # 명시 위치로:  --folder <FOLDER_ID>  또는  --space <SPACE_ID>
 
---folder 와 --space 중 정확히 하나를 지정한다(각각 폴더 안 / 공간 루트). 토큰 범위 밖이면
-서버가 403을 반환한다. 보안상 토큰은 --token 인자보다 환경변수 FS_TOKEN 사용을 권장한다
-(인자는 ps 목록에 노출될 수 있음).
+--folder/--space 를 둘 다 생략하면 /api/upload 로 올린다 — 목적지는 토큰 범위가 정한다.
+(둘을 함께 쓸 수는 없다.) 토큰 범위 밖이면 서버가 403. 보안상 토큰은 --token 인자보다
+환경변수 FS_TOKEN 사용을 권장한다(인자는 ps 목록에 노출될 수 있음).
 """
 
 import argparse
@@ -73,8 +71,8 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--base", default=os.environ.get("FS_BASE", ""), help="FileSharer 주소 (또는 FS_BASE)")
     parser.add_argument("--token", default=os.environ.get("FS_TOKEN", ""), help="API 토큰 (또는 FS_TOKEN, 권장)")
-    parser.add_argument("--folder", help="업로드할 폴더 node id")
-    parser.add_argument("--space", help="공간 루트에 업로드할 space id")
+    parser.add_argument("--folder", help="(선택) 명시 폴더 node id — 없으면 토큰 범위로")
+    parser.add_argument("--space", help="(선택) 명시 공간 루트 space id — 없으면 토큰 범위로")
     parser.add_argument("--rel-path", dest="rel_path", help="서버측 상대경로(중간 폴더 자동 생성)")
     parser.add_argument("files", nargs="+", help="올릴 파일 경로(들)")
     args = parser.parse_args(argv)
@@ -83,11 +81,16 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("--base 또는 환경변수 FS_BASE 가 필요합니다")
     if not args.token:
         parser.error("--token 또는 환경변수 FS_TOKEN 이 필요합니다")
-    if bool(args.folder) == bool(args.space):
-        parser.error("--folder 와 --space 중 정확히 하나를 지정하세요")
+    if args.folder and args.space:
+        parser.error("--folder 와 --space 는 함께 쓸 수 없습니다")
 
     base = args.base.rstrip("/")
-    url_path = f"/api/nodes/{args.folder}/files" if args.folder else f"/api/spaces/{args.space}/files"
+    if args.folder:
+        url_path = f"/api/nodes/{args.folder}/files"
+    elif args.space:
+        url_path = f"/api/spaces/{args.space}/files"
+    else:
+        url_path = "/api/upload"  # 목적지는 토큰 범위가 정한다
 
     rc = 0
     for name in args.files:

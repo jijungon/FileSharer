@@ -520,7 +520,7 @@ def _resolve_upload_parent(
     return parent_id
 
 
-def _do_upload(
+def _upload_one(
     db: Session,
     user: User,
     space: Space,
@@ -529,7 +529,8 @@ def _do_upload(
     rel_path: str | None = None,
     *,
     via: str = "",
-) -> dict:
+) -> Node:
+    """파일 하나를 저장하고 그 Node를 반환한다(응답 직렬화는 호출부에서)."""
     parent_id = _resolve_upload_parent(db, user, space, parent_id, rel_path)
     settings = get_settings()
     storage = build_storage(settings)
@@ -559,7 +560,32 @@ def _do_upload(
     # 토큰 업로드면 detail에 토큰 라벨을 남긴다(사용자=토큰 소유자). 토큰 원문은 절대 안 남긴다.
     detail = f"{name} ({size}B)" + (f" · 토큰:{via}" if via else "")
     audit.log(db, "upload", user_id=user.id, node_id=node.id, detail=detail)
-    return node_out(node)
+    return node
+
+
+def _do_upload(
+    db: Session,
+    user: User,
+    space: Space,
+    parent_id: str | None,
+    uploads: list[UploadFile],
+    rel_path: str | None = None,
+    *,
+    via: str = "",
+) -> dict | list[dict]:
+    """한 요청에 담긴 파일(들)을 모두 업로드. 하위호환을 위해 1개면 단일 객체,
+    2개 이상이면 목록을 반환한다. rel_path(중간 폴더 자동 생성)는 파일이 하나일 때만 유효."""
+    if not uploads:
+        raise HTTPException(status_code=422, detail="올릴 파일이 없습니다")
+    if rel_path and len(uploads) > 1:
+        raise HTTPException(
+            status_code=422, detail="rel_path는 파일이 하나일 때만 쓸 수 있습니다"
+        )
+    outs = [
+        node_out(_upload_one(db, user, space, parent_id, up, rel_path, via=via))
+        for up in uploads
+    ]
+    return outs[0] if len(outs) == 1 else outs
 
 
 def _via_label(principal: Principal) -> str:
@@ -573,12 +599,12 @@ def _via_label(principal: Principal) -> str:
 @router.post("/spaces/{space_id}/files", status_code=201)
 def upload_to_space_root(
     space_id: str,
-    file: UploadFile,
+    file: list[UploadFile],
     rel_path: str = Form(""),
     principal: Principal = Depends(current_principal),
     db: Session = Depends(get_db),
-) -> dict:
-    """세션 쿠키 또는 API 토큰(Bearer)으로 공간 루트에 업로드."""
+) -> dict | list[dict]:
+    """세션 쿠키 또는 API 토큰(Bearer)으로 공간 루트에 업로드(파일 여러 개면 목록 반환)."""
     space = get_space_checked(db, principal.user, space_id)
     if principal.token is not None:
         tokens_svc.enforce_scope(db, principal.token, space, None)
@@ -588,12 +614,12 @@ def upload_to_space_root(
 @router.post("/nodes/{node_id}/files", status_code=201)
 def upload_to_folder(
     node_id: str,
-    file: UploadFile,
+    file: list[UploadFile],
     rel_path: str = Form(""),
     principal: Principal = Depends(current_principal),
     db: Session = Depends(get_db),
-) -> dict:
-    """세션 쿠키 또는 API 토큰(Bearer)으로 폴더 안에 업로드."""
+) -> dict | list[dict]:
+    """세션 쿠키 또는 API 토큰(Bearer)으로 폴더 안에 업로드(파일 여러 개면 목록 반환)."""
     parent = get_node_checked(db, principal.user, node_id)
     if parent.type != "folder":
         raise HTTPException(status_code=400, detail="폴더가 아닙니다")
@@ -603,6 +629,30 @@ def upload_to_folder(
     return _do_upload(
         db, principal.user, space, parent.id, file, rel_path, via=_via_label(principal)
     )
+
+
+@router.post("/upload", status_code=201)
+def upload_via_token(
+    file: list[UploadFile],
+    rel_path: str = Form(""),
+    principal: Principal = Depends(current_principal),
+    db: Session = Depends(get_db),
+) -> dict | list[dict]:
+    """API 토큰(Bearer) 전용 업로드 — 목적지를 '토큰 범위'에서 자동으로 정한다.
+
+    URL에 폴더/공간 id가 필요 없다(폴더범위=그 폴더 · 공간범위=그 공간 루트 · 범위없음=개인 공간).
+    파일 여러 개면 한 요청으로 모두 올리고 목록을 반환한다.
+    """
+    token = principal.token
+    if token is None:
+        raise HTTPException(
+            status_code=401, detail="이 경로는 API 토큰(Bearer)으로만 업로드할 수 있습니다"
+        )
+    space, parent_id = tokens_svc.resolve_upload_target(db, token)
+    return _do_upload(
+        db, principal.user, space, parent_id, file, rel_path, via=_via_label(principal)
+    )
+
 
 def _node_sha256(storage: StorageBackend, node: Node) -> str:
     """업로드 때 저장한 sha가 있으면 그걸, 없으면(구 데이터) 계산."""

@@ -33,9 +33,10 @@ test('임시 토큰 발급(버튼) → 한 토큰으로 여러 파일 Bearer 업
   await expect(curlCode).toContainText('Bearer fsk_')
   const curl = ((await curlCode.textContent()) ?? '').trim()
   const token = curl.match(/Bearer (fsk_[^"]+)/)?.[1] ?? ''
-  const endpoint = curl.match(/(\/api\/(?:spaces|nodes)\/[^\s]+\/files)/)?.[1] ?? ''
+  // 이제 curl은 /api/upload — 목적지는 토큰 범위가 정한다. 마지막 토큰이 엔드포인트 URL.
+  const endpoint = curl.split(/\s+/).pop() ?? ''
   expect(token.startsWith('fsk_')).toBeTruthy()
-  expect(endpoint).toContain('/files')
+  expect(endpoint).toContain('/api/upload')
 
   // 쿠키 없는 컨텍스트 = 순수 Bearer 인증. '같은 임시 토큰'으로 파일 여러 개를 연속 업로드.
   const api = await request.newContext({ baseURL: BASE })
