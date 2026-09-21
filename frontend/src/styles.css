@@ -35,7 +35,6 @@
   --radius-lg: 6px;
   --radius-pill: 9999px; /* 진짜 둥근 것(점·아바타)만 */
 
-  --token-drawer-w: min(440px, 40vw); /* API 토큰 드로어 폭(본문 push 폭과 동일) */
 
   --sp-xxs: 4px;
   --sp-xs: 8px;
@@ -253,11 +252,6 @@ button:focus-visible {
   display: flex;
   flex-direction: column;
   background: var(--canvas-parchment);
-  transition: padding-right 0.22s ease;
-}
-/* API 토큰 드로어가 열리면 본문을 왼쪽으로 밀어 뒤가 보이게 한다(오버레이가 아니라 push) */
-.shell.drawer-open {
-  padding-right: var(--token-drawer-w);
 }
 
 .topbar {
@@ -358,14 +352,7 @@ button:focus-visible {
   flex-shrink: 0;
 }
 
-/* '서버 업로드'는 다운로드/사내 링크/공유 링크와 같은 액션 묶음(.linkbar-actions)에 나란히.
-   팝오버는 공유 팝오버와 동일하게 .linkbar-actions(position:relative) 기준으로 우상단에 뜬다. */
-.server-upload-link {
-  color: var(--primary);
-  white-space: nowrap;
-}
-
-/* 링크처럼 보이는 버튼(팝오버 안 'API 토큰 발급/관리 →') */
+/* 링크처럼 보이는 버튼(예: 서버 업로드 팝오버의 '해제') */
 .linklike {
   background: none;
   border: none;
@@ -376,99 +363,6 @@ button:focus-visible {
 }
 .linklike:hover {
   text-decoration: underline;
-}
-
-/* ── API 토큰: 우측 슬라이드 드로어(본문을 밀어냄 — .shell.drawer-open) ── */
-.token-drawer {
-  position: fixed;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  z-index: 91;
-  width: var(--token-drawer-w);
-  display: flex;
-  flex-direction: column;
-  background: var(--canvas);
-  border-left: 1px solid var(--hairline);
-  box-shadow: -8px 0 24px rgba(0, 0, 0, 0.28);
-  transform: translateX(100%);
-  transition: transform 0.22s ease;
-  visibility: hidden;
-}
-.token-drawer.open {
-  transform: translateX(0);
-  visibility: visible;
-}
-.token-drawer-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: var(--sp-md) var(--sp-lg);
-  border-bottom: 1px solid var(--hairline);
-  flex: none;
-}
-.token-drawer-head h2 {
-  font-size: 20px;
-}
-.token-drawer-body {
-  padding: var(--sp-lg);
-  overflow-y: auto;
-}
-.token-section-title {
-  font-size: 17px;
-  margin: 0 0 var(--sp-sm);
-}
-.token-card {
-  background: var(--canvas-parchment);
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius-lg);
-  padding: var(--sp-md);
-  margin-bottom: var(--sp-md);
-}
-.token-card--new {
-  background: var(--canvas);
-  border: 2px solid var(--primary);
-}
-.token-card-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-.token-active-note {
-  color: var(--primary);
-  font-size: 13px;
-  margin: 4px 0 8px;
-}
-.token-form {
-  display: flex;
-  gap: var(--sp-sm);
-  flex-wrap: wrap;
-  margin-bottom: var(--sp-sm);
-}
-.token-input {
-  font: inherit;
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius-md);
-  padding: 9px 12px;
-  background: var(--surface-pearl);
-  color: var(--ink);
-  flex: 1 1 160px;
-}
-.token-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 14px;
-}
-.token-table th {
-  text-align: left;
-  color: var(--ink-muted-48);
-  font-weight: 600;
-  font-size: 13px;
-  padding: 8px 6px;
-}
-.token-table td {
-  padding: 10px 6px;
-  border-top: 1px solid var(--divider-soft);
 }
 
 .linkbar-share:disabled {

@@ -5,7 +5,6 @@ import FolderTree from '../components/FolderTree'
 import LinkBar from '../components/LinkBar'
 import NewMarkdownModal from '../components/NewMarkdownModal'
 import ViewerPanel from '../components/ViewerPanel'
-import TokenDrawer from '../components/TokenDrawer'
 import { api, ApiError, Me, SpaceInfo } from '../lib/api'
 import { formatBytes, formatDateTime, formatTrashRemaining } from '../lib/format'
 import {
@@ -135,8 +134,7 @@ export default function Files() {
   const [dropActive, setDropActive] = useState(false)
   const [fullscreen, setFullscreen] = useState(false)
   const [bootError, setBootError] = useState('')
-  const [tokensOpen, setTokensOpen] = useState(false) // API 토큰 드로어(우측 슬라이드, 토글)
-  // 방금 발급한 토큰 원문 — 서버 업로드 curl 자동 채움용. 메모리에만 두고 새로고침하면 사라진다.
+  // 지금 메모리에 든 임시 토큰 원문 — 서버 업로드 curl 자동 채움용. 새로고침/해제하면 사라진다.
   const [activeToken, setActiveToken] = useState<string | null>(null)
   const [sortKey, setSortKey] = useState<SortKey>('name')
   const [sortDir, setSortDir] = useState<SortDir>('asc')
@@ -744,20 +742,13 @@ export default function Files() {
   const viewerOpen = !!selected && selected.type === 'file' && !trashMode && !favMode
 
   return (
-    <div className={`shell${tokensOpen ? ' drawer-open' : ''}`}>
+    <div className="shell">
       <header className="topbar">
         <h2 className="logo">
           FileSharer <span className="app-version">{__APP_VERSION__}</span>
         </h2>
         <div className="topbar-right">
           <span className="muted">{me.email}</span>
-          <button
-            className={`btn-utility${tokensOpen ? ' active' : ''}`}
-            title="서버 업로드용 API 토큰 관리"
-            onClick={() => setTokensOpen((o) => !o)}
-          >
-            API 토큰
-          </button>
           {me.role === 'admin' && (
             <Link to="/admin">
               <button className="btn-utility">관리</button>
@@ -791,7 +782,7 @@ export default function Files() {
           onNavigate={crumbNavigate}
           onDropToCrumb={(id, idx) => onMove(id, idx === null ? null : path[idx].id)}
           activeToken={activeToken}
-          onOpenTokens={() => setTokensOpen(true)}
+          onActiveToken={setActiveToken}
         />
       )}
 
@@ -1185,7 +1176,7 @@ export default function Files() {
               path={path}
               onNavigate={crumbNavigate}
               activeToken={activeToken}
-              onOpenTokens={() => setTokensOpen(true)}
+              onActiveToken={setActiveToken}
               fullscreen={fullscreen}
               onToggleFullscreen={() => setFullscreen((f) => !f)}
               onNodeUpdated={(fresh) => {
@@ -1231,11 +1222,6 @@ export default function Files() {
           onCreate={createNewMd}
         />
       )}
-      <TokenDrawer
-        open={tokensOpen}
-        onClose={() => setTokensOpen(false)}
-        onActiveToken={setActiveToken}
-      />
     </div>
   )
 }

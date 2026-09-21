@@ -23,6 +23,7 @@ export interface CreateTokenInput {
   space_id?: string | null
   node_id?: string | null
   expires_in_days?: number | null
+  expires_in_minutes?: number | null // 짧은 임시 토큰(분). 서버 업로드 버튼이 사용.
 }
 
 export const listTokens = () => api<ApiTokenInfo[]>('/api/tokens')

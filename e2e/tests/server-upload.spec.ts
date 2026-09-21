@@ -15,65 +15,61 @@ async function loginAsAdmin(page) {
   await expect(page).toHaveURL(/\/files/)
 }
 
-test('API 토큰 발급 → Bearer 업로드 → 회수(401) 전체 흐름', async ({ page }) => {
+// '서버 업로드' 버튼은 title에도 문구가 겹칠 수 있어 '보이는 텍스트'로 특정한다.
+async function openServerUpload(page) {
+  await page.getByRole('button').filter({ hasText: '서버 업로드' }).first().click()
+  await expect(page.getByRole('dialog', { name: '서버 업로드' })).toBeVisible()
+}
+
+test('임시 토큰 발급(버튼) → 한 토큰으로 여러 파일 Bearer 업로드 → 해제/회수', async ({ page }) => {
   await loginAsAdmin(page)
 
-  // 개인 공간 id (업로드 대상 URL 구성용) — 로그인 세션 쿠키로 조회
-  const spaces = await page.request.get('/api/spaces').then((r) => r.json())
-  const personalId = spaces.find((s: { type: string }) => s.type === 'personal').id
+  // 관리 페이지 없이 서버 업로드 팝오버의 버튼 하나로 '임시 토큰'을 발급한다.
+  await openServerUpload(page)
+  await page.getByRole('button').filter({ hasText: '임시 토큰 발급' }).click()
 
-  // 우측 API 토큰 드로어를 열고 UI로 발급
-  await page.getByRole('button', { name: 'API 토큰' }).click()
-  await expect(page.getByRole('heading', { name: 'API 토큰' })).toBeVisible()
-
-  const label = `e2e-token-${Date.now()}`
-  await page.getByPlaceholder(/라벨/).fill(label)
-  await page.getByRole('button', { name: '발급' }).click()
-
-  // 원문은 발급 직후 한 번만 노출된다 — 화면에서 읽어 온다
-  const tokenValue = page.getByTestId('token-value')
-  await expect(tokenValue).toBeVisible()
-  const token = ((await tokenValue.textContent()) ?? '').trim()
+  // 방금 발급한 토큰이 curl에 자동으로 채워진다 — 거기서 토큰과 엔드포인트를 읽어 온다.
+  const curlCode = page.getByTestId('server-upload-curl')
+  await expect(curlCode).toContainText('Bearer fsk_')
+  const curl = ((await curlCode.textContent()) ?? '').trim()
+  const token = curl.match(/Bearer (fsk_[^"]+)/)?.[1] ?? ''
+  const endpoint = curl.match(/(\/api\/(?:spaces|nodes)\/[^\s]+\/files)/)?.[1] ?? ''
   expect(token.startsWith('fsk_')).toBeTruthy()
+  expect(endpoint).toContain('/files')
 
-  // 방금 발급한 토큰이 '서버 업로드' 팝오버 curl에 자동 채워진다(드로어 닫고 확인).
-  // 버튼은 이름(title)이 겹칠 수 있어 '보이는 텍스트'로 특정한다.
-  await page.keyboard.press('Escape') // 드로어 닫기(Esc)
-  await page.getByRole('button').filter({ hasText: '서버 업로드' }).click()
-  await expect(page.locator('.share-popover code').filter({ hasText: 'Bearer' })).toContainText(
-    token,
-  )
-  await page.locator('.share-popover').getByRole('button', { name: /닫기/ }).click()
-
-  // 쿠키 없는 컨텍스트 = 순수 토큰(Bearer) 인증만으로 업로드되는지 증명
+  // 쿠키 없는 컨텍스트 = 순수 Bearer 인증. '같은 임시 토큰'으로 파일 여러 개를 연속 업로드.
   const api = await request.newContext({ baseURL: BASE })
-  const uploadName = `e2e-server-upload-${Date.now()}.log`
-  const ok = await api.post(`/api/spaces/${personalId}/files`, {
-    headers: { Authorization: `Bearer ${token}` },
-    multipart: {
-      file: { name: uploadName, mimeType: 'text/plain', buffer: Buffer.from('pushed by token') },
-    },
-  })
-  expect(ok.status()).toBe(201)
+  const stamp = Date.now()
+  const names = [`e2e-a-${stamp}.log`, `e2e-b-${stamp}.log`, `e2e-c-${stamp}.log`]
+  for (const name of names) {
+    const res = await api.post(endpoint, {
+      headers: { Authorization: `Bearer ${token}` },
+      multipart: {
+        file: { name, mimeType: 'text/plain', buffer: Buffer.from('pushed by temp token') },
+      },
+    })
+    expect(res.status(), name).toBe(201) // 하나의 토큰으로 여러 번 성공(단일사용이 아님)
+  }
 
-  // 파일이 실제로 그 공간 트리에 생겼는지(업로더=토큰 소유자) — UI에서도 확인.
-  // 드로어는 오버레이라 새로고침으로 닫고 트리를 최신화한다(외부 Bearer 업로드는 UI가 모름).
+  // '해제'하면 curl이 다시 <TOKEN> 자리표시자로 돌아간다(브라우저 메모리에서 비움).
+  await page.getByRole('button', { name: '해제' }).click()
+  await expect(page.getByTestId('server-upload-curl')).toContainText('<TOKEN>')
+
+  // 외부 Bearer 업로드는 UI가 모르니 새로고침으로 트리를 최신화하고 파일들을 확인.
   await page.reload()
-  await expect(fileCell(page, uploadName)).toBeVisible()
+  for (const name of names) {
+    await expect(fileCell(page, name)).toBeVisible()
+  }
 
-  // 파일을 열면 에디터 툴바에도 '서버 업로드' 버튼이 있다(폴더뷰뿐 아니라 파일뷰에도)
-  await fileCell(page, uploadName).click()
+  // 파일을 열면 에디터 툴바에도 '서버 업로드' 버튼이 있다(폴더뷰뿐 아니라 파일뷰에도).
+  await fileCell(page, names[0]).click()
   await expect(page.getByRole('button').filter({ hasText: '서버 업로드' })).toBeVisible()
 
-  // 회수 후 같은 토큰으로 재업로드하면 401
-  const tokenId = await page.request
-    .get('/api/tokens')
-    .then((r) => r.json())
-    .then((rows) => rows.find((t: { label: string }) => t.label === label).id)
-  const revoked = await page.request.delete(`/api/tokens/${tokenId}`)
-  expect(revoked.status()).toBe(200)
-
-  const after = await api.post(`/api/spaces/${personalId}/files`, {
+  // 회수하면 같은 토큰의 업로드는 401 (방금 발급한 것 = 목록 최상단).
+  const rows = await page.request.get('/api/tokens').then((r) => r.json())
+  const tokenId = rows[0].id
+  expect((await page.request.delete(`/api/tokens/${tokenId}`)).status()).toBe(200)
+  const after = await api.post(endpoint, {
     headers: { Authorization: `Bearer ${token}` },
     multipart: {
       file: { name: 'should-fail.log', mimeType: 'text/plain', buffer: Buffer.from('x') },
