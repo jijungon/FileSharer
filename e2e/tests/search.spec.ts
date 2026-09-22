@@ -13,7 +13,10 @@ async function login(page) {
   await expect(page).toHaveURL(/\/files/)
 }
 
-test('하위 폴더의 파일을 이름으로 검색해 위치와 함께 찾고, 클릭하면 열린다', async ({ page }) => {
+// 검색은 이제 사이드바가 아니라 '상단 바'에 있고, 이름 + 내용(텍스트) 둘 다로 찾는다.
+test('상단 검색: 하위 폴더의 파일을 이름으로 찾아 위치와 함께 보여주고, 클릭하면 열린다', async ({
+  page,
+}) => {
   await login(page)
   const tag = Date.now()
   const folder = `검색폴더_${tag}`
@@ -31,28 +34,56 @@ test('하위 폴더의 파일을 이름으로 검색해 위치와 함께 찾고,
     buffer: Buffer.from('hello'),
   })
   await expect(page.locator('.upload-row')).toHaveCount(0)
-  // 방금 만든 폴더 아래 트리에 파일이 나타난다(하위 폴더에 들어가 있음)
   await expect(page.locator('.tree-name').filter({ hasText: fname })).toBeVisible()
 
-  // 검색 → 결과에 파일 + 상위 경로(폴더명)
-  await page.getByPlaceholder('이 공간에서 검색').fill(`찾을파일_${tag}`)
-  const result = page.locator('.search-result', { hasText: fname })
+  // 상단 검색 → 결과 드롭다운에 파일 + 상위 경로(폴더명)
+  await page.getByPlaceholder('파일 이름·내용 검색').fill(`찾을파일_${tag}`)
+  const result = page.locator('.topbar-search-results .search-result', { hasText: fname })
   await expect(result).toBeVisible()
   await expect(result).toContainText(folder) // path 표시
 
   // 결과 클릭 → 검색 종료 + 파일 뷰어로 열림
   await result.click()
-  await expect(page.locator('.search-results')).toHaveCount(0)
+  await expect(page.locator('.topbar-search-results')).toHaveCount(0)
   await expect(page.locator('.viewer-area')).toBeVisible()
 })
 
-test('검색어를 비우면 검색 결과가 사라지고 목록으로 돌아온다', async ({ page }) => {
+test('상단 검색: 이름에 없어도 파일 내용(텍스트)으로 찾고 "내용" 뱃지를 보여준다', async ({
+  page,
+}) => {
   await login(page)
-  const box = page.getByPlaceholder('이 공간에서 검색')
+  const tag = Date.now()
+  const fname = `무관한제목_${tag}.md` // 이름엔 검색어가 없음
+  const token = `내용전용토큰${tag}` // 오직 내용에만 있는 문자열
+
+  await page.locator('input[type="file"]:not([webkitdirectory])').setInputFiles({
+    name: fname,
+    mimeType: 'text/markdown',
+    buffer: Buffer.from(`# 문서\n\n여기 어딘가에 ${token} 가 들어있다.\n`),
+  })
+  await expect(page.locator('.upload-row')).toHaveCount(0)
+  await expect(page.locator('.tree-name').filter({ hasText: fname })).toBeVisible()
+
+  // 내용에만 있는 토큰으로 검색 → 그 파일이 '내용' 매치로 뜬다
+  await page.getByPlaceholder('파일 이름·내용 검색').fill(token)
+  const result = page.locator('.topbar-search-results .search-result', { hasText: fname })
+  await expect(result).toBeVisible()
+  await expect(result.locator('.search-match-badge')).toHaveText('내용')
+})
+
+test('상단 검색: 검색어를 비우면 결과 드롭다운이 사라진다', async ({ page }) => {
+  await login(page)
+  const box = page.getByPlaceholder('파일 이름·내용 검색')
   await box.fill('아무거나검색어xyz')
-  await expect(page.locator('.search-results')).toBeVisible()
+  await expect(page.locator('.topbar-search-results')).toBeVisible()
   await box.fill('')
-  await expect(page.locator('.search-results')).toHaveCount(0)
-  // 검색 해제 시 일반 탐색 화면(트리 안내)으로 돌아온다
+  await expect(page.locator('.topbar-search-results')).toHaveCount(0)
+  // 검색과 무관하게 탐색 화면은 그대로(사이드바 트리 안내)
   await expect(page.locator('.browser-welcome')).toBeVisible()
+})
+
+test('사이드바에는 더 이상 검색창이 없다(상단으로 이동)', async ({ page }) => {
+  await login(page)
+  await expect(page.locator('.sidebar-search')).toHaveCount(0)
+  await expect(page.locator('.topbar-search-input')).toBeVisible()
 })

@@ -18,6 +18,8 @@ export interface NodeInfo {
   purge_at?: string | null
   // 검색 결과에만 채워짐: 상위 폴더 경로(공간 루트 기준 'a/b/c', 루트면 '')
   path?: string
+  // 검색 결과에만 채워짐: 이름 매치인지 내용(전문) 매치인지
+  match?: 'name' | 'content'
 }
 
 export interface NodePath {

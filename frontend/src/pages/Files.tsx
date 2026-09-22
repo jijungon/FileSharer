@@ -112,6 +112,9 @@ export default function Files() {
   const [path, setPath] = useState<NodeInfo[]>([])
   const [items, setItems] = useState<NodeInfo[]>([])
   const [selected, setSelected] = useState<NodeInfo | null>(null)
+  // 다중 탭: 열린 파일 목록 + 미저장 탭 집합. selected(활성 파일)는 그대로 두고 위에 얹는다.
+  const [openTabs, setOpenTabs] = useState<NodeInfo[]>([])
+  const [dirtyTabs, setDirtyTabs] = useState<Set<string>>(new Set())
   const [trashMode, setTrashMode] = useState(false)
   const [notice, setNotice] = useState('')
   const [maxUploadMb, setMaxUploadMb] = useState(0)
@@ -375,6 +378,61 @@ export default function Files() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selected?.id, selected?.type])
 
+  // 활성 파일이 바뀌면 탭 목록에 추가(없으면)하거나 최신 node로 갱신한다.
+  useEffect(() => {
+    if (!selected || selected.type !== 'file') return
+    setOpenTabs((tabs) => {
+      const i = tabs.findIndex((t) => t.id === selected.id)
+      if (i === -1) return [...tabs, selected]
+      const next = tabs.slice()
+      next[i] = selected // 이름·수정시각 갱신
+      return next
+    })
+  }, [selected])
+
+  // 탭 클릭 → 그 파일을 활성화(URL도 그 파일로 → URL 동기화가 path/space 맞춰줌).
+  function activateTab(node: NodeInfo) {
+    setSelected(node)
+    navigate(`/files/${node.id}`)
+  }
+
+  // 탭 닫기(미저장이면 확인). 닫는 게 활성 탭이면 이웃으로 활성 이동, 없으면 뷰어를 닫는다.
+  function closeTab(id: string, force = false) {
+    if (!force && dirtyTabs.has(id)) {
+      if (!window.confirm('저장하지 않은 변경이 있습니다. 이 탭을 닫을까요?')) return
+    }
+    const i = openTabs.findIndex((t) => t.id === id)
+    const next = openTabs.filter((t) => t.id !== id)
+    setOpenTabs(next)
+    setDirtyTabs((d) => {
+      if (!d.has(id)) return d
+      const n = new Set(d)
+      n.delete(id)
+      return n
+    })
+    if (selected?.id === id) {
+      const neighbor = next[i] ?? next[i - 1] ?? null
+      if (neighbor) {
+        setSelected(neighbor)
+        navigate(`/files/${neighbor.id}`)
+      } else {
+        setSelected(null)
+        navigate(currentFolder ? `/files/${currentFolder.id}` : '/files')
+      }
+    }
+  }
+
+  // 탭별 미저장 표시(●) — TextEditor가 dirty 여부를 올려준다.
+  function setTabDirty(id: string, dirty: boolean) {
+    setDirtyTabs((d) => {
+      if (d.has(id) === dirty) return d
+      const n = new Set(d)
+      if (dirty) n.add(id)
+      else n.delete(id)
+      return n
+    })
+  }
+
   // 검색어 디바운스 → 현재 공간에서 이름 검색. 빈 문자열이면 검색 모드 해제.
   useEffect(() => {
     if (!spaceId) return
@@ -441,6 +499,7 @@ export default function Files() {
   async function openFolderById(id: string) {
     try {
       const found = await getNodePath(id)
+      setSpaceId(found.space_id) // 다른 공간의 폴더를 눌러도 그 공간으로 전환
       setSelected(null)
       setTrashMode(false)
       setFavMode(false)
@@ -721,15 +780,13 @@ export default function Files() {
   async function deleteFromTree(row: TreeRow) {
     if (!window.confirm(`"${row.name}"을(를) 휴지통으로 이동할까요?`)) return
     await guard(() => deleteNode(row.id))
-    if (selected?.id === row.id) setSelected(null) // 열려 있던 파일이면 뷰어 닫기
+    closeTab(row.id, true) // 열려 있던 탭이면 닫기(활성이면 이웃으로 이동)
   }
-  // 뷰어 액션 바의 🗑 삭제 — 지금 열려 있는 파일을 휴지통으로 이동하고 뷰어를 닫는다.
-  async function deleteSelected() {
-    if (!selected) return
-    if (!window.confirm(`"${selected.name}"을(를) 휴지통으로 이동할까요?`)) return
-    await guard(() => deleteNode(selected.id))
-    setSelected(null)
-    navigate(currentFolder ? `/files/${currentFolder.id}` : '/files')
+  // 뷰어 액션 바의 🗑 삭제 — 그 파일을 휴지통으로 이동하고 해당 탭을 닫는다.
+  async function deleteTab(node: NodeInfo) {
+    if (!window.confirm(`"${node.name}"을(를) 휴지통으로 이동할까요?`)) return
+    await guard(() => deleteNode(node.id))
+    closeTab(node.id, true)
   }
   function toggleFavFromTree(row: TreeRow) {
     // toggleFav는 node.id만 사용 — TreeRow에 NodeInfo 필수 필드만 채워 넘긴다
@@ -768,8 +825,23 @@ export default function Files() {
   // (다중 이동 후 옮긴 파일이 뷰어에 잔상처럼 남아 보이던 문제 방지)
   function closeViewerIfAffected(ids: Iterable<string>) {
     const set = ids instanceof Set ? ids : new Set(ids)
+    const remaining = openTabs.filter((t) => !set.has(t.id))
+    setOpenTabs(remaining)
+    setDirtyTabs((d) => {
+      const n = new Set(d)
+      let changed = false
+      for (const id of set) if (n.delete(id)) changed = true
+      return changed ? n : d
+    })
     if (selected && set.has(selected.id)) {
-      setSelected(null)    }
+      const nextActive = remaining[remaining.length - 1] ?? null
+      if (nextActive) {
+        setSelected(nextActive)
+        navigate(`/files/${nextActive.id}`)
+      } else {
+        setSelected(null)
+      }
+    }
   }
 
   if (bootError)
@@ -796,6 +868,60 @@ export default function Files() {
         <h2 className="logo">
           FileSharer <span className="app-version">{__APP_VERSION__}</span>
         </h2>
+        {/* 상단 검색 — 현재 공간에서 파일 이름 + 내용(텍스트)으로 찾고, 누르면 그 파일로 이동 */}
+        <div className="topbar-search">
+          <span className="topbar-search-icon" aria-hidden>
+            🔎
+          </span>
+          <input
+            type="search"
+            className="topbar-search-input"
+            placeholder="파일 이름·내용 검색"
+            spellCheck={false}
+            autoCapitalize="off"
+            autoCorrect="off"
+            value={searchQ}
+            onChange={(e) => setSearchQ(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') setSearchQ('')
+            }}
+            aria-label="파일 이름·내용 검색"
+          />
+          {searchResults !== null && searchQ.trim() && (
+            <div className="topbar-search-results">
+              <div className="search-results-head muted">
+                {searchResults.length > 0
+                  ? `"${searchQ.trim()}" 검색 결과 ${searchResults.length}개`
+                  : `"${searchQ.trim()}"에 대한 결과가 없습니다`}
+              </div>
+              {searchResults.length > 0 && (
+                <ul className="search-results-list">
+                  {searchResults.map((node) => (
+                    <li
+                      key={node.id}
+                      className="search-result"
+                      onClick={() => {
+                        openLocated(node)
+                        setSearchQ('')
+                      }}
+                    >
+                      <span className="node-icon">{node.type === 'folder' ? '📁' : '📄'}</span>
+                      <span className="search-result-name">{node.name}</span>
+                      {node.match === 'content' && (
+                        <span className="search-match-badge" title="내용에서 일치">
+                          내용
+                        </span>
+                      )}
+                      <span className="search-result-path muted">
+                        {node.path ? node.path : '(루트)'}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+        </div>
         <div className="topbar-right">
           <span className="muted">{me.email}</span>
           {me.role === 'admin' && (
@@ -914,24 +1040,6 @@ export default function Files() {
           )}
           <div className="sidebar-divider" />
           <div className="sidebar-section-label">공간 · 폴더</div>
-          {!trashMode && !favMode && (
-            <div className="sidebar-search">
-              <input
-                type="search"
-                className="search-input search-input-sidebar"
-                placeholder="이 공간에서 검색"
-                spellCheck={false}
-                autoCapitalize="off"
-                autoCorrect="off"
-                value={searchQ}
-                onChange={(e) => setSearchQ(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Escape') setSearchQ('')
-                }}
-                aria-label="이 공간에서 검색"
-              />
-            </div>
-          )}
           <div className="sidebar-scroll">
           {spaces.map((s) => (
             <div key={s.id}>
@@ -973,10 +1081,11 @@ export default function Files() {
               >
                 {s.name}
               </button>
-              {s.id === spaceId && !trashMode && (
+              {/* 모든 공간의 폴더 트리를 동시에 펼쳐 오갈 수 있게 한다(활성 공간만 폴더 하이라이트) */}
+              {!trashMode && (
                 <FolderTree
                   spaceId={s.id}
-                  currentFolderId={currentFolder?.id ?? null}
+                  currentFolderId={s.id === spaceId ? currentFolder?.id ?? null : null}
                   selectedFileId={selected?.id ?? null}
                   favIds={favIds}
                   version={treeVersion}
@@ -1038,6 +1147,47 @@ export default function Files() {
           role="separator"
           aria-orientation="vertical"
         />
+
+        <div className="content-col">
+          {/* 다중 탭 바 — 열린 파일 탭. 활성 하이라이트 · 미저장 ●(호버 시 ✕) · 클릭 전환 · 가운데클릭 닫기 */}
+          {openTabs.length > 0 && !trashMode && !favMode && (
+            <div className="tab-bar" role="tablist">
+              {openTabs.map((tab) => {
+                const active = viewerOpen && selected?.id === tab.id
+                const isDirty = dirtyTabs.has(tab.id)
+                return (
+                  <div
+                    key={tab.id}
+                    className={`tab${active ? ' active' : ''}${isDirty ? ' dirty' : ''}`}
+                    role="tab"
+                    aria-selected={active}
+                    title={tab.name}
+                    onClick={() => activateTab(tab)}
+                    onAuxClick={(e) => {
+                      if (e.button === 1) {
+                        e.preventDefault()
+                        closeTab(tab.id)
+                      }
+                    }}
+                  >
+                    <span className="tab-name">{tab.name}</span>
+                    <button
+                      className="tab-close"
+                      aria-label={`${tab.name} 닫기`}
+                      title="닫기"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        closeTab(tab.id)
+                      }}
+                    >
+                      <span className="tab-close-x">✕</span>
+                      <span className="tab-close-dot">●</span>
+                    </button>
+                  </div>
+                )
+              })}
+            </div>
+          )}
 
         {!viewerOpen && (
           <main
@@ -1107,29 +1257,6 @@ export default function Files() {
                     >
                       ★
                     </button>
-                    <span className="node-icon">{node.type === 'folder' ? '📁' : '📄'}</span>
-                    <span className="search-result-name">{node.name}</span>
-                    <span className="search-result-path muted">
-                      {node.path ? node.path : '(루트)'}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ) : searchResults !== null ? (
-            <div className="search-results">
-              <div className="search-results-head muted">
-                {searchResults.length > 0
-                  ? `"${searchQ.trim()}" 검색 결과 ${searchResults.length}개`
-                  : `"${searchQ.trim()}"에 대한 결과가 없습니다`}
-              </div>
-              <ul className="search-results-list">
-                {searchResults.map((node) => (
-                  <li
-                    key={node.id}
-                    className="search-result"
-                    onClick={() => openLocated(node)}
-                  >
                     <span className="node-icon">{node.type === 'folder' ? '📁' : '📄'}</span>
                     <span className="search-result-name">{node.name}</span>
                     <span className="search-result-path muted">
@@ -1228,28 +1355,33 @@ export default function Files() {
           )}
         </main>
         )}
-        {viewerOpen && selected && (
-          <div className="viewer-area">
+        {/* 열린 탭을 모두 마운트하고 비활성은 숨김 → 미저장/스크롤/편집잠금 상태 보존 */}
+        {openTabs.map((tab) => (
+          <div
+            key={tab.id}
+            className="viewer-area"
+            style={{ display: viewerOpen && selected?.id === tab.id ? undefined : 'none' }}
+          >
             <ViewerPanel
-              node={selected}
+              node={tab}
               space={space}
               path={path}
               onNavigate={crumbNavigate}
               activeToken={activeToken}
               onActiveToken={setActiveToken}
               onLocalUpload={() => fileInput.current?.click()}
-              onDelete={deleteSelected}
+              onDelete={() => deleteTab(tab)}
+              onDirtyChange={(d) => setTabDirty(tab.id, d)}
               onNodeUpdated={(fresh) => {
-                setSelected(fresh)
+                setOpenTabs((tabs) => tabs.map((t) => (t.id === tab.id ? fresh : t)))
+                if (selected?.id === tab.id) setSelected(fresh)
                 reload()
               }}
-              onClose={() => {
-                setSelected(null)
-                navigate(currentFolder ? `/files/${currentFolder.id}` : '/files')
-              }}
+              onClose={() => closeTab(tab.id)}
             />
           </div>
-        )}
+        ))}
+        </div>
       </div>
       {uploads.length > 0 && (
         <div className="upload-panel" aria-label="업로드 진행">
