@@ -31,8 +31,8 @@ test('별표로 즐겨찾기에 추가하고, 즐겨찾기 뷰에서 해제한�
   await item.click({ button: 'right' })
   await page.getByRole('menuitem', { name: /즐겨찾기/ }).click()
 
-  // 사이드바 즐겨찾기 뷰 → 그 파일이 보인다 (트리 파일명과 겹치지 않게 사이드바 버튼 특정)
-  await page.locator('.sidebar-fav').click()
+  // 사이드바 툴바의 ★ 즐겨찾기 아이콘 → 즐겨찾기 뷰로 전환, 그 파일이 보인다
+  await page.locator('.sidebar-fav-toggle').click()
   const favResult = page.locator('.search-result', { hasText: fname })
   await expect(favResult).toBeVisible()
 

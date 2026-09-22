@@ -46,3 +46,36 @@ test('sidebar folder tree navigates into folders and back to root', async ({ pag
   await page.locator('.space-item.space-root.active').click()
   await expect(page).toHaveURL(/\/files$/)
 })
+
+test('트리에서 파일을 고르고 Enter를 누르면 제자리에서 이름을 바꾼다', async ({ page }) => {
+  await page.goto('/login')
+  await page.getByRole('button', { name: /로컬 계정으로 로그인/ }).click()
+  await page.getByPlaceholder('이메일').fill(EMAIL)
+  await page.getByPlaceholder('비밀번호').fill(PASSWORD)
+  await page.getByRole('button', { name: '로컬 계정으로 로그인' }).click()
+  await expect(page).toHaveURL(/\/files/)
+
+  const tag = Date.now()
+  const fname = `이름변경_${tag}.txt`
+  const newName = `바뀐이름_${tag}.txt`
+  await page.locator('input[type="file"]:not([webkitdirectory])').setInputFiles({
+    name: fname,
+    mimeType: 'text/plain',
+    buffer: Buffer.from('x'),
+  })
+  await expect(page.locator('.upload-row')).toHaveCount(0)
+  const item = page.locator('.tree-name').filter({ hasText: fname })
+  await expect(item).toBeVisible()
+
+  // 파일 선택(포커스) → Enter → 제자리 입력창 → 새 이름 입력 → Enter로 커밋
+  await item.click()
+  await item.press('Enter')
+  const input = page.locator('.tree-rename-input')
+  await expect(input).toBeVisible()
+  await input.fill(newName)
+  await input.press('Enter')
+
+  // 트리에 새 이름이 나타나고 옛 이름은 사라진다(제자리 편집, prompt 팝업 없음)
+  await expect(page.locator('.tree-name').filter({ hasText: newName })).toBeVisible()
+  await expect(page.locator('.tree-name').filter({ hasText: fname })).toHaveCount(0)
+})

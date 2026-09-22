@@ -41,7 +41,8 @@ interface Props {
   onDropToFolder?: (draggedId: string, targetFolderId: string | null) => void
   onUploadFiles?: (targetFolderId: string | null, e: React.DragEvent) => void // 로컬 파일/폴더 → 그 폴더(null=공간 루트)로 업로드
   // 우클릭 컨텍스트 메뉴 동작(파일목록 표를 대체 — 이름변경/즐겨찾기/삭제)
-  onRename?: (row: TreeRow) => void
+  // 이름변경은 인라인(제자리 입력) — 빈/동일 이름이면 호출 안 함.
+  onRenameCommit?: (row: TreeRow, newName: string) => void
   onToggleFavorite?: (row: TreeRow) => void
   onDelete?: (row: TreeRow) => void
 }
@@ -56,13 +57,14 @@ export default function FolderTree({
   onOpenFile,
   onDropToFolder,
   onUploadFiles,
-  onRename,
+  onRenameCommit,
   onToggleFavorite,
   onDelete,
 }: Props) {
   const [rows, setRows] = useState<TreeRow[]>([])
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [dragOverId, setDragOverId] = useState<string | null>(null) // 드래그가 올라온 폴더(드롭 대상 강조)
+  const [renaming, setRenaming] = useState<string | null>(null) // 인라인 이름변경 중인 노드 id
   // 우클릭 컨텍스트 메뉴: 대상 행 + 화면 좌표
   const [menu, setMenu] = useState<{ row: TreeRow; x: number; y: number } | null>(null)
   const menuRef = useRef<HTMLDivElement>(null)
@@ -144,6 +146,17 @@ export default function FolderTree({
     })
   }
 
+  // 인라인 이름변경: 시작(메뉴 닫고 그 자리에 입력창) / 커밋(빈·동일 이름이면 무시)
+  function beginRename(node: TreeRow) {
+    setMenu(null)
+    setRenaming(node.id)
+  }
+  function commitRename(node: TreeRow, raw: string) {
+    setRenaming(null)
+    const name = raw.trim()
+    if (name && name !== node.name) onRenameCommit?.(node, name)
+  }
+
   function dropHandlers(targetId: string | null) {
     if (!onDropToFolder && !onUploadFiles) return {}
     return {
@@ -212,11 +225,11 @@ export default function FolderTree({
             dragOverId === node.id ? ' drag-over' : ''
           }${isFolder ? ' tree-row--sticky' : ''}`}
           style={isFolder ? { top: depth * ROW_H, zIndex: 60 - depth } : undefined}
-          draggable
+          draggable={renaming !== node.id}
           onDragStart={(e) => rowDragStart(e, node)}
           {...dropHandlers(isFolder ? node.id : node.parent_id)}
           onContextMenu={(e) => {
-            if (!onRename && !onDelete && !onToggleFavorite) return
+            if (!onRenameCommit && !onDelete && !onToggleFavorite) return
             e.preventDefault()
             setMenu({ row: node, x: e.clientX, y: e.clientY })
           }}
@@ -224,13 +237,42 @@ export default function FolderTree({
           <span className="tree-icon" aria-hidden="true">
             {isFolder ? (isOpen && hasChildren ? '📂' : '📁') : '📄'}
           </span>
-          <button
-            className="tree-name"
-            onClick={() => (isFolder ? (onOpenFolder(node.id), toggle(node.id)) : onOpenFile(node))}
-            title={node.name}
-          >
-            {node.name}
-          </button>
+          {renaming === node.id ? (
+            <input
+              className="tree-rename-input"
+              defaultValue={node.name}
+              autoFocus
+              onFocus={(e) => e.currentTarget.select()}
+              onClick={(e) => e.stopPropagation()}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault()
+                  commitRename(node, e.currentTarget.value)
+                } else if (e.key === 'Escape') {
+                  e.preventDefault()
+                  setRenaming(null)
+                }
+              }}
+              onBlur={(e) => commitRename(node, e.currentTarget.value)}
+            />
+          ) : (
+            <button
+              className="tree-name"
+              onClick={() =>
+                isFolder ? (onOpenFolder(node.id), toggle(node.id)) : onOpenFile(node)
+              }
+              onKeyDown={(e) => {
+                // 선택 후 Enter → 인라인 이름변경(Finder식). 기본 Enter=열기를 막는다.
+                if (e.key === 'Enter' && onRenameCommit) {
+                  e.preventDefault()
+                  beginRename(node)
+                }
+              }}
+              title={node.name}
+            >
+              {node.name}
+            </button>
+          )}
           {onToggleFavorite && (
             <button
               className={`tree-fav${favIds?.has(node.id) ? ' on' : ''}`}
@@ -268,13 +310,7 @@ export default function FolderTree({
           onClick={(e) => e.stopPropagation()}
           onContextMenu={(e) => e.preventDefault()}
         >
-          <button
-            role="menuitem"
-            onClick={() => {
-              onRename?.(menu.row)
-              setMenu(null)
-            }}
-          >
+          <button role="menuitem" onClick={() => beginRename(menu.row)}>
             ✎ 이름 변경
           </button>
           <button
