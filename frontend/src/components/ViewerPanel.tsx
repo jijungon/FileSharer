@@ -203,7 +203,7 @@ function FileActions({
   )
 }
 
-// 뷰어/에디터 공통 상단 툴바. children = 형식별 컨트롤(자동저장·저장, 새 탭 등).
+// 뷰어/에디터 공통 상단 툴바. children = 형식별 컨트롤(자동저장·저장 등).
 // 사용자 요청대로 다운로드/링크 버튼을 저장 '왼쪽'에 두려고 파일 액션을 children 앞에 놓는다.
 function ViewerToolbar({
   node,
@@ -320,11 +320,7 @@ function MediaPreview({
             </span>
           ) : undefined
         }
-      >
-        <a href={raw} target="_blank" rel="noreferrer">
-          <button className="btn-utility">새 탭</button>
-        </a>
-      </ViewerToolbar>
+      />
       {kind === 'image' ? (
         <div className="image-preview">
           <img src={raw} alt={node.name} />
