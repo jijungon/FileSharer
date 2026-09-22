@@ -4,12 +4,16 @@ WORKDIR /web
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
 COPY frontend/ ./
-# 버전 뱃지 = 머지된 PR 번호. CI(image 잡)가 머지 커밋의 (#NN)에서 뽑아
-# APP_VERSION=v0.0.<PR번호> 로 주입한다. 값이 없으면(로컬/직접푸시) vite.config가
-# frontend/package.json 버전으로 폴백.
+# 배포 속도: 버전과 무관한 '고정 placeholder'로 빌드한다. 이렇게 하면 이 무거운 npm/vite
+# 빌드 레이어의 캐시 키가 버전에 물리지 않아, 버전만 바뀌는 배포(백엔드·e2e·ci 등)에서
+# arm64 재빌드가 통째로 도는 걸 막는다(캐시 재사용).
+RUN APP_VERSION=__FS_APP_VERSION__ npm run build
+# 버전 뱃지 = 머지된 PR 번호. CI(image 잡)가 머지 커밋의 (#NN)→v0.0.<PR>로 넣어준다.
+# 무거운 빌드 '뒤에' 싼 문자열 치환으로만 실제 버전을 주입 → 여기서부터만 캐시 무효화(수 초).
+# APP_VERSION이 없으면(로컬 도커 빌드·PR 등, 미배포) 'dev'로 표기.
 ARG APP_VERSION=""
-ENV APP_VERSION=$APP_VERSION
-RUN npm run build
+RUN grep -rl "__FS_APP_VERSION__" dist/assets 2>/dev/null \
+      | xargs -r sed -i "s/__FS_APP_VERSION__/${APP_VERSION:-dev}/g"
 
 # ── Stage 2: 백엔드 + 정적파일 → 단일 이미지 ───────────────
 FROM python:3.13-slim AS app
