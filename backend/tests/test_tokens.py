@@ -412,5 +412,5 @@ def test_upload_extract_rejects_path_traversal(admin_client):
 
 
 def test_reset_route_absent_without_flag(admin_client):
-    """프로덕션 안전장치: ENABLE_TEST_RESET 없으면 reset POST 핸들러가 없다(404/405 — 실행 안 됨)."""
+    """프로덕션 안전장치: 플래그 없으면 reset 핸들러가 없다(404/405 — 실행 안 됨)."""
     assert admin_client.post("/api/test/reset").status_code in (404, 405)
