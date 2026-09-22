@@ -129,3 +129,47 @@ test('로컬 파일을 트리의 폴더에 끌어다 놓으면 그 폴더 안으
     )
     .toContain('dropped.txt')
 })
+
+test('로컬 파일을 트리의 "파일" 위에 놓으면 그 파일이 든 폴더로 업로드된다', async ({ page }) => {
+  await loginAsAdmin(page)
+  const spaces = await page.request.get('/api/spaces').then((r) => r.json())
+  const pid = spaces.find((s: { type: string }) => s.type === 'personal').id
+  const fname = `부모폴더-${Date.now()}`
+  const folder = await page.request
+    .post('/api/nodes', { data: { space_id: pid, name: fname } })
+    .then((r) => r.json())
+  // 그 폴더 '안'에 기준이 될 파일 하나를 만든다 — 이 '파일 행' 위에 드롭할 것이다
+  await page.request.post(`/api/nodes/${folder.id}/files`, {
+    multipart: {
+      file: { name: 'anchor.txt', mimeType: 'text/plain', buffer: Buffer.from('anchor') },
+    },
+  })
+
+  // 개인 공간 활성화 + 폴더를 펼쳐 그 안의 anchor.txt 행이 보이게
+  await page.reload()
+  await page.locator('button.space-root').filter({ hasText: '내 공간' }).click()
+  await page.locator('.tree-name').filter({ hasText: fname }).click()
+  const fileRow = page.locator('.tree-row').filter({ hasText: 'anchor.txt' })
+  await expect(fileRow).toBeVisible()
+
+  // 로컬 파일을 '폴더'가 아닌 '파일 행'에 dragover→drop → 그 파일의 부모 폴더로 올라가야 한다
+  const dt = await page.evaluateHandle(() => {
+    const d = new DataTransfer()
+    d.items.add(new File(['dropped-onto-file'], 'onto-file.txt', { type: 'text/plain' }))
+    return d
+  })
+  await fileRow.dispatchEvent('dragover', { dataTransfer: dt })
+  await fileRow.dispatchEvent('drop', { dataTransfer: dt })
+
+  // 부모 폴더 children 에 새 파일이 anchor.txt 와 나란히 생겨야 한다
+  await expect
+    .poll(
+      () =>
+        page.request
+          .get(`/api/nodes/${folder.id}/children`)
+          .then((r) => r.json())
+          .then((kids: { name: string }[]) => kids.map((n) => n.name)),
+      { timeout: 6000 },
+    )
+    .toContain('onto-file.txt')
+})

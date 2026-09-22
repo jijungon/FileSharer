@@ -39,7 +39,7 @@ interface Props {
   onOpenFolder: (folderId: string) => void
   onOpenFile: (row: TreeRow) => void
   onDropToFolder?: (draggedId: string, targetFolderId: string | null) => void
-  onUploadFiles?: (targetFolderId: string, e: React.DragEvent) => void // 로컬 파일/폴더 → 그 폴더로 업로드
+  onUploadFiles?: (targetFolderId: string | null, e: React.DragEvent) => void // 로컬 파일/폴더 → 그 폴더(null=공간 루트)로 업로드
   // 우클릭 컨텍스트 메뉴 동작(파일목록 표를 대체 — 이름변경/즐겨찾기/삭제)
   onRename?: (row: TreeRow) => void
   onToggleFavorite?: (row: TreeRow) => void
@@ -162,9 +162,9 @@ export default function FolderTree({
         if (id) {
           e.preventDefault()
           onDropToFolder?.(id, targetId)
-        } else if (targetId && e.dataTransfer.types.includes('Files')) {
+        } else if (e.dataTransfer.types.includes('Files')) {
           e.preventDefault()
-          onUploadFiles?.(targetId, e) // 로컬 파일/폴더 → 이 폴더 안으로 업로드
+          onUploadFiles?.(targetId, e) // 로컬 파일/폴더 → 이 폴더(targetId=null이면 공간 루트) 안으로 업로드
         }
       },
     }
@@ -214,7 +214,7 @@ export default function FolderTree({
           style={isFolder ? { top: depth * ROW_H, zIndex: 60 - depth } : undefined}
           draggable
           onDragStart={(e) => rowDragStart(e, node)}
-          {...(isFolder ? dropHandlers(node.id) : {})}
+          {...dropHandlers(isFolder ? node.id : node.parent_id)}
           onContextMenu={(e) => {
             if (!onRename && !onDelete && !onToggleFavorite) return
             e.preventDefault()
