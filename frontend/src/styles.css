@@ -699,8 +699,9 @@ button:focus-visible {
   font-size: 14px;
 }
 
-.toolbar-search {
-  margin-left: 8px;
+/* 사이드바 '공간 · 폴더' 헤더 바로 아래, 트리 위의 검색창 */
+.sidebar-search {
+  padding: 0 8px 6px;
 }
 .search-input {
   width: 200px;
@@ -711,6 +712,12 @@ button:focus-visible {
   border-radius: var(--radius-pill);
   background: var(--canvas);
   color: var(--ink);
+}
+/* 사이드바 폭에 맞춰 꽉 채우는 변형 */
+.search-input-sidebar {
+  width: 100%;
+  max-width: none;
+  font-size: 13px;
 }
 .search-input:focus {
   outline: none;

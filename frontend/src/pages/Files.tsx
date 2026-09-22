@@ -891,6 +891,21 @@ export default function Files() {
           )}
           <div className="sidebar-divider" />
           <div className="sidebar-section-label">공간 · 폴더</div>
+          {!trashMode && !favMode && (
+            <div className="sidebar-search">
+              <input
+                type="search"
+                className="search-input search-input-sidebar"
+                placeholder="이 공간에서 검색"
+                value={searchQ}
+                onChange={(e) => setSearchQ(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Escape') setSearchQ('')
+                }}
+                aria-label="이 공간에서 검색"
+              />
+            </div>
+          )}
           <div className="sidebar-scroll">
           {spaces.map((s) => (
             <div key={s.id}>
@@ -1028,32 +1043,20 @@ export default function Files() {
             }
           }}
         >
-          <div className="toolbar">
-            {trashMode && <span className="muted">휴지통 — 복원하면 원래 위치로 돌아갑니다</span>}
-            {favMode && <span className="muted">즐겨찾기 — ★ 를 눌러 해제, 항목을 눌러 이동</span>}
-            {uploads.length > 0 && (
-              <span className="upload-count muted">
-                업로드 {uploadStats.done}/{uploadStats.total}
-                {uploadStats.failed > 0 && ` · 실패 ${uploadStats.failed}`} · {uploadStats.percent}%
-              </span>
-            )}
-            <span className="toolbar-notice">{notice}</span>
-            {!trashMode && !favMode && (
-              <div className="toolbar-search">
-                <input
-                  type="search"
-                  className="search-input"
-                  placeholder="이 공간에서 검색"
-                  value={searchQ}
-                  onChange={(e) => setSearchQ(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Escape') setSearchQ('')
-                  }}
-                  aria-label="이 공간에서 검색"
-                />
-              </div>
-            )}
-          </div>
+          {/* 알림·업로드 진행이 있을 때만 렌더 — 검색창을 사이드바로 옮긴 뒤 빈 툴바로 생기는 여백 방지 */}
+          {(trashMode || favMode || uploads.length > 0 || notice) && (
+            <div className="toolbar">
+              {trashMode && <span className="muted">휴지통 — 복원하면 원래 위치로 돌아갑니다</span>}
+              {favMode && <span className="muted">즐겨찾기 — ★ 를 눌러 해제, 항목을 눌러 이동</span>}
+              {uploads.length > 0 && (
+                <span className="upload-count muted">
+                  업로드 {uploadStats.done}/{uploadStats.total}
+                  {uploadStats.failed > 0 && ` · 실패 ${uploadStats.failed}`} · {uploadStats.percent}%
+                </span>
+              )}
+              <span className="toolbar-notice">{notice}</span>
+            </div>
+          )}
 
           {favMode ? (
             <div className="search-results">
