@@ -28,7 +28,11 @@ test('별표로 즐겨찾기에 추가하고, 즐겨찾기 뷰에서 해제한�
   await expect(item).toBeVisible()
 
   // 트리 항목 앞쪽(이모지 왼쪽)의 ☆ 별을 눌러 즐겨찾기
-  await page.locator('.tree-row').filter({ hasText: fname }).locator('.tree-fav').click()
+  const favBtn = page.locator('.tree-row').filter({ hasText: fname }).locator('.tree-fav')
+  await favBtn.click()
+  // 즐겨찾기가 서버까지 반영돼 별이 채워진 뒤(★)에 뷰를 전환한다 — 반영 전에 전환하면
+  // 즐겨찾기 목록이 비어 보이던 레이스(CI 플래키) 방지
+  await expect(favBtn).toHaveAttribute('aria-label', '즐겨찾기 해제')
 
   // 사이드바 툴바의 ★ 즐겨찾기 아이콘 → 즐겨찾기 뷰로 전환, 그 파일이 보인다
   await page.locator('.sidebar-fav-toggle').click()
