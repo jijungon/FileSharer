@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, test } from './fixtures'
 
 const EMAIL = 'e2e@test.local'
 const PASSWORD = 'e2e-password-123'

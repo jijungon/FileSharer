@@ -111,6 +111,13 @@ def create_app() -> FastAPI:
     app.include_router(system_router)
     app.include_router(public_router)
 
+    # 테스트 전용 데이터 초기화 라우트 — 플래그가 켜졌고 프로덕션이 아닐 때만 '존재'한다
+    # (프로덕션엔 라우트 자체가 없어 404). e2e가 각 테스트 전 호출해 상태를 격리한다.
+    if settings.enable_test_reset and not settings.is_prod:
+        from .api.test_reset import router as test_reset_router
+
+        app.include_router(test_reset_router)
+
     # 빌드된 SPA 서빙 (frontend/dist -> backend/static). API 외 경로는 index.html로 폴백.
     if STATIC_DIR.exists():
         assets = STATIC_DIR / "assets"

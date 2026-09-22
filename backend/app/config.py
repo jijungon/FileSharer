@@ -16,6 +16,8 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file_encoding="utf-8", extra="ignore")
 
     app_env: str = "dev"
+    # True일 때만 /api/test/reset 라우트 마운트(테스트 격리 전용). 프로덕션 금지.
+    enable_test_reset: bool = False
     secret_key: str = "dev-only-not-for-prod"
     base_url: str = "http://localhost:8000"
     # 로그인 후 돌아갈 프론트 오리진. dev(SPA=5173, API=8642)처럼 오리진이 다를 때만 지정.
