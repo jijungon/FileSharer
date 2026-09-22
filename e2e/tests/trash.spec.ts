@@ -12,6 +12,26 @@ async function login(page) {
   await expect(page).toHaveURL(/\/files/)
 }
 
+test('트리 행의 🗑 버튼으로 파일을 휴지통으로 보낸다', async ({ page }) => {
+  page.on('dialog', (d) => d.accept()) // 삭제 확인창 자동 수락
+  await login(page)
+  const fname = `행삭제_${Date.now()}.txt`
+  await page.locator('input[type="file"]:not([webkitdirectory])').setInputFiles({
+    name: fname,
+    mimeType: 'text/plain',
+    buffer: Buffer.from('x'),
+  })
+  await expect(page.locator('.upload-row')).toHaveCount(0)
+  const row = page.locator('.tree-row').filter({ hasText: fname })
+  await expect(row).toBeVisible()
+
+  // 행 오른쪽 끝의 🗑(휴지통으로 이동) → confirm → 트리에서 사라지고 휴지통에 들어간다
+  await row.getByRole('button', { name: '휴지통으로 이동' }).click()
+  await expect(page.locator('.tree-name').filter({ hasText: fname })).toHaveCount(0)
+  await page.getByRole('button', { name: '휴지통' }).click()
+  await expect(page.getByRole('row', { name: new RegExp(fname.replace('.', '\\.')) })).toBeVisible()
+})
+
 test('휴지통에서 완전 삭제하면 파일이 영구히 사라진다', async ({ page }) => {
   page.on('dialog', (d) => d.accept()) // 삭제/완전삭제 확인창 자동 수락
   await login(page)
