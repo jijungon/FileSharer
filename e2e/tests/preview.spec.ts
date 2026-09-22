@@ -1,6 +1,6 @@
 import { expect, test } from './fixtures'
 
-import { fileCell } from './helpers'
+import { fileCell, newMd } from './helpers'
 
 const EMAIL = 'e2e@test.local'
 const PASSWORD = 'e2e-password-123'
@@ -32,8 +32,7 @@ test('image preview renders inline', async ({ page }) => {
 
 test('new MD: modal opens, save creates the file and opens it', async ({ page }) => {
   await loginAsAdmin(page)
-  page.once('dialog', (d) => d.accept('회의록'))
-  await page.getByRole('button', { name: /새 MD/ }).click()
+  await newMd(page, '회의록')
 
   // 편집 모달이 뜬다(아직 파일 생성 안 됨) — 에디터 + 프리뷰
   const modal = page.locator('.new-md-modal')
@@ -49,8 +48,7 @@ test('new MD: modal opens, save creates the file and opens it', async ({ page })
 
 test('new MD: cancel discards without creating a file', async ({ page }) => {
   await loginAsAdmin(page)
-  page.once('dialog', (d) => d.accept('버리는문서'))
-  await page.getByRole('button', { name: /새 MD/ }).click()
+  await newMd(page, '버리는문서')
   const modal = page.locator('.new-md-modal')
   await expect(modal).toBeVisible()
   await modal.getByRole('button', { name: '취소' }).click()

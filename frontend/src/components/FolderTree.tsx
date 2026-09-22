@@ -255,6 +255,7 @@ export default function FolderTree({
               className="tree-rename-input"
               defaultValue={node.name}
               autoFocus
+              spellCheck={false}
               onFocus={(e) => e.currentTarget.select()}
               onClick={(e) => e.stopPropagation()}
               onKeyDown={(e) => {

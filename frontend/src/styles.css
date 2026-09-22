@@ -2273,6 +2273,90 @@ button:focus-visible {
   padding: var(--sp-lg);
   z-index: 100;
 }
+
+/* 이름 입력 모달(NameModal) — 새 폴더/새 MD (window.prompt 대체) */
+.name-modal {
+  width: min(420px, 92vw);
+  background: var(--surface-pearl);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-lg);
+  padding: var(--sp-lg);
+}
+.name-modal .modal-title {
+  font-size: 17px;
+  font-weight: 600;
+  margin-bottom: var(--sp-sm);
+}
+.name-modal .modal-input {
+  width: 100%;
+  font: inherit;
+  font-size: 15px;
+  padding: 10px 12px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  background: var(--canvas);
+  color: var(--ink);
+}
+.name-modal .modal-input:focus {
+  outline: none;
+  border-color: var(--primary);
+}
+.name-modal .modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--sp-xs);
+  margin-top: var(--sp-md);
+}
+
+/* 전역 에러 토스트(조용한 오류를 눈에 보이게) — 클릭·6초 후 사라짐 */
+.app-toast {
+  position: fixed;
+  left: 50%;
+  bottom: 24px;
+  transform: translateX(-50%);
+  max-width: min(560px, 92vw);
+  padding: 12px 18px;
+  border-radius: var(--radius-md);
+  background: var(--danger-soft);
+  color: var(--danger);
+  border: 1px solid color-mix(in srgb, var(--danger) 40%, transparent);
+  font-size: 14px;
+  cursor: pointer;
+  z-index: 1000;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.3);
+}
+
+/* ErrorBoundary 복구 화면(흰 화면 대신) */
+.error-boundary {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-sm);
+  padding: var(--sp-xl);
+  text-align: center;
+  background: var(--canvas-parchment);
+}
+.error-boundary-detail {
+  max-width: 640px;
+  max-height: 200px;
+  overflow: auto;
+  padding: 12px;
+  background: var(--surface-tile);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  color: var(--ink-muted-80);
+  font-family: var(--mono);
+  font-size: 12px;
+  white-space: pre-wrap;
+  text-align: left;
+}
+.error-boundary-actions {
+  display: flex;
+  gap: var(--sp-xs);
+  margin-top: var(--sp-sm);
+}
 .new-md-modal {
   width: min(1000px, 95vw);
   height: min(680px, 88vh);

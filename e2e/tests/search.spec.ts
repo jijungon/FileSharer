@@ -1,4 +1,5 @@
 import { expect, test } from './fixtures'
+import { newFolder } from './helpers'
 
 const EMAIL = 'e2e@test.local'
 const PASSWORD = 'e2e-password-123'
@@ -19,8 +20,7 @@ test('하위 폴더의 파일을 이름으로 검색해 위치와 함께 찾고,
   const fname = `찾을파일_${tag}.txt`
 
   // 폴더 생성 → 트리에서 진입 → 그 안에 파일 업로드
-  page.once('dialog', (d) => d.accept(folder))
-  await page.getByRole('button', { name: /새 폴더/ }).click()
+  await newFolder(page, folder)
   const folderItem = page.locator('.tree-name').filter({ hasText: folder })
   await expect(folderItem).toBeVisible()
   await folderItem.click()

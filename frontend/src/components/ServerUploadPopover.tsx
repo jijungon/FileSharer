@@ -1,4 +1,6 @@
 import { useState } from 'react'
+import { copyText } from '../lib/clipboard'
+import { showToast } from '../lib/globalErrors'
 import { createToken } from '../lib/tokens'
 
 interface Props {
@@ -61,9 +63,12 @@ export default function ServerUploadPopover({
   }
 
   async function copy(text: string, key: string) {
-    await navigator.clipboard.writeText(text)
-    setCopied(key)
-    setTimeout(() => setCopied(''), 1500)
+    if (await copyText(text)) {
+      setCopied(key)
+      setTimeout(() => setCopied(''), 1500)
+    } else {
+      showToast('복사에 실패했어요. 텍스트를 길게 눌러 수동으로 복사해 주세요.')
+    }
   }
 
   return (

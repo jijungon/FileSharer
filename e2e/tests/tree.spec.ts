@@ -1,4 +1,5 @@
 import { expect, test } from './fixtures'
+import { newFolder } from './helpers'
 
 const EMAIL = 'e2e@test.local'
 const PASSWORD = 'e2e-password-123'
@@ -14,8 +15,7 @@ test('sidebar folder tree navigates into folders and back to root', async ({ pag
   const parent = `트리부모-${Date.now()}`
 
   // 루트에 폴더 생성
-  page.once('dialog', (d) => d.accept(parent))
-  await page.getByRole('button', { name: /새 폴더/ }).click()
+  await newFolder(page, parent)
 
   // 사이드바 트리에 폴더가 나타난다 → 클릭해 들어가기
   const treeItem = page.locator('.tree-name', { hasText: parent })
@@ -28,8 +28,7 @@ test('sidebar folder tree navigates into folders and back to root', async ({ pag
 
   // 하위 폴더 생성 → 트리에서 부모 아래에 나타남
   const child = `트리자식-${Date.now()}`
-  page.once('dialog', (d) => d.accept(child))
-  await page.getByRole('button', { name: /새 폴더/ }).click()
+  await newFolder(page, child)
   const childInTree = page.locator('.tree-name', { hasText: child })
   await expect(childInTree).toBeVisible()
 
