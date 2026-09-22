@@ -641,6 +641,16 @@ button:focus-visible {
   opacity: 0.5;
   cursor: default;
 }
+/* 즐겨찾기 ★ 토글(툴바 맨 왼쪽) — 켜지면 골드로 채운 별로 표시 */
+.sidebar-fav-toggle .fav-star-icon {
+  font-size: 15px;
+  line-height: 1;
+}
+.sidebar-fav-toggle.active {
+  color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 14%, var(--surface-tile));
+  border-color: color-mix(in srgb, var(--primary) 45%, var(--hairline));
+}
 .icon-btn svg {
   display: block;
 }
@@ -2027,6 +2037,15 @@ button:focus-visible {
   box-shadow: inset 0 0 0 2px var(--primary);
 }
 
+/* 트리 항목 포커스(키보드 이동): 기본 button:focus-visible 의 2px 오프셋 골드 아웃라인이
+   각진 박스로 튀어 보였다. 버튼 아웃라인을 없애고, 행 모양(라운드)에 맞춘 부드러운 골드 틴트로 표시. */
+.tree-name:focus-visible {
+  outline: none;
+}
+.tree-row:has(.tree-name:focus-visible) {
+  background: color-mix(in srgb, var(--primary) 12%, var(--canvas));
+}
+
 
 /* 트리 파일/폴더 아이콘 */
 .tree-icon {
@@ -2047,6 +2066,21 @@ button:focus-visible {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* 트리 인라인 이름변경 입력(제자리 편집) — 이름 버튼 자리를 그대로 차지한다 */
+.tree-rename-input {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  padding: 2px 4px;
+  border: 1px solid var(--primary);
+  border-radius: var(--radius-sm);
+  background: var(--canvas);
+  color: var(--ink);
+}
+.tree-rename-input:focus {
+  outline: none;
 }
 
 /* 트리 항목 즐겨찾기 별 — 평소 숨김, 행에 커서 올리면 ☆ 표시, 즐겨찾기면 ★ 항상 표시 */

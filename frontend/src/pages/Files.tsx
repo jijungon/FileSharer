@@ -700,10 +700,9 @@ export default function Files() {
   }
 
   // ── 사이드바 트리 우클릭 메뉴 동작(파일목록 표 대체) ──
-  async function renameFromTree(row: TreeRow) {
-    const name = window.prompt('새 이름', row.name)?.trim()
-    if (!name || name === row.name) return
-    await guard(() => renameNode(row.id, name)) // guard가 reload + treeVersion 갱신
+  // 인라인 이름변경 커밋(빈/동일 이름 무시는 FolderTree 쪽에서 처리) — guard가 reload + treeVersion 갱신
+  function renameCommit(row: TreeRow, name: string) {
+    void guard(() => renameNode(row.id, name))
   }
   async function deleteFromTree(row: TreeRow) {
     if (!window.confirm(`"${row.name}"을(를) 휴지통으로 이동할까요?`)) return
@@ -830,8 +829,19 @@ export default function Files() {
           className="sidebar"
           style={fullscreen && viewerOpen ? { display: 'none' } : { width: sidebarWidth }}
         >
-          {/* 상단 아이콘 툴바 — 새로고침 · 새 폴더 · 새 MD (업로드 버튼은 액션 바로 이동) */}
+          {/* 상단 아이콘 툴바 — 즐겨찾기(★) · 새로고침 · 새 폴더 · 새 MD (업로드 버튼은 액션 바로 이동) */}
           <div className="sidebar-toolbar">
+            <button
+              className={`icon-btn sidebar-fav-toggle${favMode ? ' active' : ''}`}
+              onClick={toggleFavView}
+              title={favMode ? '즐겨찾기 목록 닫기' : '즐겨찾기 보기'}
+              aria-label="즐겨찾기"
+              aria-pressed={favMode}
+            >
+              <span className="fav-star-icon" aria-hidden="true">
+                {favMode ? '★' : '☆'}
+              </span>
+            </button>
             <button
               className="icon-btn toolbar-refresh"
               onClick={refreshCurrent}
@@ -868,13 +878,6 @@ export default function Files() {
               }}
             />
           </div>
-          <div className="sidebar-divider" />
-          <button
-            className={`space-item sidebar-fav${favMode ? ' active' : ''}`}
-            onClick={toggleFavView}
-          >
-            ★ 즐겨찾기
-          </button>
           <div className="sidebar-divider" />
           <div className="sidebar-section-label">🕘 최근</div>
           {recentItems.length === 0 ? (
@@ -968,7 +971,7 @@ export default function Files() {
                   onUploadFiles={(folderId, e) =>
                     uploadToTarget({ spaceId: s.id, parentId: folderId }, e)
                   }
-                  onRename={renameFromTree}
+                  onRenameCommit={renameCommit}
                   onToggleFavorite={toggleFavFromTree}
                   onDelete={deleteFromTree}
                 />
