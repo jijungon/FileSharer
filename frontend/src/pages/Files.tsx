@@ -123,7 +123,6 @@ export default function Files() {
   const [favItems, setFavItems] = useState<NodeInfo[]>([])
   const [recentItems, setRecentItems] = useState<NodeInfo[]>([])
   const [dropActive, setDropActive] = useState(false)
-  const [fullscreen, setFullscreen] = useState(false)
   const [bootError, setBootError] = useState('')
   // 지금 메모리에 든 임시 토큰 원문 — 서버 업로드 curl 자동 채움용. 새로고침/해제하면 사라진다.
   const [activeToken, setActiveToken] = useState<string | null>(null)
@@ -290,7 +289,6 @@ export default function Files() {
     if (!navSynced.current) return
     const currentId = selected?.id ?? currentFolder?.id ?? null
     if ((nodeId ?? null) === currentId) return
-    setFullscreen(false)
     setTrashMode(false)
     if (!nodeId) {
       setPath([])
@@ -399,7 +397,6 @@ export default function Files() {
     setSpaceId(id)
     setPath([])
     setSelected(null)
-    setFullscreen(false)
     setTrashMode(false)
     setFavMode(false)
     navigate('/files')
@@ -412,7 +409,6 @@ export default function Files() {
 
   function crumbNavigate(index: number | null) {
     setSelected(null)
-    setFullscreen(false)
     setFavMode(false)
     if (index === null) {
       setPath([])
@@ -439,7 +435,6 @@ export default function Files() {
     try {
       const found = await getNodePath(id)
       setSelected(null)
-      setFullscreen(false)
       setTrashMode(false)
       setFavMode(false)
       setPath(found.node.type === 'folder' ? [...found.ancestors, found.node] : found.ancestors)
@@ -755,9 +750,7 @@ export default function Files() {
   function closeViewerIfAffected(ids: Iterable<string>) {
     const set = ids instanceof Set ? ids : new Set(ids)
     if (selected && set.has(selected.id)) {
-      setSelected(null)
-      setFullscreen(false)
-    }
+      setSelected(null)    }
   }
 
   if (bootError)
@@ -827,7 +820,7 @@ export default function Files() {
       <div className="workspace">
         <aside
           className="sidebar"
-          style={fullscreen && viewerOpen ? { display: 'none' } : { width: sidebarWidth }}
+          style={{ width: sidebarWidth }}
         >
           {/* 상단 아이콘 툴바 — 즐겨찾기(★) · 새로고침 · 새 폴더 · 새 MD (업로드 버튼은 액션 바로 이동) */}
           <div className="sidebar-toolbar">
@@ -1016,15 +1009,13 @@ export default function Files() {
         </aside>
 
         {/* 사이드바 우측 경계선 — 드래그해 폭 조절(잘린 파일 이름 넓혀 보기) */}
-        {!(fullscreen && viewerOpen) && (
-          <div
-            className="sidebar-resizer"
-            onPointerDown={startSidebarResize}
-            title="드래그해서 사이드바 너비 조절"
-            role="separator"
-            aria-orientation="vertical"
-          />
-        )}
+        <div
+          className="sidebar-resizer"
+          onPointerDown={startSidebarResize}
+          title="드래그해서 사이드바 너비 조절"
+          role="separator"
+          aria-orientation="vertical"
+        />
 
         {!viewerOpen && (
           <main
@@ -1225,8 +1216,6 @@ export default function Files() {
               activeToken={activeToken}
               onActiveToken={setActiveToken}
               onLocalUpload={() => fileInput.current?.click()}
-              fullscreen={fullscreen}
-              onToggleFullscreen={() => setFullscreen((f) => !f)}
               onDelete={deleteSelected}
               onNodeUpdated={(fresh) => {
                 setSelected(fresh)
@@ -1234,7 +1223,6 @@ export default function Files() {
               }}
               onClose={() => {
                 setSelected(null)
-                setFullscreen(false)
                 navigate(currentFolder ? `/files/${currentFolder.id}` : '/files')
               }}
             />

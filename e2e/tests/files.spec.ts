@@ -40,7 +40,7 @@ const PNG_1x1 = Buffer.from(
   'base64',
 )
 
-test('non-text viewer (image/pdf) can maximize and restore', async ({ page }) => {
+test('비텍스트 뷰어(이미지)를 열어도 사이드바는 그대로 보인다(전체화면 버튼 제거)', async ({ page }) => {
   await page.goto('/login')
   await page.getByRole('button', { name: /로컬 계정으로 로그인/ }).click()
   await page.getByPlaceholder('이메일').fill(EMAIL)
@@ -55,14 +55,10 @@ test('non-text viewer (image/pdf) can maximize and restore', async ({ page }) =>
   })
   await fileCell(page, /사진\.png/).click()
 
-  // 이미지 뷰어(비텍스트)에도 전체화면 버튼이 있어야 하고, 누르면 사이드바(트리)가 숨겨진다
-  // (VS Code식 레이아웃: 전체화면 = 사이드바만 숨기고 뷰어가 폭을 꽉 채움)
+  // 이미지 뷰어가 인라인으로 열리고, 사이드바(트리)는 계속 보인다. 전체화면 버튼은 없어졌다.
+  await expect(page.locator('.image-preview img')).toBeVisible()
   await expect(page.locator('.sidebar')).toBeVisible()
-  await page.getByRole('button', { name: '전체화면' }).click()
-  await expect(page.locator('.sidebar')).toBeHidden()
-  // 분할 보기로 되돌리면 다시 보인다
-  await page.getByRole('button', { name: '분할 보기' }).click()
-  await expect(page.locator('.sidebar')).toBeVisible()
+  await expect(page.getByRole('button', { name: '전체화면' })).toHaveCount(0)
 })
 
 test('browser back/forward syncs the folder view', async ({ page }) => {

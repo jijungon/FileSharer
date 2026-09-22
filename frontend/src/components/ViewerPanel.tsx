@@ -83,8 +83,6 @@ interface Props {
   space: SpaceInfo | null
   path: NodeInfo[]
   onNavigate: (index: number | null) => void
-  fullscreen: boolean
-  onToggleFullscreen: () => void
   onNodeUpdated: (fresh: NodeInfo) => void
   onDelete: () => void // 이 파일을 휴지통으로 이동(확인창 후) — 뷰어 액션 바의 🗑 삭제
   onClose: () => void
@@ -202,8 +200,6 @@ function ViewerToolbar({
   space,
   path,
   onNavigate,
-  fullscreen,
-  onToggleFullscreen,
   onClose,
   onDelete,
   name,
@@ -219,8 +215,6 @@ function ViewerToolbar({
   space: SpaceInfo | null
   path: NodeInfo[]
   onNavigate: (index: number | null) => void
-  fullscreen: boolean
-  onToggleFullscreen: () => void
   onClose: () => void
   onDelete: () => void
   name?: ReactNode
@@ -257,9 +251,6 @@ function ViewerToolbar({
       >
         🗑 삭제
       </button>
-      <button className="btn-utility" onClick={onToggleFullscreen}>
-        {fullscreen ? '분할 보기' : '전체화면'}
-      </button>
       <button className="btn-utility" onClick={onClose}>
         닫기
       </button>
@@ -289,8 +280,6 @@ function MediaPreview({
   onClose,
   onDelete,
   kind,
-  fullscreen,
-  onToggleFullscreen,
   activeToken,
   onActiveToken,
   onLocalUpload,
@@ -305,8 +294,6 @@ function MediaPreview({
         space={space}
         path={path}
         onNavigate={onNavigate}
-        fullscreen={fullscreen}
-        onToggleFullscreen={onToggleFullscreen}
         onClose={onClose}
         onDelete={onDelete}
         activeToken={activeToken}
@@ -382,8 +369,6 @@ function OfficePreview({
   onNavigate,
   onClose,
   onDelete,
-  fullscreen,
-  onToggleFullscreen,
   activeToken,
   onActiveToken,
   onLocalUpload,
@@ -427,8 +412,6 @@ function OfficePreview({
         space={space}
         path={path}
         onNavigate={onNavigate}
-        fullscreen={fullscreen}
-        onToggleFullscreen={onToggleFullscreen}
         onClose={onClose}
         onDelete={onDelete}
         activeToken={activeToken}
@@ -498,8 +481,6 @@ function TextEditor({
   space,
   path,
   onNavigate,
-  fullscreen,
-  onToggleFullscreen,
   onNodeUpdated,
   onClose,
   onDelete,
@@ -717,8 +698,6 @@ function TextEditor({
         space={space}
         path={path}
         onNavigate={onNavigate}
-        fullscreen={fullscreen}
-        onToggleFullscreen={onToggleFullscreen}
         onClose={onClose}
         onDelete={onDelete}
         activeToken={activeToken}
