@@ -147,6 +147,33 @@ button:focus-visible {
   border-color: var(--hairline-strong);
 }
 
+/* 뷰어 액션 바 🗑 삭제 — 평소엔 조용한 유틸 버튼, 호버 시에만 위험(빨강)으로 강조 */
+.btn-danger-ghost:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--danger) 16%, var(--surface-tile));
+  border-color: color-mix(in srgb, var(--danger) 45%, transparent);
+  color: var(--danger);
+}
+
+/* 공유 팝오버 상단 '사내 링크 복사' — 외부 공유 링크와 구분되는 사내 바로가기 */
+.share-internal-copy {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 12px;
+  margin-bottom: 10px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-sm);
+  background: var(--surface-tile);
+  color: var(--ink);
+  font-size: 13px;
+}
+.share-internal-copy:hover {
+  border-color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 12%, var(--surface-tile));
+}
+
 .btn-ghost {
   background: transparent;
   color: var(--primary);

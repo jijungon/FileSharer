@@ -79,6 +79,16 @@ export default function SharePopover({ node, onClose }: { node: NodeInfo; onClos
         </button>
       </div>
 
+      {/* 사내 링크 복사 — 로그인한 사내 사용자용 바로가기 URL(외부 공유 링크와 구분). 액션 바에서 이리로 옮겨왔다. */}
+      <button
+        className="share-internal-copy"
+        onClick={() => copy(`${window.location.origin}/files/${node.id}`, 'internal')}
+        title="로그인한 사내 사용자가 이 파일로 바로 오는 링크"
+      >
+        <span>🔗 사내 링크 복사</span>
+        <span className="muted">{copied === 'internal' ? '복사됨 ✓' : '로그인 사용자용'}</span>
+      </button>
+
       {created ? (
         <div className="share-result">
           <label className="share-label">원커맨드 — VM·터미널에서 한 줄로 받기+해제</label>

@@ -86,6 +86,7 @@ interface Props {
   fullscreen: boolean
   onToggleFullscreen: () => void
   onNodeUpdated: (fresh: NodeInfo) => void
+  onDelete: () => void // 이 파일을 휴지통으로 이동(확인창 후) — 뷰어 액션 바의 🗑 삭제
   onClose: () => void
   activeToken?: string | null // 방금 발급한 토큰 — 서버 업로드 curl 자동 채움
   onActiveToken: (token: string | null) => void // 임시 토큰 발급/해제 반영
@@ -137,14 +138,8 @@ function FileActions({
   onActiveToken: (token: string | null) => void
   onLocalUpload?: () => void
 }) {
-  const [copied, setCopied] = useState(false)
   const [shareOpen, setShareOpen] = useState(false)
   const [serverUpOpen, setServerUpOpen] = useState(false)
-  async function copyInternalLink() {
-    await navigator.clipboard.writeText(`${window.location.origin}/files/${node.id}`)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 1500)
-  }
   const folder = path.length > 0 ? path[path.length - 1] : null
   return (
     <>
@@ -175,10 +170,7 @@ function FileActions({
           ↥ 서버 업로드
         </button>
       )}
-      {/* 링크: 사내 링크 복사 · 공유 링크 (진한 노랑) — 서버와는 색으로만 구분(선 없음) */}
-      <button className="btn-utility btn-tier-link" onClick={copyInternalLink}>
-        {copied ? '복사됨 ✓' : '사내 링크 복사'}
-      </button>
+      {/* 링크: 공유 링크 (진한 노랑). '사내 링크 복사'는 공유 팝오버 안으로 옮겨 액션 바를 정리했다. */}
       <button
         className="btn-utility btn-tier-link linkbar-share"
         onClick={() => {
@@ -213,6 +205,7 @@ function ViewerToolbar({
   fullscreen,
   onToggleFullscreen,
   onClose,
+  onDelete,
   name,
   status,
   statusClass,
@@ -229,6 +222,7 @@ function ViewerToolbar({
   fullscreen: boolean
   onToggleFullscreen: () => void
   onClose: () => void
+  onDelete: () => void
   name?: ReactNode
   status?: ReactNode
   statusClass?: string
@@ -256,6 +250,13 @@ function ViewerToolbar({
         onLocalUpload={onLocalUpload}
       />
       {children}
+      <button
+        className="btn-utility btn-danger-ghost"
+        onClick={onDelete}
+        title="이 파일을 휴지통으로 이동 (복원 가능)"
+      >
+        🗑 삭제
+      </button>
       <button className="btn-utility" onClick={onToggleFullscreen}>
         {fullscreen ? '분할 보기' : '전체화면'}
       </button>
@@ -286,6 +287,7 @@ function MediaPreview({
   path,
   onNavigate,
   onClose,
+  onDelete,
   kind,
   fullscreen,
   onToggleFullscreen,
@@ -306,6 +308,7 @@ function MediaPreview({
         fullscreen={fullscreen}
         onToggleFullscreen={onToggleFullscreen}
         onClose={onClose}
+        onDelete={onDelete}
         activeToken={activeToken}
         onActiveToken={onActiveToken}
         onLocalUpload={onLocalUpload}
@@ -378,6 +381,7 @@ function OfficePreview({
   path,
   onNavigate,
   onClose,
+  onDelete,
   fullscreen,
   onToggleFullscreen,
   activeToken,
@@ -426,6 +430,7 @@ function OfficePreview({
         fullscreen={fullscreen}
         onToggleFullscreen={onToggleFullscreen}
         onClose={onClose}
+        onDelete={onDelete}
         activeToken={activeToken}
         onActiveToken={onActiveToken}
         onLocalUpload={onLocalUpload}
@@ -497,6 +502,7 @@ function TextEditor({
   onToggleFullscreen,
   onNodeUpdated,
   onClose,
+  onDelete,
   activeToken,
   onActiveToken,
   onLocalUpload,
@@ -714,6 +720,7 @@ function TextEditor({
         fullscreen={fullscreen}
         onToggleFullscreen={onToggleFullscreen}
         onClose={onClose}
+        onDelete={onDelete}
         activeToken={activeToken}
         onActiveToken={onActiveToken}
         onLocalUpload={onLocalUpload}
