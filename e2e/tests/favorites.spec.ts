@@ -27,9 +27,8 @@ test('별표로 즐겨찾기에 추가하고, 즐겨찾기 뷰에서 해제한�
   const item = page.locator('.tree-name').filter({ hasText: fname })
   await expect(item).toBeVisible()
 
-  // 트리 항목 우클릭 → 컨텍스트 메뉴에서 '☆ 즐겨찾기'
-  await item.click({ button: 'right' })
-  await page.getByRole('menuitem', { name: /즐겨찾기/ }).click()
+  // 트리 항목 앞쪽(이모지 왼쪽)의 ☆ 별을 눌러 즐겨찾기
+  await page.locator('.tree-row').filter({ hasText: fname }).locator('.tree-fav').click()
 
   // 사이드바 툴바의 ★ 즐겨찾기 아이콘 → 즐겨찾기 뷰로 전환, 그 파일이 보인다
   await page.locator('.sidebar-fav-toggle').click()
