@@ -51,6 +51,34 @@ jobs:
       - run: npm run test -- --run
       - run: npm run build
 
+  # ── 의존성 취약점 스캔(위생). 배포 파이프라인(image)과 분리 — needs 체인에 없어서 빨간불이어도
+  #    배포는 막지 않고 '알림'만 한다. 실제로 배포되는 코드에 초점을 둬 노이즈를 줄인다:
+  #    · pip-audit: 백엔드 런타임 의존성만(도구 pip 자신은 최신화해 pip 자체 권고 노이즈 제외)
+  #    · npm audit: 프런트 '프로덕션' 의존성(--omit=dev)만 + high 이상 → 빌드/테스트 툴(vite·
+  #      vitest·esbuild, prod 미탑재)과 moderate는 게이트에서 제외(존재 자체는 로그에 남음).
+  deps-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: pip-audit (backend 런타임 의존성)
+        working-directory: backend
+        run: |
+          python -m pip install -U pip
+          pip install -e . pip-audit
+          pip-audit
+      - name: npm audit (frontend 프로덕션 의존성, high+)
+        if: always() # pip-audit가 빨간불이어도 프런트 결과까지 함께 보이게
+        working-directory: frontend
+        run: npm audit --omit=dev --audit-level=high
+
   # ── 통합 스모크(도커 컴포즈로 실제 구동 → Playwright). 모든 PR + main push에서 실행(라벨 불필요) ──
   e2e:
     runs-on: ubuntu-latest
