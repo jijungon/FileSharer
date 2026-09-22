@@ -12,3 +12,20 @@ import type { Page } from '@playwright/test'
  */
 export const fileCell = (page: Page, name: string | RegExp) =>
   page.locator('.tree-name').filter({ hasText: name })
+
+// '새 폴더'/'새 MD' 이름 입력은 window.prompt → 인라인 모달(NameModal)로 바뀌었다.
+// 네이티브 dialog 대신 모달 입력창을 채우고 '만들기'를 누른다.
+async function submitNameModal(page: Page, name: string) {
+  await page.locator('.name-modal .modal-input').fill(name)
+  await page.locator('.name-modal').getByRole('button', { name: '만들기' }).click()
+}
+
+export async function newFolder(page: Page, name: string) {
+  await page.getByRole('button', { name: /새 폴더/ }).click()
+  await submitNameModal(page, name)
+}
+
+export async function newMd(page: Page, name: string) {
+  await page.getByRole('button', { name: /새 MD/ }).click()
+  await submitNameModal(page, name)
+}

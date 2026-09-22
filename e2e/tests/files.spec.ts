@@ -1,6 +1,6 @@
 import { expect, test } from './fixtures'
 
-import { fileCell } from './helpers'
+import { fileCell, newFolder } from './helpers'
 
 const EMAIL = 'e2e@test.local'
 const PASSWORD = 'e2e-password-123'
@@ -15,8 +15,7 @@ test('local login → browse → create folder → upload file', async ({ page }
   await expect(page).toHaveURL(/\/files/)
   await expect(page.locator('.space-item.space-root', { hasText: '내 공간' })).toBeVisible()
 
-  page.once('dialog', (d) => d.accept('E2E폴더'))
-  await page.getByRole('button', { name: /새 폴더/ }).click()
+  await newFolder(page, 'E2E폴더')
   await expect(page.locator('.tree-name').filter({ hasText: /E2E폴더/ })).toBeVisible()
 
   await page.locator('input[type="file"]:not([webkitdirectory])').setInputFiles({
@@ -71,8 +70,7 @@ test('browser back/forward syncs the folder view', async ({ page }) => {
 
   // 루트에 폴더 생성 → 사이드바 트리에서 클릭해 진입(SPA 이동)
   const folder = `뒤로폴더-${Date.now()}`
-  page.once('dialog', (d) => d.accept(folder))
-  await page.getByRole('button', { name: /새 폴더/ }).click()
+  await newFolder(page, folder)
   await page.locator('.tree-name', { hasText: folder }).click()
   await expect(page.locator('.crumb-current, .crumb', { hasText: folder })).toBeVisible()
   await expect(page).toHaveURL(/\/files\/.+/)

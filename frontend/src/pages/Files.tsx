@@ -3,6 +3,7 @@ import { flushSync } from 'react-dom'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import FolderTree from '../components/FolderTree'
 import LinkBar from '../components/LinkBar'
+import NameModal from '../components/NameModal'
 import NewMarkdownModal from '../components/NewMarkdownModal'
 import ViewerPanel from '../components/ViewerPanel'
 import { api, ApiError, Me, SpaceInfo } from '../lib/api'
@@ -116,6 +117,12 @@ export default function Files() {
   const [maxUploadMb, setMaxUploadMb] = useState(0)
   const [uploads, setUploads] = useState<UploadItem[]>([])
   const [newMdName, setNewMdName] = useState<string | null>(null)
+  // 새 폴더/새 MD 이름 입력 모달(window.prompt 대체)
+  const [nameModal, setNameModal] = useState<{
+    title: string
+    initial?: string
+    onSubmit: (name: string) => void
+  } | null>(null)
   const [searchQ, setSearchQ] = useState('')
   const [searchResults, setSearchResults] = useState<NodeInfo[] | null>(null) // null=검색 안 함
   const [favIds, setFavIds] = useState<Set<string>>(new Set()) // 내 즐겨찾기 노드 id
@@ -522,17 +529,29 @@ export default function Files() {
     }
   }
 
-  async function onNewFolder() {
-    const name = window.prompt('새 폴더 이름')
-    if (!name || !spaceId) return
-    await guard(() => createFolder(spaceId, currentFolder?.id ?? null, name))
+  // 이름 입력은 window.prompt 대신 인라인 모달(NameModal)로 — prompt 미지원/차단 환경 대응.
+  function onNewFolder() {
+    if (!spaceId) return
+    setNameModal({
+      title: '새 폴더',
+      onSubmit: (name) => {
+        setNameModal(null)
+        void guard(() => createFolder(spaceId, currentFolder?.id ?? null, name))
+      },
+    })
   }
 
   // '새 MD'는 파일을 바로 만들지 않고 편집 모달을 연다(저장 시 생성, 취소 시 폐기).
   function onNewMd() {
-    const raw = window.prompt('새 MD 문서 이름', '새 문서.md')
-    if (!raw || !spaceId) return
-    setNewMdName(raw.endsWith('.md') ? raw : `${raw}.md`)
+    if (!spaceId) return
+    setNameModal({
+      title: '새 MD 문서',
+      initial: '새 문서.md',
+      onSubmit: (raw) => {
+        setNameModal(null)
+        setNewMdName(raw.endsWith('.md') ? raw : `${raw}.md`)
+      },
+    })
   }
 
   async function createNewMd(content: string) {
@@ -901,6 +920,9 @@ export default function Files() {
                 type="search"
                 className="search-input search-input-sidebar"
                 placeholder="이 공간에서 검색"
+                spellCheck={false}
+                autoCapitalize="off"
+                autoCorrect="off"
                 value={searchQ}
                 onChange={(e) => setSearchQ(e.target.value)}
                 onKeyDown={(e) => {
@@ -1257,6 +1279,14 @@ export default function Files() {
           name={newMdName}
           onCancel={() => setNewMdName(null)}
           onCreate={createNewMd}
+        />
+      )}
+      {nameModal && (
+        <NameModal
+          title={nameModal.title}
+          initial={nameModal.initial}
+          onSubmit={nameModal.onSubmit}
+          onClose={() => setNameModal(null)}
         />
       )}
     </div>

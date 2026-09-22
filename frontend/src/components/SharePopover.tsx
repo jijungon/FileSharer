@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { api } from '../lib/api'
+import { copyText } from '../lib/clipboard'
 import { NodeInfo } from '../lib/files'
+import { showToast } from '../lib/globalErrors'
 
 interface ShareInfo {
   id: string
@@ -52,9 +54,12 @@ export default function SharePopover({ node, onClose }: { node: NodeInfo; onClos
   }
 
   async function copy(text: string, label: string) {
-    await navigator.clipboard.writeText(text)
-    setCopied(label)
-    setTimeout(() => setCopied(''), 1500)
+    if (await copyText(text)) {
+      setCopied(label)
+      setTimeout(() => setCopied(''), 1500)
+    } else {
+      showToast('복사에 실패했어요. 텍스트를 길게 눌러 수동으로 복사해 주세요.')
+    }
   }
 
   // 공유 URL은 지금 보고 있는 브라우저 오리진 기준으로 만든다 —

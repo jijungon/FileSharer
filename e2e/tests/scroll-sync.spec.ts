@@ -1,6 +1,6 @@
 import { expect, test } from './fixtures'
 
-import { fileCell } from './helpers'
+import { fileCell, newMd } from './helpers'
 
 const EMAIL = 'e2e@test.local'
 const PASSWORD = 'e2e-password-123'
@@ -49,8 +49,7 @@ test('MD 에디터와 프리뷰가 함께 스크롤된다(양방향)', async ({ 
 
 test('새 MD 모달도 에디터↔프리뷰 스크롤 동기화된다', async ({ page }) => {
   await loginAsAdmin(page)
-  page.once('dialog', (d) => d.accept('스크롤테스트'))
-  await page.getByRole('button', { name: /새 MD/ }).click()
+  await newMd(page, '스크롤테스트')
 
   const modal = page.locator('.new-md-modal')
   await expect(modal).toBeVisible()
