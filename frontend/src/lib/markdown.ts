@@ -1,7 +1,17 @@
 import { api } from './api'
 import { NodeInfo } from './files'
 
-const TEXT_EXTS = ['md', 'markdown', 'txt', 'log', 'json', 'yml', 'yaml', 'csv']
+// 편집기로 여는 텍스트 확장자. 문서(md·txt·csv…)에 더해 코드·설정 파일도 포함해
+// 문법 강조로 보기/편집할 수 있게 한다. (.html은 렌더 뷰(isHtml)가 먼저 잡으므로 제외)
+const TEXT_EXTS = [
+  'md', 'markdown', 'txt', 'log', 'json', 'yml', 'yaml', 'csv', 'tsv',
+  'sh', 'bash', 'zsh', 'py', 'rb', 'pl', 'lua', 'r',
+  'js', 'jsx', 'ts', 'tsx', 'mjs', 'cjs',
+  'css', 'scss', 'less', 'xml', 'svg', 'sql',
+  'toml', 'ini', 'conf', 'cfg', 'env', 'properties', 'dockerfile', 'makefile', 'gitignore',
+  'go', 'rs', 'java', 'kt', 'swift', 'php', 'c', 'h', 'cpp', 'cc', 'hpp', 'cs',
+  'tf', 'gradle',
+]
 
 export function extOf(name: string): string {
   const i = name.lastIndexOf('.')

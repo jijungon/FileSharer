@@ -1,4 +1,7 @@
+import { LanguageDescription } from '@codemirror/language'
+import { languages } from '@codemirror/language-data'
 import { markdown } from '@codemirror/lang-markdown'
+import type { Extension } from '@codemirror/state'
 import CodeMirror, { EditorView } from '@uiw/react-codemirror'
 import { useScrollSync } from '../lib/scrollsync'
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
@@ -660,6 +663,31 @@ function TextEditor({
   // 에디터 ↔ 프리뷰 스크롤 동기화. 실제 스크롤 컨테이너는 .editor-pane/.preview-pane.
   useScrollSync(editorPaneRef, previewRef, text !== null)
 
+  // 파일 확장자에 맞는 CodeMirror 언어 확장을 로드해 문법 강조. md는 마크다운, 그 외 코드/설정은
+  // language-data에서 필요한 언어만 lazy-load(동적 import→코드 스플릿). 미지원 확장자는 plain.
+  const [langExt, setLangExt] = useState<Extension[]>([])
+  useEffect(() => {
+    let alive = true
+    if (isMarkdown(node)) {
+      setLangExt([markdown()])
+      return
+    }
+    const desc = LanguageDescription.matchFilename(languages, node.name)
+    if (!desc) {
+      setLangExt([])
+      return
+    }
+    desc
+      .load()
+      .then((support) => alive && setLangExt([support]))
+      .catch(() => alive && setLangExt([]))
+    return () => {
+      alive = false
+    }
+    // 파일 정체성(id·이름)만 의존 — 저장으로 node 객체가 바뀌어도 언어는 그대로.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [node.id, node.name])
+
   function splitDrag(e: React.PointerEvent) {
     e.preventDefault()
     const container = (e.currentTarget as HTMLElement).parentElement!
@@ -761,26 +789,31 @@ function TextEditor({
         </div>
       ) : (
         <div className="editor-split">
-          <div className="editor-pane" ref={editorPaneRef} style={{ width: `${split}%` }}>
+          <div
+            className="editor-pane"
+            ref={editorPaneRef}
+            style={{ width: isMarkdown(node) ? `${split}%` : '100%' }}
+          >
             <CodeMirror
               value={text}
               height="100%"
               theme={appTheme === 'light' ? EDITOR_LIGHT : EDITOR_DARK}
-              extensions={[markdown()]}
+              extensions={langExt}
               onChange={onChange}
               editable={!readOnly}
               readOnly={readOnly}
               basicSetup={{ lineNumbers: true, foldGutter: false }}
             />
           </div>
-          <div className="split-handle" onPointerDown={splitDrag} />
-          <div className="preview-pane" ref={previewRef} style={{ width: `${100 - split}%` }}>
-            {isMarkdown(node) ? (
-              <MarkdownPreview text={text} />
-            ) : (
-              <pre className="plain-preview">{text}</pre>
-            )}
-          </div>
+          {/* 마크다운만 편집|프리뷰 분할. 코드/설정 파일은 프리뷰가 의미 없어 에디터 풀폭. */}
+          {isMarkdown(node) && (
+            <>
+              <div className="split-handle" onPointerDown={splitDrag} />
+              <div className="preview-pane" ref={previewRef} style={{ width: `${100 - split}%` }}>
+                <MarkdownPreview text={text} />
+              </div>
+            </>
+          )}
         </div>
       )}
     </div>
