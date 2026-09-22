@@ -1074,6 +1074,23 @@ button:focus-visible {
 .editor-toolbar .btn-utility:disabled {
   opacity: 0.4;
 }
+/* 편집기 툴바에서도 3단계 색 유지 — .editor-toolbar .btn-utility(동일 특이도)를 '뒤'에서 덮는다.
+   (안 그러면 편집기 툴바에선 tier 색이 회색 버튼 스타일에 덮여 사라진다.) */
+.editor-toolbar .btn-tier-local {
+  background: color-mix(in srgb, var(--primary) 22%, var(--surface-tile));
+  color: var(--ink);
+  border-color: transparent;
+}
+.editor-toolbar .btn-tier-server {
+  background: color-mix(in srgb, var(--primary) 55%, var(--surface-tile));
+  color: var(--ink);
+  border-color: transparent;
+}
+.editor-toolbar .btn-tier-link {
+  background: var(--primary);
+  color: var(--on-primary);
+  border-color: transparent;
+}
 /* 공유 링크(btn-primary)·자동저장 토글도 한 줄 유지(줄바꿈 방지) — 버튼 수가 늘어도 안 눌림 */
 .editor-toolbar .btn-primary {
   padding: 6px 10px;
