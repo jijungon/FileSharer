@@ -1,5 +1,10 @@
 # ── Stage 1: 프론트엔드 빌드 ─────────────────────────────
-FROM node:22-alpine AS web
+# --platform=$BUILDPLATFORM: 프런트 빌드는 아키텍처 무관한 정적 산출물(dist)만 만든다.
+# 이 스테이지를 '빌드 러너의 네이티브 아키텍처'(amd64)에 고정하면, 멀티아치(amd64+arm64)
+# 빌드에서도 vite/npm 빌드를 QEMU arm64 에뮬레이션으로 두 번 돌리지 않는다 → 한 번만 네이티브로.
+# (arm64 에뮬레이션에서 무거운 프런트 빌드가 멈춰 image 잡이 6시간 타임아웃으로 죽던 문제 수정.
+#  아래 python 스테이지만 타깃별로 크로스빌드되고, 여기 dist는 그대로 복사됨.)
+FROM --platform=$BUILDPLATFORM node:22-alpine AS web
 WORKDIR /web
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
