@@ -710,6 +710,14 @@ export default function Files() {
     await guard(() => deleteNode(row.id))
     if (selected?.id === row.id) setSelected(null) // 열려 있던 파일이면 뷰어 닫기
   }
+  // 뷰어 액션 바의 🗑 삭제 — 지금 열려 있는 파일을 휴지통으로 이동하고 뷰어를 닫는다.
+  async function deleteSelected() {
+    if (!selected) return
+    if (!window.confirm(`"${selected.name}"을(를) 휴지통으로 이동할까요?`)) return
+    await guard(() => deleteNode(selected.id))
+    setSelected(null)
+    navigate(currentFolder ? `/files/${currentFolder.id}` : '/files')
+  }
   function toggleFavFromTree(row: TreeRow) {
     // toggleFav는 node.id만 사용 — TreeRow에 NodeInfo 필수 필드만 채워 넘긴다
     toggleFav({ ...row, space_id: spaceId ?? '', created_at: null, updated_at: null })
@@ -1216,6 +1224,7 @@ export default function Files() {
               onLocalUpload={() => fileInput.current?.click()}
               fullscreen={fullscreen}
               onToggleFullscreen={() => setFullscreen((f) => !f)}
+              onDelete={deleteSelected}
               onNodeUpdated={(fresh) => {
                 setSelected(fresh)
                 reload()

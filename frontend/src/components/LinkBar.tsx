@@ -25,7 +25,6 @@ export default function LinkBar({
   onActiveToken,
   onLocalUpload,
 }: Props) {
-  const [copied, setCopied] = useState(false)
   const [shareOpen, setShareOpen] = useState(false)
   const [serverUpOpen, setServerUpOpen] = useState(false)
 
@@ -33,13 +32,6 @@ export default function LinkBar({
   // 서버 업로드는 '현재 디렉터리'가 대상 — 선택 파일이 아니라 지금 보고 있는 폴더/공간 루트.
   const currentFolder = path.length > 0 ? path[path.length - 1] : null
   const currentLabel = currentFolder?.name ?? space?.name ?? ''
-
-  async function copyInternalLink() {
-    if (!target) return
-    await navigator.clipboard.writeText(`${window.location.origin}/files/${target.id}`)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 1500)
-  }
 
   function crumbDropHandlers(index: number | null) {
     return {
@@ -108,12 +100,7 @@ export default function LinkBar({
             ↥ 서버 업로드
           </button>
         )}
-        {/* 링크: 사내 링크 복사 · 공유 링크 (진한 노랑) — 서버와는 색으로만 구분(선 없음) */}
-        {target && (
-          <button className="btn-utility btn-tier-link" onClick={copyInternalLink}>
-            {copied ? '복사됨 ✓' : '사내 링크 복사'}
-          </button>
-        )}
+        {/* 링크: 공유 링크 (진한 노랑). '사내 링크 복사'는 공유 팝오버 안으로 옮겨 바를 정리했다. */}
         <button
           className="btn-utility btn-tier-link linkbar-share"
           disabled={!target}

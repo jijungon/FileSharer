@@ -41,6 +41,31 @@ test('휴지통에서 완전 삭제하면 파일이 영구히 사라진다', asy
   await expect(page.getByRole('cell', { name: /영구삭제\.txt/ })).toHaveCount(0)
 })
 
+test('파일을 열고 뷰어의 🗑 삭제를 누르면 휴지통으로 가고 뷰어가 닫힌다', async ({ page }) => {
+  page.on('dialog', (d) => d.accept()) // 삭제 확인창 자동 수락
+  await login(page)
+
+  await page.locator('input[type="file"]:not([webkitdirectory])').setInputFiles({
+    name: '뷰어삭제.txt',
+    mimeType: 'text/plain',
+    buffer: Buffer.from('open then delete'),
+  })
+  await expect(page.locator('.upload-row')).toHaveCount(0)
+
+  // 트리에서 파일 열기 → 에디터 뷰어가 뜬다
+  await page.locator('.tree-name').filter({ hasText: /뷰어삭제\.txt/ }).click()
+  await expect(page.locator('.editor-toolbar')).toBeVisible()
+
+  // 뷰어 액션 바의 🗑 삭제 → confirm 수락 → 뷰어 닫힘 + 트리에서 사라짐
+  await page.locator('.editor-toolbar').getByRole('button', { name: /삭제/ }).click()
+  await expect(page.locator('.tree-name').filter({ hasText: /뷰어삭제\.txt/ })).toHaveCount(0)
+  await expect(page.locator('.browser-welcome')).toBeVisible()
+
+  // 휴지통에서 확인된다(복원 가능한 이동)
+  await page.getByRole('button', { name: '휴지통' }).click()
+  await expect(page.getByRole('row', { name: /뷰어삭제\.txt/ })).toBeVisible()
+})
+
 test('휴지통 항목에 자동 완전삭제까지 남은 시간이 표시된다', async ({ page }) => {
   page.on('dialog', (d) => d.accept())
   await login(page)
