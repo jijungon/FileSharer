@@ -842,9 +842,14 @@ export default function Files() {
   }
 
   // ── 사이드바 트리 우클릭 메뉴 동작(파일목록 표 대체) ──
-  // 인라인 이름변경 커밋(빈/동일 이름 무시는 FolderTree 쪽에서 처리) — guard가 reload + treeVersion 갱신
-  function renameCommit(row: TreeRow, name: string) {
-    void guard(() => renameNode(row.id, name))
+  // 인라인 이름변경 커밋(빈/동일 이름 무시는 FolderTree 쪽에서 처리) — guard가 reload + treeVersion 갱신.
+  // 백엔드가 돌려준 실제 새 이름(중복 시 "(2)" 포함)으로, 열린 탭·선택 파일·주소창 경로를 함께 갱신한다.
+  async function renameCommit(row: TreeRow, name: string) {
+    const fresh = await guard(() => renameNode(row.id, name))
+    if (!fresh) return
+    setOpenTabs((tabs) => tabs.map((t) => (t.id === fresh.id ? { ...t, name: fresh.name } : t)))
+    setSelected((sel) => (sel?.id === fresh.id ? { ...sel, name: fresh.name } : sel))
+    setPath((p) => p.map((f) => (f.id === fresh.id ? { ...f, name: fresh.name } : f)))
   }
   async function deleteFromTree(row: TreeRow) {
     if (!window.confirm(`"${row.name}"을(를) 휴지통으로 이동할까요?`)) return
@@ -973,6 +978,11 @@ export default function Files() {
             onFocus={(e) => {
               setSearchFocused(true)
               if (addressMode) e.currentTarget.select() // 경로 전체 선택 → 타이핑하면 바로 검색으로 대체
+            }}
+            onMouseUp={(e) => {
+              // 주소 모드에서 클릭이 커서를 옮겨 전체선택을 풀면 타이핑이 경로 뒤에 붙어 검색이 안 된다.
+              // 마우스업 기본동작을 막아 onFocus의 전체선택을 유지 → 타이핑하면 경로를 통째로 대체.
+              if (addressMode) e.preventDefault()
             }}
             onChange={(e) => {
               setSearchTyping(true) // 타이핑 시작 = 검색 모드
@@ -1153,7 +1163,6 @@ export default function Files() {
             />
           </div>
           <div className="sidebar-divider" />
-          <div className="sidebar-section-label">공간 · 폴더</div>
           <div className="sidebar-scroll">
           {spaces.map((s) => (
             <div key={s.id}>
