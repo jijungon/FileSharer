@@ -165,3 +165,23 @@ test('상단 검색: 경로처럼 입력해도(공간/폴더/파일명) 마지�
   const result = page.locator('.topbar-search-results .search-result', { hasText: fname })
   await expect(result).toBeVisible()
 })
+
+test('상단 검색: 다른 공간에 있는 파일도 찾는다(모든 공간 검색)', async ({ page }) => {
+  await login(page)
+  const tag = Date.now()
+  const fname = `타공간_${tag}.txt`
+  // 현재(기본) 공간에 파일 업로드
+  await page.locator('input[type="file"]:not([webkitdirectory])').setInputFiles({
+    name: fname,
+    mimeType: 'text/plain',
+    buffer: Buffer.from('x'),
+  })
+  await expect(page.locator('.tree-name').filter({ hasText: fname })).toBeVisible()
+
+  // 다른 공간으로 전환한 뒤 검색해도 방금 올린(원래 공간의) 파일이 잡힌다
+  await page.locator('.space-root:not(.active)').first().click()
+  await page.getByPlaceholder('파일 이름·내용 검색').fill(fname)
+  await expect(
+    page.locator('.topbar-search-results .search-result', { hasText: fname }),
+  ).toBeVisible()
+})

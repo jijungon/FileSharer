@@ -441,15 +441,31 @@ export default function Files() {
       }
     }
     const timer = setTimeout(() => {
-      searchNodes(spaceId, q)
-        .then((rows) => alive && setSearchResults(rows))
+      // 현재 공간만이 아니라 접근 가능한 모든 공간에서 찾아 합친다.
+      const targetIds = spaces.length > 0 ? spaces.map((s) => s.id) : [spaceId]
+      const nameOf = (id: string) => spaces.find((s) => s.id === id)?.name ?? ''
+      Promise.all(targetIds.map((id) => searchNodes(id, q).catch(() => [] as NodeInfo[])))
+        .then((perSpace) => {
+          if (!alive) return
+          const seen = new Set<string>()
+          const merged: NodeInfo[] = []
+          for (const rows of perSpace) {
+            for (const n of rows) {
+              if (seen.has(n.id)) continue
+              seen.add(n.id)
+              // 여러 공간을 한꺼번에 보여주므로 경로 앞에 공간 이름을 붙여 구분한다.
+              merged.push({ ...n, path: [nameOf(n.space_id), n.path].filter(Boolean).join('/') })
+            }
+          }
+          setSearchResults(merged)
+        })
         .catch(() => alive && setSearchResults([]))
     }, 300)
     return () => {
       alive = false
       clearTimeout(timer)
     }
-  }, [searchQ, spaceId])
+  }, [searchQ, spaceId, spaces])
 
   // 검색 결과가 바뀌면 키보드 하이라이트를 초기화(Enter는 없으면 첫 결과를 연다)
   useEffect(() => {
