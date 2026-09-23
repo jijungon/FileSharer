@@ -2173,8 +2173,11 @@ button:focus-visible {
 }
 
 .tree-row.active {
-  background: color-mix(in srgb, var(--primary) 10%, var(--canvas));
-  box-shadow: inset 2px 0 0 var(--primary);
+  background: color-mix(in srgb, var(--primary) 24%, var(--canvas));
+  box-shadow: inset 3px 0 0 var(--primary);
+}
+.tree-row.active .tree-name {
+  font-weight: 600;
 }
 
 .tree-row.drag-over {
