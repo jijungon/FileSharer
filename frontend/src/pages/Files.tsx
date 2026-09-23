@@ -26,7 +26,6 @@ import {
   listFavoriteIds,
   listFavorites,
   listNodeChildren,
-  listRecent,
   listSpaceChildren,
   listTrash,
   copyNode,
@@ -34,7 +33,6 @@ import {
   NodeInfo,
   purgeNode,
   TreeRow,
-  recordView,
   removeFavorite,
   renameNode,
   restoreNode,
@@ -131,7 +129,6 @@ export default function Files() {
   const [favIds, setFavIds] = useState<Set<string>>(new Set()) // 내 즐겨찾기 노드 id
   const [favMode, setFavMode] = useState(false) // 즐겨찾기 뷰
   const [favItems, setFavItems] = useState<NodeInfo[]>([])
-  const [recentItems, setRecentItems] = useState<NodeInfo[]>([])
   const [dropActive, setDropActive] = useState(false)
   const [bootError, setBootError] = useState('')
   // 지금 메모리에 든 임시 토큰 원문 — 서버 업로드 curl 자동 채움용. 새로고침/해제하면 사라진다.
@@ -253,10 +250,6 @@ export default function Files() {
         }
         const savedSpace = spacesRes.find((s) => s.id === saved.spaceId)?.id
         setSpaceId((prev) => prev ?? savedSpace ?? spacesRes[0]?.id ?? null)
-        // 최근은 이제 사이드바 인라인(MAX 5)이므로 항상 로드해 둔다(별도 뷰 아님)
-        listRecent()
-          .then(setRecentItems)
-          .catch(() => setRecentItems([]))
         if (saved.view === 'fav') {
           setFavMode(true)
           listFavorites()
@@ -351,7 +344,6 @@ export default function Files() {
     try {
       if (favMode) setFavItems(await listFavorites())
       else await reload()
-      listRecent().then(setRecentItems).catch(() => {}) // 사이드바 인라인 최근 갱신
       setTreeVersion((v) => v + 1) // 사이드바 폴더 트리도 갱신
     } catch {
       /* reload/loader 내부에서 에러 표시 처리 */
@@ -365,18 +357,6 @@ export default function Files() {
   useEffect(() => {
     setSearchQ('')
   }, [spaceId, currentFolder?.id, trashMode])
-
-  // 파일을 열면(뷰어에 뜨면) '최근 열어본 항목'에 기록 후, 사이드바 인라인 최근을 갱신.
-  // id/type만 의존(같은 파일 재렌더엔 중복 기록 안 함)
-  useEffect(() => {
-    if (selected && selected.type === 'file') {
-      recordView(selected.id)
-        .then(() => listRecent())
-        .then(setRecentItems)
-        .catch(() => {})
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selected?.id, selected?.type])
 
   // 활성 파일이 바뀌면 탭 목록에 추가(없으면)하거나 최신 node로 갱신한다.
   useEffect(() => {
@@ -433,7 +413,8 @@ export default function Files() {
     })
   }
 
-  // 검색어 디바운스 → 현재 공간에서 이름 검색. 빈 문자열이면 검색 모드 해제.
+  // 검색어 디바운스 → 현재 공간에서 이름·내용 검색. 빈 문자열이면 검색 모드 해제.
+  // 예외: 사내 링크/해시(32자리 hex)를 붙여넣으면 그 파일을 바로 결과로 띄운다(📋 해시 복사와 짝).
   useEffect(() => {
     if (!spaceId) return
     const q = searchQ.trim()
@@ -442,6 +423,20 @@ export default function Files() {
       return
     }
     let alive = true
+    const idMatch = q.match(/([0-9a-f]{32})/i)
+    if (idMatch) {
+      getNodePath(idMatch[1])
+        .then((found) => {
+          if (alive)
+            setSearchResults([
+              { ...found.node, path: found.ancestors.map((a) => a.name).join('/') },
+            ])
+        })
+        .catch(() => alive && setSearchResults([]))
+      return () => {
+        alive = false
+      }
+    }
     const timer = setTimeout(() => {
       searchNodes(spaceId, q)
         .then((rows) => alive && setSearchResults(rows))
@@ -872,7 +867,8 @@ export default function Files() {
   return (
     <div className="shell">
       <header className="topbar">
-        <h2 className="logo">
+        {/* 로고 영역 폭을 사이드바에 맞춰, 검색창 왼쪽이 탭 바 시작선과 정렬되게 한다 */}
+        <h2 className="logo" style={{ width: sidebarWidth - 12, flexShrink: 0 }}>
           FileSharer <span className="app-version">{__APP_VERSION__}</span>
         </h2>
         {/* 상단 검색 — 현재 공간에서 파일 이름 + 내용(텍스트)으로 찾고, 누르면 그 파일로 이동 */}
@@ -929,6 +925,7 @@ export default function Files() {
             </div>
           )}
         </div>
+        <div className="topbar-flex-spacer" />
         <div className="topbar-right">
           <span className="muted">{me.email}</span>
           {me.role === 'admin' && (
@@ -1023,28 +1020,6 @@ export default function Files() {
               }}
             />
           </div>
-          <div className="sidebar-divider" />
-          <div className="sidebar-section-label">🕘 최근</div>
-          {recentItems.length === 0 ? (
-            <div className="recent-empty muted">열어본 파일이 없습니다</div>
-          ) : (
-            <ul className="recent-inline">
-              {recentItems.slice(0, 5).map((n) => (
-                <li key={n.id}>
-                  <button
-                    className={`recent-item${selected?.id === n.id ? ' active' : ''}`}
-                    onClick={() => openLocated(n)}
-                    title={n.name}
-                  >
-                    <span className="tree-icon" aria-hidden="true">
-                      {n.type === 'folder' ? '📁' : '📄'}
-                    </span>
-                    <span className="recent-name">{n.name}</span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
           <div className="sidebar-divider" />
           <div className="sidebar-section-label">공간 · 폴더</div>
           <div className="sidebar-scroll">

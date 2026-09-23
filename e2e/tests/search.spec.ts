@@ -82,8 +82,33 @@ test('상단 검색: 검색어를 비우면 결과 드롭다운이 사라진다'
   await expect(page.locator('.browser-welcome')).toBeVisible()
 })
 
-test('사이드바에는 더 이상 검색창이 없다(상단으로 이동)', async ({ page }) => {
+test('사이드바에는 더 이상 검색창·최근이 없다(상단 검색으로 대체, 탭이 최근 대체)', async ({
+  page,
+}) => {
   await login(page)
   await expect(page.locator('.sidebar-search')).toHaveCount(0)
+  await expect(page.locator('.recent-inline, .recent-item')).toHaveCount(0)
   await expect(page.locator('.topbar-search-input')).toBeVisible()
+})
+
+test('상단 검색: 사내 링크(해시)를 붙여넣으면 그 파일이 결과로 뜬다', async ({ page }) => {
+  await login(page)
+  const tag = Date.now()
+  const fname = `링크파일_${tag}.txt`
+  await page.locator('input[type="file"]:not([webkitdirectory])').setInputFiles({
+    name: fname,
+    mimeType: 'text/plain',
+    buffer: Buffer.from('link me'),
+  })
+  await expect(page.locator('.upload-row')).toHaveCount(0)
+
+  // 파일을 열어 URL에서 해시(node id)를 얻는다
+  await page.locator('.tree-name').filter({ hasText: fname }).click()
+  await expect(page).toHaveURL(/\/files\/[0-9a-f]{32}/)
+  const id = page.url().match(/\/files\/([0-9a-f]{32})/)![1]
+
+  // 검색창에 사내 링크(전체 URL)를 붙여넣으면 이름검색이 아니라 그 파일로 해석돼 결과에 뜬다
+  await page.getByPlaceholder('파일 이름·내용 검색').fill(`https://file.example/files/${id}`)
+  const result = page.locator('.topbar-search-results .search-result', { hasText: fname })
+  await expect(result).toBeVisible()
 })
