@@ -1420,9 +1420,10 @@ button:focus-visible {
   white-space: nowrap;
 }
 
+/* 상태 텍스트는 탭 줄로 portal되므로 에디터 스코프 밖 — 전역 토큰을 써야 색이 잡힌다 */
 .editor-status {
   font-size: 12px;
-  color: var(--ed-quiet);
+  color: color-mix(in srgb, var(--ink) 55%, transparent);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
   flex: none;
@@ -1430,12 +1431,12 @@ button:focus-visible {
 }
 
 .editor-status.dirty {
-  color: var(--ed-accent);
+  color: var(--primary);
 }
 
 /* 저장 직후 — 골드 하이라이트 펄스 */
 .editor-status.saved {
-  color: var(--ed-accent);
+  color: var(--primary);
   animation: ed-saved-pop 1.4s ease-out;
 }
 @keyframes ed-saved-pop {
@@ -2097,12 +2098,13 @@ button:focus-visible {
   cursor: pointer;
 }
 
+/* 자동저장 토글도 탭 줄로 portal됨 — 에디터 변수 대신 전역 토큰으로 OFF(회색)/ON(골드) 대비 확보 */
 .switch {
   position: relative;
   width: 38px;
   height: 22px;
   border-radius: var(--radius-pill);
-  background: var(--ed-line-strong);
+  background: color-mix(in srgb, var(--ink) 24%, transparent);
   padding: 0;
   border: none;
   transition: background 0.15s ease;
@@ -2110,7 +2112,7 @@ button:focus-visible {
 }
 
 .switch.on {
-  background: var(--ed-accent);
+  background: var(--primary);
 }
 
 .switch-knob {
