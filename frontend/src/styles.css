@@ -363,7 +363,8 @@ button:focus-visible {
 /* 상단 검색 — 이름 + 내용(전문) 검색. 결과 드롭다운은 입력창 아래 absolute. */
 .topbar-search {
   position: relative;
-  flex: 0 1 460px;
+  flex: 1 1 200px;
+  max-width: 460px;
   margin: 0;
   display: flex;
   align-items: center;
@@ -1080,13 +1081,66 @@ button:focus-visible {
   flex: 0 0 auto;
   display: flex;
   align-items: stretch;
-  gap: 2px;
   padding: 4px 6px 0;
   background: var(--canvas-parchment);
   border-bottom: 1px solid var(--hairline);
+  min-width: 0;
+}
+/* 탭 스트립 — 가로 스크롤/드래그되는 탭 영역(넘치면 좌우로) */
+.tab-strip {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
   overflow-x: auto;
   overflow-y: hidden;
   scrollbar-width: thin;
+}
+/* 탭 줄 오른쪽 파일 컨트롤(| · 상태 · 자동저장 · 저장 · 삭제 · 닫기) */
+.tab-actions {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 2px 4px 4px;
+}
+.tab-action-slot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.tab-actions-divider {
+  align-self: stretch;
+  width: 1px;
+  margin: 6px 2px;
+  background: var(--hairline-strong);
+}
+/* 상단 바로 옮겨온 파일 액션(다운로드·업로드·공유·📋) — 이메일 왼쪽.
+   폭이 모자라면 이 영역만 가로 스크롤해서, 오른쪽 컨트롤(테마·로그아웃)은 항상 보이게 한다. */
+.topbar-fileactions {
+  flex: 0 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-right: 12px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.topbar-fileactions::-webkit-scrollbar {
+  display: none;
+}
+.topbar-fileactions .btn-utility,
+.topbar-fileactions a {
+  white-space: nowrap;
+  flex: 0 0 auto;
+}
+/* 좁은 화면에선 검색창을 더 줄여 파일 액션에 자리를 준다 */
+@media (max-width: 1100px) {
+  .topbar-search {
+    flex-basis: 140px;
+  }
 }
 
 .tab {

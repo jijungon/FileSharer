@@ -27,7 +27,7 @@ test('local login → browse → create folder → upload file', async ({ page }
 
   // 파일 열기 → 공유 링크 팝오버 안에 '사내 링크 복사'가 있다(액션 바에서 팝오버로 이동됨)
   await fileCell(page, /스모크\.txt/).click()
-  await page.locator('.editor-toolbar').getByRole('button', { name: '공유 링크' }).click()
+  await page.locator('.topbar-fileactions').getByRole('button', { name: '공유 링크' }).click()
   await expect(
     page.locator('.share-popover').getByRole('button', { name: /사내 링크 복사/ }),
   ).toBeVisible()

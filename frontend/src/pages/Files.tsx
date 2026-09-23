@@ -5,7 +5,7 @@ import FolderTree from '../components/FolderTree'
 import LinkBar from '../components/LinkBar'
 import NameModal from '../components/NameModal'
 import NewMarkdownModal from '../components/NewMarkdownModal'
-import ViewerPanel from '../components/ViewerPanel'
+import ViewerPanel, { FileActions } from '../components/ViewerPanel'
 import { api, ApiError, Me, SpaceInfo } from '../lib/api'
 import { formatBytes, formatDateTime, formatTrashRemaining } from '../lib/format'
 import {
@@ -152,8 +152,10 @@ export default function Files() {
     }
   })
   const fileInput = useRef<HTMLInputElement>(null)
-  const tabBarRef = useRef<HTMLDivElement>(null) // 탭 바 가로 스크롤/드래그
+  const tabBarRef = useRef<HTMLDivElement>(null) // 탭 스트립 가로 스크롤/드래그
   const tabDrag = useRef<{ x: number; scroll: number; moved: boolean } | null>(null)
+  // 탭 줄 오른쪽 '저장/자동저장' 슬롯 — 활성 편집기가 이 DOM으로 portal 렌더한다(Stage B)
+  const [actionSlot, setActionSlot] = useState<HTMLDivElement | null>(null)
   const restoredFromUrl = useRef(false)
   const navSynced = useRef(false) // 부팅 완료 후 브라우저 뒤로/앞으로(URL) 동기화 활성화
 
@@ -994,6 +996,19 @@ export default function Files() {
           )}
         </div>
         <div className="topbar-flex-spacer" />
+        {/* Stage B: 파일 열었을 때 파일 액션(다운로드·업로드·공유·📋)을 상단 바(이메일 왼쪽)에 */}
+        {viewerOpen && selected && (
+          <div className="topbar-fileactions">
+            <FileActions
+              node={selected}
+              space={space}
+              path={path}
+              activeToken={activeToken}
+              onActiveToken={setActiveToken}
+              onLocalUpload={() => fileInput.current?.click()}
+            />
+          </div>
+        )}
         <div className="topbar-right">
           <span className="muted">{me.email}</span>
           {me.role === 'admin' && (
@@ -1199,30 +1214,31 @@ export default function Files() {
         <div className="content-col">
           {/* 다중 탭 바 — 열린 파일 탭. 활성 하이라이트 · 미저장 ●(호버 시 ✕) · 클릭 전환 · 가운데클릭 닫기 */}
           {openTabs.length > 0 && !trashMode && !favMode && (
-            <div
-              className="tab-bar"
-              role="tablist"
-              ref={tabBarRef}
-              onWheel={(e) => {
-                // 세로 휠을 탭 바 가로 스크롤로 (탭이 넘칠 때만)
-                const el = tabBarRef.current
-                if (el && el.scrollWidth > el.clientWidth) el.scrollLeft += e.deltaY
-              }}
-              onPointerDown={(e) => {
-                const el = tabBarRef.current
-                if (el) tabDrag.current = { x: e.clientX, scroll: el.scrollLeft, moved: false }
-              }}
-              onPointerMove={(e) => {
-                const el = tabBarRef.current
-                const d = tabDrag.current
-                if (!el || !d) return
-                if (Math.abs(e.clientX - d.x) > 4) d.moved = true
-                if (d.moved) el.scrollLeft = d.scroll - (e.clientX - d.x)
-              }}
-              onPointerLeave={() => {
-                tabDrag.current = null
-              }}
-            >
+            <div className="tab-bar">
+              <div
+                className="tab-strip"
+                role="tablist"
+                ref={tabBarRef}
+                onWheel={(e) => {
+                  // 세로 휠을 탭 스트립 가로 스크롤로 (탭이 넘칠 때만)
+                  const el = tabBarRef.current
+                  if (el && el.scrollWidth > el.clientWidth) el.scrollLeft += e.deltaY
+                }}
+                onPointerDown={(e) => {
+                  const el = tabBarRef.current
+                  if (el) tabDrag.current = { x: e.clientX, scroll: el.scrollLeft, moved: false }
+                }}
+                onPointerMove={(e) => {
+                  const el = tabBarRef.current
+                  const d = tabDrag.current
+                  if (!el || !d) return
+                  if (Math.abs(e.clientX - d.x) > 4) d.moved = true
+                  if (d.moved) el.scrollLeft = d.scroll - (e.clientX - d.x)
+                }}
+                onPointerLeave={() => {
+                  tabDrag.current = null
+                }}
+              >
               {openTabs.map((tab) => {
                 const active = viewerOpen && selected?.id === tab.id
                 const isDirty = dirtyTabs.has(tab.id)
@@ -1264,6 +1280,24 @@ export default function Files() {
                   </div>
                 )
               })}
+              </div>
+              {/* Stage B: 탭 줄 오른쪽 — | 칸막이 + (활성 편집기가 portal로 넣는 저장/자동저장) + 삭제 + 닫기 */}
+              {viewerOpen && selected && (
+                <div className="tab-actions">
+                  <span className="tab-actions-divider" aria-hidden="true" />
+                  <div className="tab-action-slot" ref={setActionSlot} />
+                  <button
+                    className="btn-utility btn-danger-ghost"
+                    onClick={() => deleteTab(selected)}
+                    title="이 파일을 휴지통으로 이동 (복원 가능)"
+                  >
+                    🗑 삭제
+                  </button>
+                  <button className="btn-utility" onClick={() => closeTab(selected.id)}>
+                    닫기
+                  </button>
+                </div>
+              )}
             </div>
           )}
 
@@ -1442,6 +1476,8 @@ export default function Files() {
           >
             <ViewerPanel
               node={tab}
+              active={viewerOpen && selected?.id === tab.id}
+              actionSlot={actionSlot}
               space={space}
               path={path}
               onNavigate={crumbNavigate}

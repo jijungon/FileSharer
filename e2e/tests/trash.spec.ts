@@ -74,10 +74,10 @@ test('파일을 열고 뷰어의 🗑 삭제를 누르면 휴지통으로 가고
 
   // 트리에서 파일 열기 → 에디터 뷰어가 뜬다
   await page.locator('.tree-name').filter({ hasText: /뷰어삭제\.txt/ }).click()
-  await expect(page.locator('.editor-toolbar')).toBeVisible()
+  await expect(page.locator('.editor-shell')).toBeVisible()
 
   // 뷰어 액션 바의 🗑 삭제 → confirm 수락 → 뷰어 닫힘 + 트리에서 사라짐
-  await page.locator('.editor-toolbar').getByRole('button', { name: /삭제/ }).click()
+  await page.locator('.tab-actions').getByRole('button', { name: /삭제/ }).click()
   await expect(page.locator('.tree-name').filter({ hasText: /뷰어삭제\.txt/ })).toHaveCount(0)
   await expect(page.locator('.browser-welcome')).toBeVisible()
 
@@ -132,7 +132,7 @@ test('휴지통 모드에서 (휴지통에 없는) 트리 파일을 누르면 �
 
   // 휴지통 모드에서 트리 파일 클릭 → 휴지통을 벗어나 그 파일 뷰어(에디터)가 열린다
   await page.locator('.tree-name').filter({ hasText: fname }).click()
-  await expect(page.locator('.editor-toolbar')).toBeVisible()
+  await expect(page.locator('.editor-shell')).toBeVisible()
   await expect(page.locator('.sidebar-trash.active')).toHaveCount(0) // 휴지통 모드 해제
   await expect(page.locator('.file-table')).toHaveCount(0) // 휴지통 목록 사라짐
 })

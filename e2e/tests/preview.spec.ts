@@ -43,7 +43,7 @@ test('new MD: modal opens, save creates the file and opens it', async ({ page })
   // 저장 → 모달 닫히고, 만든 파일이 에디터로 열린다(VS Code식 3분할: 목록 대신 편집기가 뜸)
   await modal.getByRole('button', { name: '저장' }).click()
   await expect(modal).toBeHidden()
-  await expect(page.locator('.editor-name')).toContainText('회의록')
+  await expect(page.locator('.tab.active .tab-name')).toContainText('회의록')
 })
 
 test('new MD: cancel discards without creating a file', async ({ page }) => {
