@@ -5,8 +5,9 @@ import FolderTree from '../components/FolderTree'
 import LinkBar from '../components/LinkBar'
 import NameModal from '../components/NameModal'
 import NewMarkdownModal from '../components/NewMarkdownModal'
-import ViewerPanel, { FileActions } from '../components/ViewerPanel'
+import ViewerPanel from '../components/ViewerPanel'
 import { api, ApiError, Me, SpaceInfo } from '../lib/api'
+import { copyText } from '../lib/clipboard'
 import { formatBytes, formatDateTime, formatTrashRemaining } from '../lib/format'
 import {
   dropUploads,
@@ -128,6 +129,8 @@ export default function Files() {
   const [searchResults, setSearchResults] = useState<NodeInfo[] | null>(null) // null=검색 안 함
   const [searchFocused, setSearchFocused] = useState(false) // 상단 검색 드롭다운 열림 여부
   const [searchIdx, setSearchIdx] = useState(-1) // 키보드로 하이라이트한 결과(-1=없음)
+  const [searchTyping, setSearchTyping] = useState(false) // true=검색 타이핑 중, false=주소(현재 파일 경로) 표시
+  const [copiedLink, setCopiedLink] = useState(false) // 주소창 📋 복사 피드백
   const searchRef = useRef<HTMLDivElement>(null)
   const [favIds, setFavIds] = useState<Set<string>>(new Set()) // 내 즐겨찾기 노드 id
   const [favMode, setFavMode] = useState(false) // 즐겨찾기 뷰
@@ -488,16 +491,31 @@ export default function Files() {
     function onDown(e: MouseEvent) {
       if (searchRef.current && !searchRef.current.contains(e.target as Node)) {
         setSearchFocused(false)
+        setSearchTyping(false) // 바깥 클릭 = 검색 포기 → 주소(경로) 모드로 복귀
+        setSearchQ('')
       }
     }
     document.addEventListener('mousedown', onDown)
     return () => document.removeEventListener('mousedown', onDown)
   }, [searchFocused])
 
+  // 파일을 열거나 다른 파일로 바뀌면 주소창을 '경로 모드'로 되돌린다(진행 중이던 검색어는 비운다).
+  useEffect(() => {
+    const fileOpen = !!selected && selected.type === 'file' && !trashMode && !favMode
+    if (fileOpen) {
+      setSearchTyping(false)
+      setSearchQ('')
+      setSearchIdx(-1)
+    }
+    // selected.id만 추적(같은 파일 객체 교체마다 재실행 방지)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected?.id, trashMode, favMode])
+
   // 검색 결과 선택 → 그 파일을 열고 검색을 닫는다(클릭·Enter 공통)
   function openSearchResult(node: NodeInfo) {
     openLocated(node)
     setSearchQ('')
+    setSearchTyping(false) // 주소(경로) 모드로 복귀 — 연 파일의 경로가 검색창에 뜬다
     setSearchFocused(false)
     setSearchIdx(-1)
   }
@@ -922,6 +940,13 @@ export default function Files() {
 
   // 파일을 열면 메인 영역이 편집+프리뷰로 바뀐다 → 트리(사이드바) | 편집 | 프리뷰 3분할(VS Code식)
   const viewerOpen = !!selected && selected.type === 'file' && !trashMode && !favMode
+  // 오미니박스: 파일을 열면 상단 검색창이 '주소창'이 되어 그 파일의 읽기 좋은 경로를 보여준다.
+  // 타이핑을 시작하면(searchTyping) 검색 모드로 전환, 결과를 고르면 다시 주소(경로) 모드로 돌아온다.
+  const filePath =
+    viewerOpen && selected
+      ? [space?.name, ...path.map((p) => p.name), selected.name].filter(Boolean).join('/')
+      : ''
+  const addressMode = viewerOpen && !searchTyping // true=경로 표시(드롭다운 숨김), false=검색 모드
 
   return (
     <div className="shell">
@@ -930,10 +955,11 @@ export default function Files() {
         <h2 className="logo" style={{ width: sidebarWidth - 12, flexShrink: 0 }}>
           FileSharer <span className="app-version">{__APP_VERSION__}</span>
         </h2>
-        {/* 상단 검색 — 현재 공간에서 파일 이름 + 내용(텍스트)으로 찾고, 누르면 그 파일로 이동 */}
-        <div className="topbar-search" ref={searchRef}>
+        {/* 상단 검색 = 주소창(오미니박스). 파일을 열면 그 파일의 경로를 보여주고(주소 모드),
+            타이핑하면 이름+내용 검색(검색 모드). 📋는 지금 파일의 사내 공유 링크를 복사한다. */}
+        <div className={`topbar-search${addressMode ? ' is-address' : ''}`} ref={searchRef}>
           <span className="topbar-search-icon" aria-hidden>
-            🔎
+            {addressMode ? '📄' : '🔎'}
           </span>
           <input
             type="search"
@@ -942,9 +968,14 @@ export default function Files() {
             spellCheck={false}
             autoCapitalize="off"
             autoCorrect="off"
-            value={searchQ}
-            onFocus={() => setSearchFocused(true)}
+            value={addressMode ? filePath : searchQ}
+            title={addressMode ? filePath : undefined}
+            onFocus={(e) => {
+              setSearchFocused(true)
+              if (addressMode) e.currentTarget.select() // 경로 전체 선택 → 타이핑하면 바로 검색으로 대체
+            }}
             onChange={(e) => {
+              setSearchTyping(true) // 타이핑 시작 = 검색 모드
               setSearchQ(e.target.value)
               setSearchFocused(true)
             }}
@@ -965,14 +996,34 @@ export default function Files() {
                 }
               } else if (e.key === 'Escape') {
                 setSearchQ('')
+                setSearchTyping(false) // 주소(경로) 모드로 복귀
                 setSearchFocused(false)
                 setSearchIdx(-1)
                 e.currentTarget.blur()
               }
             }}
-            aria-label="파일 이름·내용 검색"
+            aria-label="파일 경로·검색 주소창"
           />
-          {searchResults !== null && searchQ.trim() && searchFocused && (
+          {addressMode && selected && (
+            <button
+              type="button"
+              className="topbar-search-copy"
+              title="사내 공유 링크 복사 (로그인 사용자용)"
+              aria-label="사내 공유 링크 복사"
+              onClick={async () => {
+                const ok = await copyText(`${window.location.origin}/files/${selected.id}`)
+                if (ok) {
+                  setCopiedLink(true)
+                  setTimeout(() => setCopiedLink(false), 1500)
+                } else {
+                  flash('복사하지 못했어요 — 주소를 길게 눌러 수동 복사해 주세요')
+                }
+              }}
+            >
+              {copiedLink ? '✓' : '📋'}
+            </button>
+          )}
+          {searchTyping && searchResults !== null && searchQ.trim() && searchFocused && (
             <div className="topbar-search-results">
               <div className="search-results-head muted">
                 {searchResults.length > 0
@@ -1006,13 +1057,15 @@ export default function Files() {
           )}
         </div>
         <div className="topbar-flex-spacer" />
-        {/* Stage B: 파일 열었을 때 파일 액션(다운로드·업로드·공유·📋)을 상단 바(이메일 왼쪽)에 */}
-        {viewerOpen && selected && (
+        {/* 파일 액션(다운로드·로컬/서버 업로드·공유)을 상단 바로 통합 — 파일을 열든(선택 파일 대상)
+            안 열든(현재 폴더/공간 대상) 같은 자리에 둔다. 경로는 위 주소창(오미니박스)이 보여준다. */}
+        {space && !trashMode && !favMode && (
           <div className="topbar-fileactions">
-            <FileActions
-              node={selected}
+            <LinkBar
+              actionsOnly
               space={space}
               path={path}
+              selected={selected}
               activeToken={activeToken}
               onActiveToken={setActiveToken}
               onLocalUpload={() => fileInput.current?.click()}
@@ -1044,23 +1097,6 @@ export default function Files() {
           </button>
         </div>
       </header>
-
-      {/* 파일을 열면(뷰어) LinkBar를 숨긴다 — 경로·다운로드·링크·공유는 에디터 툴바로 통합됨 */}
-      {!viewerOpen && (
-        <LinkBar
-          space={space}
-          path={path}
-          selected={selected}
-          onNavigate={crumbNavigate}
-          onDropToCrumb={(id, idx, srcSpace) => {
-            if (!spaceId) return
-            dropNode(id, { spaceId, folderId: idx === null ? null : path[idx].id }, srcSpace)
-          }}
-          activeToken={activeToken}
-          onActiveToken={setActiveToken}
-          onLocalUpload={() => fileInput.current?.click()}
-        />
-      )}
 
       <div className="workspace">
         <aside

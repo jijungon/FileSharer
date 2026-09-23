@@ -10,8 +10,6 @@ import { ApiError, SpaceInfo } from '../lib/api'
 import SharePopover from './SharePopover'
 import ServerUploadPopover from './ServerUploadPopover'
 import { acquireLock, downloadUrl, LockState, NodeInfo, releaseLock } from '../lib/files'
-import { copyText } from '../lib/clipboard'
-import { showToast } from '../lib/globalErrors'
 import { formatBytes } from '../lib/format'
 
 // DnX풍 다크 에디터 테마 (near-black base + 골드 커서/활성줄)
@@ -119,7 +117,6 @@ export function FileActions({
 }) {
   const [shareOpen, setShareOpen] = useState(false)
   const [serverUpOpen, setServerUpOpen] = useState(false)
-  const [copied, setCopied] = useState(false)
   const folder = path.length > 0 ? path[path.length - 1] : null
   return (
     <>
@@ -160,23 +157,7 @@ export function FileActions({
       >
         공유 링크
       </button>
-      {/* 📋 사내 링크(로그인 사용자용) 바로 복사 — 팝오버 안 열고 클릭 한 번 */}
-      <button
-        className="btn-utility"
-        title="사내 링크 복사 (로그인 사용자용 바로가기)"
-        aria-label="사내 링크 복사"
-        onClick={async () => {
-          const ok = await copyText(`${window.location.origin}/files/${node.id}`)
-          if (ok) {
-            setCopied(true)
-            setTimeout(() => setCopied(false), 1500)
-          } else {
-            showToast('복사에 실패했어요. 텍스트를 길게 눌러 수동으로 복사해 주세요.')
-          }
-        }}
-      >
-        {copied ? '✓' : '📋'}
-      </button>
+      {/* 사내 링크(📋) 바로 복사는 상단 주소창(오미니박스)으로 이동했다 */}
       {serverUpOpen && space && (
         <ServerUploadPopover
           folderId={folder?.id ?? null}

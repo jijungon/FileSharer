@@ -72,16 +72,17 @@ test('browser back/forward syncs the folder view', async ({ page }) => {
   const folder = `뒤로폴더-${Date.now()}`
   await newFolder(page, folder)
   await page.locator('.tree-name', { hasText: folder }).click()
-  await expect(page.locator('.crumb-current, .crumb', { hasText: folder })).toBeVisible()
+  // 진입 확인은 트리의 현재 폴더 활성 표시로(브레드크럼은 상단 주소창으로 통합돼 사라짐)
+  await expect(page.locator('.tree-row.active', { hasText: folder })).toBeVisible()
   await expect(page).toHaveURL(/\/files\/.+/)
 
   // 브라우저 뒤로가기 → URL도 화면 상태도 루트로 (예전엔 URL만 바뀌고 화면은 안 바뀜)
   await page.goBack()
   await expect(page).toHaveURL(/\/files$/)
-  await expect(page.locator('.crumb-current, .crumb', { hasText: folder })).toHaveCount(0)
+  await expect(page.locator('.tree-row.active', { hasText: folder })).toHaveCount(0)
 
   // 앞으로가기 → 다시 폴더 안
   await page.goForward()
   await expect(page).toHaveURL(/\/files\/.+/)
-  await expect(page.locator('.crumb-current, .crumb', { hasText: folder })).toBeVisible()
+  await expect(page.locator('.tree-row.active', { hasText: folder })).toBeVisible()
 })

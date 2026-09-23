@@ -27,7 +27,7 @@ test('상단 검색: 하위 폴더의 파일을 이름으로 찾아 위치와 �
   const folderItem = page.locator('.tree-name').filter({ hasText: folder })
   await expect(folderItem).toBeVisible()
   await folderItem.click()
-  await expect(page.locator('.crumb-current, .crumb', { hasText: folder })).toBeVisible()
+  await expect(page.locator('.tree-row.active', { hasText: folder })).toBeVisible()
   await page.locator('input[type="file"]:not([webkitdirectory])').setInputFiles({
     name: fname,
     mimeType: 'text/plain',
