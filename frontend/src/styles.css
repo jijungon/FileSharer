@@ -2633,3 +2633,11 @@ button:focus-visible {
   color: #a93226;
   text-decoration: underline;
 }
+
+/* 휴지통 행은 공간으로 끌어다 놓아 복원할 수 있다 — 잡기 커서로 안내 */
+.file-table tbody tr[draggable='true'] {
+  cursor: grab;
+}
+.file-table tbody tr[draggable='true']:active {
+  cursor: grabbing;
+}

@@ -1176,7 +1176,11 @@ export default function Files() {
                 onClick={() => switchSpace(s.id)}
                 onDragOver={(e) => {
                   const t = e.dataTransfer.types
-                  if (t.includes('application/x-node-id') || t.includes('Files')) {
+                  if (
+                    t.includes('application/x-node-id') ||
+                    t.includes('application/x-trash-node-id') ||
+                    t.includes('Files')
+                  ) {
                     e.preventDefault()
                     setDragOverSpace(s.id)
                   }
@@ -1184,6 +1188,13 @@ export default function Files() {
                 onDragLeave={() => setDragOverSpace((cur) => (cur === s.id ? null : cur))}
                 onDrop={(e) => {
                   setDragOverSpace(null)
+                  // 휴지통 항목을 공간 위에 놓으면 원래 위치로 복원(어느 공간에 놓든 restoreNode가 원위치로)
+                  const trashId = e.dataTransfer.getData('application/x-trash-node-id')
+                  if (trashId) {
+                    e.preventDefault()
+                    void guard(() => restoreNode(trashId)).then((r) => r && flash('복원했습니다'))
+                    return
+                  }
                   const ids = draggedIds(e)
                   if (ids.length > 0) {
                     e.preventDefault()
@@ -1466,7 +1477,16 @@ export default function Files() {
             </thead>
             <tbody>
               {sortedItems.map((node) => (
-                <tr key={node.id}>
+                <tr
+                  key={node.id}
+                  draggable
+                  onDragStart={(e) => {
+                    // 휴지통 항목을 공간 위로 끌어다 놓으면 복원 — 공간 드롭 핸들러가 읽는 마커
+                    e.dataTransfer.setData('application/x-trash-node-id', node.id)
+                    e.dataTransfer.effectAllowed = 'move'
+                  }}
+                  title="공간으로 끌어다 놓으면 원래 위치로 복원됩니다"
+                >
                   <td>
                     <span className="node-icon">{node.type === 'folder' ? '📁' : '📄'}</span>{' '}
                     <span className="node-name">{node.name}</span>
