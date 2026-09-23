@@ -28,22 +28,30 @@ def index_node(db: Session, storage: StorageBackend, node: Node) -> None:
 
     텍스트 파일이면 앞부분을 읽어 (재)적재하고, 아니면(타입이 바뀌었을 수 있으니) 기존
     행을 지우기만 한다. 스토리지 읽기 실패는 삼켜서(로그만 남기고) 요청을 깨지 않는다.
+
+    순서가 중요하다: **느린 스토리지 읽기를 먼저** 끝내고 그 다음에 DELETE/INSERT 한다.
+    쓰기를 먼저 하면 SQLite 쓰기 잠금을 쥔 채 원격(R2) 왕복을 기다리게 되어, 그동안 다른
+    요청의 쓰기가 busy_timeout 안에 못 들어와 "database is locked" 로 실패할 수 있다.
     """
     # 순환 임포트 방지: 텍스트 판정 헬퍼는 api.nodes 에 있고, 그쪽이 이 모듈을 임포트한다.
     from ..api.nodes import _CONTENT_MAX_BYTES, _is_text_node
 
     node_id = node.id
-    # 항상 기존 행을 먼저 지운다(내용 갱신·타입 변경 모두 커버).
+    content: str | None = None
+    if _is_text_node(node) and node.storage_key:
+        try:
+            with storage.open_stream(node.storage_key) as fh:
+                blob = fh.read(_CONTENT_MAX_BYTES)
+            content = blob.decode("utf-8", "ignore")
+        except Exception:
+            # 읽기 실패 → 인덱스에서 빼둔다(아래 DELETE만 수행). 다음 저장 때 다시 채워진다.
+            logger.exception("FTS 인덱싱: 내용 읽기 실패 node=%s", node_id)
+
+    # 여기서부터가 쓰기 구간 — 잠금을 짧게 잡기 위해 읽기가 끝난 뒤에 둔다.
+    # 기존 행은 항상 지운다(내용 갱신·타입 변경·읽기 실패 모두 커버).
     db.execute(text("DELETE FROM node_content_fts WHERE node_id = :id"), {"id": node_id})
-    if not (_is_text_node(node) and node.storage_key):
+    if content is None:
         return
-    try:
-        with storage.open_stream(node.storage_key) as fh:
-            blob = fh.read(_CONTENT_MAX_BYTES)
-    except Exception:
-        logger.exception("FTS 인덱싱: 내용 읽기 실패 node=%s", node_id)
-        return
-    content = blob.decode("utf-8", "ignore")
     db.execute(
         text("INSERT INTO node_content_fts (node_id, content) VALUES (:id, :content)"),
         {"id": node_id, "content": content},
@@ -96,8 +104,9 @@ def backfill(db: Session, storage: StorageBackend) -> int:
         if node is None or not _is_text_node(node):
             continue
         index_node(db, storage, node)
+        # 파일마다 커밋한다. 묶어서 커밋하면 트랜잭션 하나가 여러 번의 (느린) 원격 읽기
+        # 동안 SQLite 쓰기 잠금을 쥐고 있어, 배포 직후 백필이 도는 내내 사용자의
+        # 업로드·저장이 busy_timeout 을 넘겨 "database is locked" 로 실패할 수 있다.
+        db.commit()
         count += 1
-        if count % 100 == 0:
-            db.commit()  # 주기적 커밋으로 큰 백필의 메모리·잠금 시간 억제
-    db.commit()
     return count
