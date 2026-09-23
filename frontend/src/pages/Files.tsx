@@ -510,6 +510,13 @@ export default function Files() {
     }
   }
 
+  // 휴지통 항목 클릭 → 그 항목이 있던 '원래 폴더'로 이동(파일을 여는 게 아니라 위치로).
+  // openFolderById가 trashMode 해제 + 경로 복원을 처리한다. 루트 항목이면 공간 최상위로.
+  function locateTrashed(node: NodeInfo) {
+    if (node.parent_id) openFolderById(node.parent_id)
+    else if (spaceId) switchSpace(spaceId)
+  }
+
   // 검색/즐겨찾기/최근 결과 클릭: 폴더면 그 폴더로, 파일이면 경로 복원 후 뷰어로 연다.
   async function openLocated(node: NodeInfo) {
     setSearchQ('') // 검색 모드 종료
@@ -1294,7 +1301,12 @@ export default function Files() {
             </thead>
             <tbody>
               {sortedItems.map((node) => (
-                <tr key={node.id}>
+                <tr
+                  key={node.id}
+                  className="trash-row"
+                  title="원래 위치(폴더)로 이동"
+                  onClick={() => locateTrashed(node)}
+                >
                   <td>
                     <span className="node-icon">{node.type === 'folder' ? '📁' : '📄'}</span>{' '}
                     <span className="node-name">{node.name}</span>
@@ -1316,13 +1328,17 @@ export default function Files() {
                   <td className="col-actions">
                     <button
                       className="row-action"
-                      onClick={() => guard(() => restoreNode(node.id))}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        guard(() => restoreNode(node.id))
+                      }}
                     >
                       복원
                     </button>
                     <button
                       className="row-action danger"
-                      onClick={() => {
+                      onClick={(e) => {
+                        e.stopPropagation()
                         if (
                           window.confirm(
                             `"${node.name}"을(를) 완전히 삭제할까요? 되돌릴 수 없습니다.`,
