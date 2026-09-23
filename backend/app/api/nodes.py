@@ -229,6 +229,8 @@ def search_nodes(
     term = q.strip()
     if not term:
         return []
+    # 경로처럼 입력하면(예: '내 공간/폴더/ip.md') 마지막 조각(파일명)으로 찾는다.
+    term = term.rsplit("/", 1)[-1].strip() or term
     # 1) 이름 매치 — SQL LIKE 와일드카드/이스케이프 문자를 리터럴로 처리
     escaped = term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
     name_rows = db.scalars(

@@ -543,6 +543,7 @@ export default function Files() {
   async function openLocated(node: NodeInfo) {
     setSearchQ('') // 검색 모드 종료
     setFavMode(false) // 즐겨찾기 뷰 종료
+    setTrashMode(false) // 휴지통 모드였어도 벗어나 뷰어/폴더를 연다
     if (node.type === 'folder') {
       openFolderById(node.id)
       return
@@ -563,6 +564,7 @@ export default function Files() {
   async function openFileFromTree(row: TreeRow) {
     setSearchQ('')
     setFavMode(false)
+    setTrashMode(false) // 휴지통 모드에서 트리 파일을 눌러도 뷰어가 열리게
     try {
       const found = await getNodePath(row.id)
       setSpaceId(found.space_id)
