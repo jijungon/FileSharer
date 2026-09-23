@@ -32,6 +32,50 @@ test('트리 행의 🗑 버튼으로 파일을 휴지통으로 보낸다', asyn
   await expect(page.getByRole('row', { name: new RegExp(fname.replace('.', '\\.')) })).toBeVisible()
 })
 
+test('휴지통 항목을 공간으로 끌어다 놓으면 원래 위치로 복원된다', async ({ page }) => {
+  page.on('dialog', (d) => d.accept())
+  await login(page)
+  const fname = `복원드래그_${Date.now()}.txt`
+  await page.locator('input[type="file"]:not([webkitdirectory])').setInputFiles({
+    name: fname,
+    mimeType: 'text/plain',
+    buffer: Buffer.from('x'),
+  })
+  await expect(page.locator('.upload-row')).toHaveCount(0)
+
+  // 휴지통으로 이동 → 트리에서 사라진다
+  await page
+    .locator('.tree-row')
+    .filter({ hasText: fname })
+    .getByRole('button', { name: '휴지통으로 이동' })
+    .click()
+  await expect(page.locator('.tree-name').filter({ hasText: fname })).toHaveCount(0)
+
+  // 휴지통 열기 → 항목이 보인다
+  await page.getByRole('button', { name: '휴지통' }).click()
+  const rx = new RegExp(fname.replace('.', '\\.'))
+  await expect(page.getByRole('row', { name: rx })).toBeVisible()
+
+  // 휴지통 행을 공간 헤더(.space-root)로 끌어다 놓으면 복원 — 합성 DataTransfer dispatch
+  await page.evaluate((fileText) => {
+    const rows = Array.from(document.querySelectorAll('.file-table tbody tr'))
+    const src = rows.find((r) =>
+      r.querySelector('.node-name')?.textContent?.includes(fileText),
+    ) as HTMLElement | undefined
+    const tgt = document.querySelector('.space-root') as HTMLElement | null
+    if (!src || !tgt) throw new Error('휴지통 행 또는 공간 헤더를 못 찾음')
+    const dt = new DataTransfer()
+    src.dispatchEvent(new DragEvent('dragstart', { dataTransfer: dt, bubbles: true }))
+    tgt.dispatchEvent(new DragEvent('dragover', { dataTransfer: dt, bubbles: true, cancelable: true }))
+    tgt.dispatchEvent(new DragEvent('drop', { dataTransfer: dt, bubbles: true, cancelable: true }))
+    src.dispatchEvent(new DragEvent('dragend', { dataTransfer: dt, bubbles: true }))
+  }, fname)
+
+  // 복원됨 → 휴지통에서 사라지고 사이드바 트리에 다시 나타난다
+  await expect(page.getByRole('row', { name: rx })).toHaveCount(0)
+  await expect(page.locator('.tree-name').filter({ hasText: fname })).toBeVisible()
+})
+
 test('휴지통에서 완전 삭제하면 파일이 영구히 사라진다', async ({ page }) => {
   page.on('dialog', (d) => d.accept()) // 삭제/완전삭제 확인창 자동 수락
   await login(page)
