@@ -878,11 +878,6 @@ button:focus-visible {
   background: var(--surface-pearl);
 }
 
-/* 휴지통 행: 클릭하면 원래 위치(폴더)로 이동 → 포인터 커서로 안내 */
-.trash-row {
-  cursor: pointer;
-}
-
 .row-selected {
   background: color-mix(in srgb, var(--primary) 7%, var(--canvas)) !important;
   box-shadow: inset 2px 0 0 var(--primary);
