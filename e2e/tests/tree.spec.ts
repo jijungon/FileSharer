@@ -78,3 +78,42 @@ test('트리에서 파일을 고르고 Enter를 누르면 제자리에서 이름
   await expect(page.locator('.tree-name').filter({ hasText: newName })).toBeVisible()
   await expect(page.locator('.tree-name').filter({ hasText: fname })).toHaveCount(0)
 })
+
+test('열린 파일을 리네임하면 탭·주소창 이름도 함께 갱신된다', async ({ page }) => {
+  await page.goto('/login')
+  await page.getByRole('button', { name: /로컬 계정으로 로그인/ }).click()
+  await page.getByPlaceholder('이메일').fill(EMAIL)
+  await page.getByPlaceholder('비밀번호').fill(PASSWORD)
+  await page.getByRole('button', { name: '로컬 계정으로 로그인' }).click()
+  await expect(page).toHaveURL(/\/files/)
+
+  const tag = Date.now()
+  const fname = `열림리네임_${tag}.md`
+  const newName = `열림새이름_${tag}`
+  await page.locator('input[type="file"]:not([webkitdirectory])').setInputFiles({
+    name: fname,
+    mimeType: 'text/markdown',
+    buffer: Buffer.from('# hi'),
+  })
+  await expect(page.locator('.upload-row')).toHaveCount(0)
+
+  // 파일을 연다 → 탭·주소창(경로)에 현재 이름이 뜬다
+  const item = page.locator('.tree-name').filter({ hasText: fname })
+  await item.click()
+  const box = page.getByPlaceholder('파일 이름·내용 검색')
+  await expect(page.locator('.tab-name').filter({ hasText: fname })).toBeVisible()
+  await expect(box).toHaveValue(new RegExp(fname.replace(/[.]/g, '\\.')))
+
+  // 트리에서 제자리 리네임 → 열린 탭과 주소창도 새 이름으로 갱신되어야 한다
+  await item.click()
+  await item.press('Enter')
+  const input = page.locator('.tree-rename-input')
+  await expect(input).toBeVisible()
+  await input.fill(newName)
+  await input.press('Enter')
+
+  await expect(page.locator('.tab-name').filter({ hasText: newName })).toBeVisible()
+  await expect(box).toHaveValue(new RegExp(newName))
+  // 옛 이름은 탭에서 사라진다
+  await expect(page.locator('.tab-name').filter({ hasText: fname })).toHaveCount(0)
+})
