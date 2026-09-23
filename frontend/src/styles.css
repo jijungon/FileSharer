@@ -829,7 +829,8 @@ button:focus-visible {
   border-bottom: 1px solid var(--hairline);
   cursor: pointer;
 }
-.search-result:hover {
+.search-result:hover,
+.search-result.active {
   background: color-mix(in srgb, var(--primary) 7%, var(--canvas));
 }
 .search-result-name {
