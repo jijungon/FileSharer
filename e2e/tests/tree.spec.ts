@@ -22,8 +22,8 @@ test('sidebar folder tree navigates into folders and back to root', async ({ pag
   await expect(treeItem).toBeVisible()
   await treeItem.click()
 
-  // 링크바 경로(브레드크럼)에 폴더명이 보이고, 그 폴더 안(비어 있음)으로 진입
-  await expect(page.locator('.crumb-current, .crumb', { hasText: parent })).toBeVisible()
+  // 브레드크럼을 없앴으므로(상단 주소창으로 통합), 트리에서 그 폴더가 '현재 폴더'로 활성 표시되는지로 확인
+  await expect(page.locator('.tree-row.active', { hasText: parent })).toBeVisible()
   await expect(page).toHaveURL(/\/files\/.+/)
 
   // 하위 폴더 생성 → 트리에서 부모 아래에 나타남
@@ -32,14 +32,14 @@ test('sidebar folder tree navigates into folders and back to root', async ({ pag
   const childInTree = page.locator('.tree-name', { hasText: child })
   await expect(childInTree).toBeVisible()
 
-  // 트리에서 자식 폴더로 진입 (경로: 공간 / 부모 / 자식)
+  // 트리에서 자식 폴더로 진입 → 자식이 현재 폴더로 활성 표시된다
   await childInTree.click()
-  await expect(page.locator('.crumb-current, .crumb', { hasText: child })).toBeVisible()
+  await expect(page.locator('.tree-row.active', { hasText: child })).toBeVisible()
 
-  // 브레드크럼에서 부모를 눌러 한 단계 위(부모)로 복귀
-  await page.locator('.crumb', { hasText: parent }).click()
-  await expect(page.locator('.crumb-current, .crumb', { hasText: parent })).toBeVisible()
-  await expect(page.locator('.crumb-current', { hasText: child })).toHaveCount(0)
+  // 트리에서 부모 폴더를 눌러 한 단계 위(부모)로 복귀 (브레드크럼 대체)
+  await page.locator('.tree-name', { hasText: parent }).first().click()
+  await expect(page.locator('.tree-row.active', { hasText: parent })).toBeVisible()
+  await expect(page.locator('.tree-row.active', { hasText: child })).toHaveCount(0)
 
   // 공간 루트(사이드바의 활성 공간)를 눌러 최상위로 복귀
   await page.locator('.space-item.space-root.active').click()

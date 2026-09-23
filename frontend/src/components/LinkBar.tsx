@@ -8,11 +8,12 @@ interface Props {
   space: SpaceInfo | null
   path: NodeInfo[]
   selected: NodeInfo | null
-  onNavigate: (index: number | null) => void // null = 공간 루트
-  onDropToCrumb: (draggedId: string, targetIndex: number | null, srcSpaceId: string) => void
+  onNavigate?: (index: number | null) => void // null = 공간 루트 (경로 표시용, actionsOnly에선 불필요)
+  onDropToCrumb?: (draggedId: string, targetIndex: number | null, srcSpaceId: string) => void
   activeToken?: string | null // 지금 메모리에 든 임시 토큰 — 서버 업로드 curl 자동 채움
   onActiveToken: (token: string | null) => void // 임시 토큰 발급/해제 반영
   onLocalUpload?: () => void // 내 PC에서 현재 위치로 업로드(파일 선택창 열기)
+  actionsOnly?: boolean // true=경로(크럼) 없이 액션 버튼만 (상단 바에 얹기 위함)
 }
 
 export default function LinkBar({
@@ -24,6 +25,7 @@ export default function LinkBar({
   activeToken,
   onActiveToken,
   onLocalUpload,
+  actionsOnly = false,
 }: Props) {
   const [shareOpen, setShareOpen] = useState(false)
   const [serverUpOpen, setServerUpOpen] = useState(false)
@@ -43,22 +45,23 @@ export default function LinkBar({
         if (id) {
           e.preventDefault()
           const srcSpace = e.dataTransfer.getData('application/x-node-space')
-          onDropToCrumb(id, index, srcSpace)
+          onDropToCrumb?.(id, index, srcSpace)
         }
       },
     }
   }
 
   return (
-    <div className="linkbar">
+    <div className={`linkbar${actionsOnly ? ' linkbar--actions-only' : ''}`}>
+      {!actionsOnly && (
       <div className="linkbar-crumbs">
-        <button className="crumb" onClick={() => onNavigate(null)} {...crumbDropHandlers(null)}>
+        <button className="crumb" onClick={() => onNavigate?.(null)} {...crumbDropHandlers(null)}>
           {space?.name ?? '…'}
         </button>
         {path.map((folder, i) => (
           <span key={folder.id}>
             <span className="crumb-sep">/</span>
-            <button className="crumb" onClick={() => onNavigate(i)} {...crumbDropHandlers(i)}>
+            <button className="crumb" onClick={() => onNavigate?.(i)} {...crumbDropHandlers(i)}>
               {folder.name}
             </button>
           </span>
@@ -70,6 +73,7 @@ export default function LinkBar({
           </>
         )}
       </div>
+      )}
 
       <div className="linkbar-actions">
         {/* 로컬: 다운로드 · 로컬 업로드 (연한 노랑) */}

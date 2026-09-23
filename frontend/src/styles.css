@@ -391,6 +391,26 @@ button:focus-visible {
   color: var(--ink);
   font-size: 13px;
   outline: none;
+  text-overflow: ellipsis;
+}
+/* 주소(경로) 모드 — 파일을 열면 검색창이 그 파일의 경로를 보여주는 주소창이 된다 */
+.topbar-search.is-address {
+  background: color-mix(in srgb, var(--primary) 7%, var(--canvas-parchment));
+}
+.topbar-search-copy {
+  flex: 0 0 auto;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+  padding: 2px 4px;
+  border-radius: 6px;
+  opacity: 0.75;
+}
+.topbar-search-copy:hover {
+  opacity: 1;
+  background: color-mix(in srgb, var(--primary) 14%, transparent);
 }
 .topbar-search-results {
   position: absolute;
@@ -502,6 +522,16 @@ button:focus-visible {
   gap: var(--sp-xs);
   align-items: center;
   flex-shrink: 0;
+}
+/* actionsOnly: 바 크롬(스티키·패딩·배경·테두리)을 없애고 액션만 상단 바에 인라인으로 얹는다 */
+.linkbar--actions-only {
+  display: contents;
+}
+/* 상단 바(.topbar-fileactions)는 overflow-x:auto라 세로 오버플로도 잘라낸다.
+   이 맥락에선 액션이 컨테이닝 블록을 만들지 않게 static으로 두어, 공유/서버업로드 팝오버가
+   뷰포트 기준(top:56px/right)으로 상단 바 밖에 떠서 잘리지 않게 한다(Stage B FileActions와 동일). */
+.linkbar--actions-only .linkbar-actions {
+  position: static;
 }
 
 /* 링크처럼 보이는 버튼(예: 서버 업로드 팝오버의 '해제') */
