@@ -9,7 +9,7 @@ interface Props {
   path: NodeInfo[]
   selected: NodeInfo | null
   onNavigate: (index: number | null) => void // null = 공간 루트
-  onDropToCrumb: (draggedId: string, targetIndex: number | null) => void
+  onDropToCrumb: (draggedId: string, targetIndex: number | null, srcSpaceId: string) => void
   activeToken?: string | null // 지금 메모리에 든 임시 토큰 — 서버 업로드 curl 자동 채움
   onActiveToken: (token: string | null) => void // 임시 토큰 발급/해제 반영
   onLocalUpload?: () => void // 내 PC에서 현재 위치로 업로드(파일 선택창 열기)
@@ -42,7 +42,8 @@ export default function LinkBar({
         const id = e.dataTransfer.getData('application/x-node-id')
         if (id) {
           e.preventDefault()
-          onDropToCrumb(id, index)
+          const srcSpace = e.dataTransfer.getData('application/x-node-space')
+          onDropToCrumb(id, index, srcSpace)
         }
       },
     }

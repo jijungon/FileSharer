@@ -38,7 +38,11 @@ interface Props {
   version: number // 구조 변경 시 증가 → 다시 로드
   onOpenFolder: (folderId: string) => void
   onOpenFile: (row: TreeRow) => void
-  onDropToFolder?: (draggedId: string, targetFolderId: string | null) => void
+  onDropToFolder?: (
+    draggedId: string,
+    targetFolderId: string | null,
+    ctx: { srcSpaceId: string; targetSpaceId: string },
+  ) => void
   onUploadFiles?: (targetFolderId: string | null, e: React.DragEvent) => void // 로컬 파일/폴더 → 그 폴더(null=공간 루트)로 업로드
   // 우클릭 컨텍스트 메뉴 동작(파일목록 표를 대체 — 이름변경/즐겨찾기/삭제)
   // 이름변경은 인라인(제자리 입력) — 빈/동일 이름이면 호출 안 함.
@@ -174,7 +178,9 @@ export default function FolderTree({
         const id = e.dataTransfer.getData('application/x-node-id')
         if (id) {
           e.preventDefault()
-          onDropToFolder?.(id, targetId)
+          // 소스 공간을 함께 넘겨, 드롭 지점에서 같은 공간이면 이동·다른 공간이면 복사로 판단하게 한다.
+          const srcSpace = e.dataTransfer.getData('application/x-node-space')
+          onDropToFolder?.(id, targetId, { srcSpaceId: srcSpace, targetSpaceId: spaceId })
         } else if (e.dataTransfer.types.includes('Files')) {
           e.preventDefault()
           onUploadFiles?.(targetId, e) // 로컬 파일/폴더 → 이 폴더(targetId=null이면 공간 루트) 안으로 업로드
@@ -188,6 +194,8 @@ export default function FolderTree({
   function rowDragStart(e: React.DragEvent, node: TreeNode) {
     e.dataTransfer.setData('application/x-node-id', node.id)
     e.dataTransfer.setData('application/x-node-ids', JSON.stringify([node.id]))
+    e.dataTransfer.setData('application/x-node-space', spaceId) // 소스 공간 — 드롭 시 이동/복사 판단 기준
+
     e.dataTransfer.effectAllowed = 'copyMove'
     // 기본 고스트는 뒤(드롭 위치)를 가리므로 커서 옆 작은 칩으로 대체(#81)
     if (typeof document !== 'undefined' && e.dataTransfer.setDragImage) {
