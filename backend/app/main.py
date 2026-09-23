@@ -1,6 +1,7 @@
 import asyncio
 import contextlib
 import logging
+import threading
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -21,6 +22,7 @@ from .api.tokens import router as tokens_router
 from .bootstrap import run_bootstrap
 from .config import get_settings
 from .db import build_engine, make_sessionmaker, run_migrations
+from .services import search_index
 from .services.storage import build_storage
 from .services.trash import purge_expired
 
@@ -39,6 +41,19 @@ def create_app() -> FastAPI:
     SessionLocal = make_sessionmaker(engine)
     with SessionLocal() as db:
         run_bootstrap(db)
+
+    def _backfill_search_index() -> None:
+        """기존 텍스트 파일을 내용 검색 인덱스에 채운다(기동 시 1회). 자체 세션·스토리지를
+        열어 백그라운드로 돌며, 기동을 막지 않고 실패해도 앱을 죽이지 않는다."""
+        try:
+            with SessionLocal() as db:
+                indexed = search_index.backfill(db, build_storage(settings))
+            logger.info("내용 검색 인덱스 백필 완료: %d개 파일", indexed)
+        except Exception:  # 백필 실패가 앱을 죽이면 안 된다
+            logger.exception("내용 검색 인덱스 백필 실패")
+
+    logger.info("내용 검색 인덱스 백필 시작(백그라운드)")
+    threading.Thread(target=_backfill_search_index, name="fts-backfill", daemon=True).start()
 
     async def _sweep_trash() -> None:
         """휴지통 보존기간 지난 항목 자동 완전삭제. blocking I/O라 스레드에서 실행."""
