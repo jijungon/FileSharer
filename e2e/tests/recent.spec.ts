@@ -35,9 +35,9 @@ test('파일을 열면 "최근" 뷰에 쌓이고, 클릭하면 다시 열린다'
   const recentItem = page.locator('.recent-inline .recent-item', { hasText: fname })
   await expect(recentItem).toBeVisible()
 
-  // 공간 루트로 나가 뷰어를 닫는다
+  // 공간 루트로 나가면 탐색 뷰로 돌아온다(다중 탭: 탭은 열린 채 유지되고 뷰어만 비활성)
   await page.locator('.space-item.space-root.active').click()
-  await expect(page.locator('.viewer-area')).toHaveCount(0)
+  await expect(page.locator('.browser-welcome')).toBeVisible()
 
   // 인라인 최근 항목 클릭 → 다시 뷰어로 열림
   await page.locator('.recent-inline .recent-item', { hasText: fname }).click()

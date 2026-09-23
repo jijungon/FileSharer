@@ -193,22 +193,45 @@ def space_tree(
     ]
 
 
+# 내용(전문) 검색 대상 텍스트 파일. mime이 text/ 이거나 아래 확장자.
+# 큰 파일·개수는 제한해 검색 지연을 막는다(정식 인덱스가 아닌 즉석 스캔).
+_CONTENT_EXTS = {
+    "md", "markdown", "txt", "log", "json", "yml", "yaml", "csv", "tsv",
+    "sh", "bash", "zsh", "py", "rb", "pl", "lua", "r",
+    "js", "jsx", "ts", "tsx", "mjs", "cjs",
+    "css", "scss", "less", "xml", "svg", "sql",
+    "toml", "ini", "conf", "cfg", "env", "properties", "dockerfile", "makefile", "gitignore",
+    "go", "rs", "java", "kt", "swift", "php", "c", "h", "cpp", "cc", "hpp", "cs",
+    "tf", "gradle", "html", "htm",
+}
+_CONTENT_MAX_BYTES = 512 * 1024  # 파일당 앞 512KB만 읽어 검사
+_CONTENT_MAX_FILES = 400  # 한 검색에서 스캔할 최대 파일 수
+
+
+def _is_text_node(node: Node) -> bool:
+    if (node.mime or "").startswith("text/"):
+        return True
+    ext = node.name.rsplit(".", 1)[-1].lower() if "." in node.name else ""
+    return ext in _CONTENT_EXTS
+
+
 @router.get("/spaces/{space_id}/search")
 def search_nodes(
     space_id: str,
     q: str = "",
     user: User = Depends(current_user),
     db: Session = Depends(get_db),
+    storage: StorageBackend = Depends(get_storage),
 ) -> list[dict]:
-    """공간 안에서 이름에 q가 포함된(대소문자 무시) 비삭제 노드를 재귀로 찾는다.
-    각 결과에 상위 폴더 경로(path, 공간 루트 기준 'a/b/c')를 붙여 위치를 보여준다."""
+    """공간 안에서 q가 이름 또는 (텍스트 파일) 내용에 포함된 비삭제 노드를 찾는다.
+    각 결과에 상위 폴더 경로(path)와 매치 종류(match: 'name'|'content')를 붙인다."""
     space = get_space_checked(db, user, space_id)
     term = q.strip()
     if not term:
         return []
-    # SQL LIKE 와일드카드/이스케이프 문자를 리터럴로 처리
+    # 1) 이름 매치 — SQL LIKE 와일드카드/이스케이프 문자를 리터럴로 처리
     escaped = term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-    rows = db.scalars(
+    name_rows = db.scalars(
         select(Node)
         .where(
             Node.space_id == space.id,
@@ -217,6 +240,37 @@ def search_nodes(
         )
         .limit(200)
     ).all()
+    # id → (node, match종류). 이름 매치를 우선 채운다.
+    matched: dict[str, tuple[Node, str]] = {n.id: (n, "name") for n in name_rows}
+
+    # 2) 내용 매치 — 텍스트 파일의 앞부분을 읽어 term 포함 여부 확인(이름서 잡힌 건 제외)
+    term_low = term.lower()
+    candidates = db.scalars(
+        select(Node)
+        .where(
+            Node.space_id == space.id,
+            Node.type == "file",
+            Node.deleted_at.is_(None),
+            Node.size > 0,
+            Node.size <= _CONTENT_MAX_BYTES,
+        )
+        .limit(2000)
+    ).all()
+    scanned = 0
+    for n in candidates:
+        if n.id in matched or not n.storage_key or not _is_text_node(n):
+            continue
+        if scanned >= _CONTENT_MAX_FILES:
+            break
+        scanned += 1
+        try:
+            with storage.open_stream(n.storage_key) as fh:
+                blob = fh.read(_CONTENT_MAX_BYTES)
+        except Exception:
+            continue
+        if term_low in blob.decode("utf-8", "ignore").lower():
+            matched[n.id] = (n, "content")
+
     # 상위 경로 표시용으로 공간의 폴더를 한 번에 로드해 메모리에서 경로를 해석
     folders = db.scalars(
         select(Node).where(
@@ -234,9 +288,12 @@ def search_nodes(
         return "/".join(reversed(parts))
 
     out: list[dict] = []
-    for n in sorted(rows, key=lambda n: (0 if n.type == "folder" else 1, n.name)):
+    for n, kind in sorted(
+        matched.values(), key=lambda t: (0 if t[0].type == "folder" else 1, t[0].name)
+    ):
         d = node_out(n)
         d["path"] = path_of(n)
+        d["match"] = kind
         out.append(d)
     return out
 

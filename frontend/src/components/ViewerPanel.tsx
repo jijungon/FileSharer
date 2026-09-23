@@ -92,6 +92,7 @@ interface Props {
   activeToken?: string | null // 방금 발급한 토큰 — 서버 업로드 curl 자동 채움
   onActiveToken: (token: string | null) => void // 임시 토큰 발급/해제 반영
   onLocalUpload?: () => void // 내 PC에서 현재 위치로 업로드(파일 선택창 열기)
+  onDirtyChange?: (dirty: boolean) => void // 미저장(dirty) 변화 — 다중 탭 ● 뱃지/닫기 확인용
 }
 
 // 편집/미리보기 상단 경로(예전 LinkBar의 브레드크럼). 파일을 열면 LinkBar를 숨기고
@@ -490,6 +491,7 @@ function TextEditor({
   activeToken,
   onActiveToken,
   onLocalUpload,
+  onDirtyChange,
 }: Props) {
   const appTheme = useAppTheme() // 라이트/다크 토글에 따라 에디터 테마도 전환
   const [text, setText] = useState<string | null>(null)
@@ -625,6 +627,13 @@ function TextEditor({
     }
     window.addEventListener('beforeunload', onBeforeUnload)
     return () => window.removeEventListener('beforeunload', onBeforeUnload)
+  }, [dirty])
+
+  // dirty 변화를 부모(다중 탭)로 올린다 — 탭의 ● 뱃지 + 닫기 확인용.
+  // 언마운트 시엔 부모가 dirtyTabs에서 정리하므로 여기선 값만 반영한다.
+  useEffect(() => {
+    onDirtyChange?.(dirty)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dirty])
 
   function onChange(value: string) {
