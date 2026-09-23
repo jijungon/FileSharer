@@ -148,3 +148,20 @@ test('상단 검색: 검색창 바깥을 클릭하면 드롭다운이 닫힌다'
   await page.locator('.logo').click()
   await expect(page.locator('.topbar-search-results')).toHaveCount(0)
 })
+
+test('상단 검색: 경로처럼 입력해도(공간/폴더/파일명) 마지막 파일명으로 찾는다', async ({ page }) => {
+  await login(page)
+  const tag = Date.now()
+  const fname = `경로검색_${tag}.txt`
+  await page.locator('input[type="file"]:not([webkitdirectory])').setInputFiles({
+    name: fname,
+    mimeType: 'text/plain',
+    buffer: Buffer.from('x'),
+  })
+  await expect(page.locator('.upload-row')).toHaveCount(0)
+
+  // '내 공간/경로검색_TAG.txt' 처럼 경로로 입력해도 마지막 조각(파일명)으로 찾아진다
+  await page.getByPlaceholder('파일 이름·내용 검색').fill(`내 공간/${fname}`)
+  const result = page.locator('.topbar-search-results .search-result', { hasText: fname })
+  await expect(result).toBeVisible()
+})

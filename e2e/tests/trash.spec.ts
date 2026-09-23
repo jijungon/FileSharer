@@ -112,3 +112,27 @@ test('휴지통 항목에 자동 완전삭제까지 남은 시간이 표시된�
   await expect(trashRow.locator('.col-remaining .trash-remaining')).toBeVisible()
   await expect(trashRow.locator('.col-remaining .trash-remaining')).toContainText('남음')
 })
+
+test('휴지통 모드에서 (휴지통에 없는) 트리 파일을 누르면 휴지통을 벗어나 뷰어가 열린다', async ({
+  page,
+}) => {
+  await login(page)
+  const fname = `트리열기_${Date.now()}.md`
+  await page.locator('input[type="file"]:not([webkitdirectory])').setInputFiles({
+    name: fname,
+    mimeType: 'text/markdown',
+    buffer: Buffer.from('# 안녕'),
+  })
+  await expect(page.locator('.tree-name').filter({ hasText: fname })).toBeVisible()
+
+  // 휴지통 모드 진입 → 메인에 휴지통 목록(.file-table), 트리는 그대로 보임
+  await page.locator('.sidebar-trash').click()
+  await expect(page.locator('.file-table')).toBeVisible()
+  await expect(page.locator('.tree-name').filter({ hasText: fname })).toBeVisible()
+
+  // 휴지통 모드에서 트리 파일 클릭 → 휴지통을 벗어나 그 파일 뷰어(에디터)가 열린다
+  await page.locator('.tree-name').filter({ hasText: fname }).click()
+  await expect(page.locator('.editor-toolbar')).toBeVisible()
+  await expect(page.locator('.sidebar-trash.active')).toHaveCount(0) // 휴지통 모드 해제
+  await expect(page.locator('.file-table')).toHaveCount(0) // 휴지통 목록 사라짐
+})
