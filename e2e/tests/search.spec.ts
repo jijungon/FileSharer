@@ -112,3 +112,39 @@ test('상단 검색: 사내 링크(해시)를 붙여넣으면 그 파일이 결�
   const result = page.locator('.topbar-search-results .search-result', { hasText: fname })
   await expect(result).toBeVisible()
 })
+
+test('상단 검색: 화살표로 결과를 고르고 Enter로 연다', async ({ page }) => {
+  await login(page)
+  const tag = Date.now()
+  for (const n of [`고르기${tag}가.txt`, `고르기${tag}나.txt`]) {
+    await page.locator('input[type="file"]:not([webkitdirectory])').setInputFiles({
+      name: n,
+      mimeType: 'text/plain',
+      buffer: Buffer.from('x'),
+    })
+    await expect(page.locator('.upload-row')).toHaveCount(0)
+  }
+
+  const box = page.getByPlaceholder('파일 이름·내용 검색')
+  await box.click()
+  await box.fill(`고르기${tag}`)
+  await expect(page.locator('.topbar-search-results .search-result')).toHaveCount(2)
+
+  // ↓ 로 결과를 하이라이트하고, Enter 로 그 결과를 연다
+  await box.press('ArrowDown')
+  const picked = await page.locator('.search-result.active .search-result-name').textContent()
+  await box.press('Enter')
+  await expect(page.locator('.topbar-search-results')).toHaveCount(0) // 드롭다운 닫힘
+  await expect(page.locator('.tab.active .tab-name')).toHaveText(picked!) // 그 파일이 탭으로 열림
+})
+
+test('상단 검색: 검색창 바깥을 클릭하면 드롭다운이 닫힌다', async ({ page }) => {
+  await login(page)
+  const box = page.getByPlaceholder('파일 이름·내용 검색')
+  await box.click()
+  await box.fill('아무거나검색xyz')
+  await expect(page.locator('.topbar-search-results')).toBeVisible()
+  // 검색창 바깥(로고)을 클릭 → 드롭다운이 닫힌다
+  await page.locator('.logo').click()
+  await expect(page.locator('.topbar-search-results')).toHaveCount(0)
+})

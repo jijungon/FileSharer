@@ -126,6 +126,9 @@ export default function Files() {
   } | null>(null)
   const [searchQ, setSearchQ] = useState('')
   const [searchResults, setSearchResults] = useState<NodeInfo[] | null>(null) // null=검색 안 함
+  const [searchFocused, setSearchFocused] = useState(false) // 상단 검색 드롭다운 열림 여부
+  const [searchIdx, setSearchIdx] = useState(-1) // 키보드로 하이라이트한 결과(-1=없음)
+  const searchRef = useRef<HTMLDivElement>(null)
   const [favIds, setFavIds] = useState<Set<string>>(new Set()) // 내 즐겨찾기 노드 id
   const [favMode, setFavMode] = useState(false) // 즐겨찾기 뷰
   const [favItems, setFavItems] = useState<NodeInfo[]>([])
@@ -447,6 +450,37 @@ export default function Files() {
       clearTimeout(timer)
     }
   }, [searchQ, spaceId])
+
+  // 검색 결과가 바뀌면 키보드 하이라이트를 초기화(Enter는 없으면 첫 결과를 연다)
+  useEffect(() => {
+    setSearchIdx(-1)
+  }, [searchResults])
+
+  // 하이라이트한 결과를 드롭다운 안에서 보이게 스크롤
+  useEffect(() => {
+    if (searchIdx < 0) return
+    searchRef.current?.querySelector('.search-result.active')?.scrollIntoView({ block: 'nearest' })
+  }, [searchIdx])
+
+  // 검색창 바깥을 누르면 드롭다운을 닫고 포커스를 바깥으로 넘긴다
+  useEffect(() => {
+    if (!searchFocused) return
+    function onDown(e: MouseEvent) {
+      if (searchRef.current && !searchRef.current.contains(e.target as Node)) {
+        setSearchFocused(false)
+      }
+    }
+    document.addEventListener('mousedown', onDown)
+    return () => document.removeEventListener('mousedown', onDown)
+  }, [searchFocused])
+
+  // 검색 결과 선택 → 그 파일을 열고 검색을 닫는다(클릭·Enter 공통)
+  function openSearchResult(node: NodeInfo) {
+    openLocated(node)
+    setSearchQ('')
+    setSearchFocused(false)
+    setSearchIdx(-1)
+  }
 
   function flash(msg: string) {
     setNotice(msg)
@@ -872,7 +906,7 @@ export default function Files() {
           FileSharer <span className="app-version">{__APP_VERSION__}</span>
         </h2>
         {/* 상단 검색 — 현재 공간에서 파일 이름 + 내용(텍스트)으로 찾고, 누르면 그 파일로 이동 */}
-        <div className="topbar-search">
+        <div className="topbar-search" ref={searchRef}>
           <span className="topbar-search-icon" aria-hidden>
             🔎
           </span>
@@ -884,13 +918,36 @@ export default function Files() {
             autoCapitalize="off"
             autoCorrect="off"
             value={searchQ}
-            onChange={(e) => setSearchQ(e.target.value)}
+            onFocus={() => setSearchFocused(true)}
+            onChange={(e) => {
+              setSearchQ(e.target.value)
+              setSearchFocused(true)
+            }}
             onKeyDown={(e) => {
-              if (e.key === 'Escape') setSearchQ('')
+              const rows = searchResults ?? []
+              if (e.key === 'ArrowDown') {
+                e.preventDefault()
+                setSearchFocused(true)
+                setSearchIdx((i) => Math.min(i + 1, rows.length - 1))
+              } else if (e.key === 'ArrowUp') {
+                e.preventDefault()
+                setSearchIdx((i) => Math.max(i - 1, 0))
+              } else if (e.key === 'Enter') {
+                const pick = rows[searchIdx >= 0 ? searchIdx : 0]
+                if (pick) {
+                  e.preventDefault()
+                  openSearchResult(pick)
+                }
+              } else if (e.key === 'Escape') {
+                setSearchQ('')
+                setSearchFocused(false)
+                setSearchIdx(-1)
+                e.currentTarget.blur()
+              }
             }}
             aria-label="파일 이름·내용 검색"
           />
-          {searchResults !== null && searchQ.trim() && (
+          {searchResults !== null && searchQ.trim() && searchFocused && (
             <div className="topbar-search-results">
               <div className="search-results-head muted">
                 {searchResults.length > 0
@@ -899,14 +956,12 @@ export default function Files() {
               </div>
               {searchResults.length > 0 && (
                 <ul className="search-results-list">
-                  {searchResults.map((node) => (
+                  {searchResults.map((node, idx) => (
                     <li
                       key={node.id}
-                      className="search-result"
-                      onClick={() => {
-                        openLocated(node)
-                        setSearchQ('')
-                      }}
+                      className={`search-result${idx === searchIdx ? ' active' : ''}`}
+                      onMouseEnter={() => setSearchIdx(idx)}
+                      onClick={() => openSearchResult(node)}
                     >
                       <span className="node-icon">{node.type === 'folder' ? '📁' : '📄'}</span>
                       <span className="search-result-name">{node.name}</span>
