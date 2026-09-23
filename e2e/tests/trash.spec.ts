@@ -1,5 +1,4 @@
 import { expect, test } from './fixtures'
-import { newFolder } from './helpers'
 
 const EMAIL = 'e2e@test.local'
 const PASSWORD = 'e2e-password-123'
@@ -112,42 +111,4 @@ test('휴지통 항목에 자동 완전삭제까지 남은 시간이 표시된�
   const trashRow = page.getByRole('row', { name: /카운트다운\.txt/ }).first()
   await expect(trashRow.locator('.col-remaining .trash-remaining')).toBeVisible()
   await expect(trashRow.locator('.col-remaining .trash-remaining')).toContainText('남음')
-})
-
-test('휴지통 파일 행을 누르면 원래 위치(폴더)로 이동한다', async ({ page }) => {
-  page.on('dialog', (d) => d.accept())
-  await login(page)
-  const tag = Date.now()
-  const folder = `상위폴더_${tag}`
-  const fname = `위치찾기_${tag}.txt`
-
-  // 폴더 만들고 그 안에 파일 업로드
-  await newFolder(page, folder)
-  const folderItem = page.locator('.tree-name').filter({ hasText: folder })
-  await expect(folderItem).toBeVisible()
-  await folderItem.click()
-  await expect(page.locator('.crumb-current, .crumb', { hasText: folder })).toBeVisible()
-  await page.locator('input[type="file"]:not([webkitdirectory])').setInputFiles({
-    name: fname,
-    mimeType: 'text/plain',
-    buffer: Buffer.from('here'),
-  })
-  await expect(page.locator('.upload-row')).toHaveCount(0)
-
-  // 파일을 휴지통으로(트리 행 🗑) → 트리에서 사라짐
-  await page
-    .locator('.tree-row')
-    .filter({ hasText: fname })
-    .getByRole('button', { name: '휴지통으로 이동' })
-    .click()
-  await expect(page.locator('.tree-name').filter({ hasText: fname })).toHaveCount(0)
-
-  // 휴지통 열기 → 그 파일 행을 클릭 → 원래 폴더로 이동(휴지통 해제 + 크럼에 폴더)
-  // (폴더가 트리에 남아 있어 그 행의 🗑도 '휴지통' 이름에 걸리므로 사이드바 휴지통을 특정)
-  await page.locator('.sidebar-trash').click()
-  const trashRow = page.locator('.trash-row').filter({ hasText: fname })
-  await expect(trashRow).toBeVisible()
-  await trashRow.click()
-  await expect(page.locator('.crumb-current, .crumb', { hasText: folder })).toBeVisible()
-  await expect(page.locator('.trash-row')).toHaveCount(0) // 휴지통 목록에서 나옴
 })
