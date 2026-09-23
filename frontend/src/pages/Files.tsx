@@ -844,19 +844,29 @@ export default function Files() {
     toggleFav({ ...row, space_id: spaceId ?? '', created_at: null, updated_at: null })
   }
 
-  async function onMove(draggedId: string, targetFolderId: string | null) {
-    if (!spaceId || draggedId === targetFolderId) return
-    await guard(() =>
-      moveNode(draggedId, targetFolderId ? { parentId: targetFolderId } : { spaceId }),
-    )
-    closeViewerIfAffected([draggedId]) // 열려 있던 파일을 옮겼으면 뷰어를 닫는다
-  }
-
-  async function copyToSpace(draggedId: string, targetSpaceId: string, spaceName: string) {
-    if (draggedId === targetSpaceId || targetSpaceId === spaceId) return
-    // 공간 간 전송은 복사 — 원본은 그대로 두고 대상 공간에 복사본을 만든다.
-    const ok = await guard(() => copyNode(draggedId, { spaceId: targetSpaceId }))
-    if (ok) flash(`${spaceName}(으)로 복사했습니다`)
+  // 드래그 항목을 폴더/공간에 놓았을 때: 같은 공간이면 이동, 다른 공간이면 복사(원본 유지).
+  // 판단 기준은 "드래그한 파일의 실제 공간(srcSpaceId) vs 놓은 대상의 공간" — 활성 공간이 아니다.
+  // (두 공간 트리를 동시에 보여준 뒤로, 활성 공간 기준 판단은 크로스공간 드롭을 이동으로 오판했다.)
+  async function dropNode(
+    draggedId: string,
+    target: { spaceId: string; folderId?: string | null; spaceName?: string },
+    srcSpaceId?: string,
+  ) {
+    const folderId = target.folderId ?? null
+    if (draggedId === folderId) return
+    if (srcSpaceId && srcSpaceId !== target.spaceId) {
+      // 다른 공간 → 복사
+      const ok = await guard(() =>
+        copyNode(draggedId, folderId ? { parentId: folderId } : { spaceId: target.spaceId }),
+      )
+      if (ok) flash(target.spaceName ? `${target.spaceName}(으)로 복사했습니다` : '복사했습니다')
+    } else {
+      // 같은 공간 → 이동
+      await guard(() =>
+        moveNode(draggedId, folderId ? { parentId: folderId } : { spaceId: target.spaceId }),
+      )
+      closeViewerIfAffected([draggedId]) // 열려 있던 파일을 옮겼으면 뷰어를 닫는다
+    }
   }
 
   function draggedIds(e: React.DragEvent): string[] {
@@ -1042,7 +1052,10 @@ export default function Files() {
           path={path}
           selected={selected}
           onNavigate={crumbNavigate}
-          onDropToCrumb={(id, idx) => onMove(id, idx === null ? null : path[idx].id)}
+          onDropToCrumb={(id, idx, srcSpace) => {
+            if (!spaceId) return
+            dropNode(id, { spaceId, folderId: idx === null ? null : path[idx].id }, srcSpace)
+          }}
           activeToken={activeToken}
           onActiveToken={setActiveToken}
           onLocalUpload={() => fileInput.current?.click()}
@@ -1129,9 +1142,9 @@ export default function Files() {
                   const ids = draggedIds(e)
                   if (ids.length > 0) {
                     e.preventDefault()
-                    // 활성 공간 위에 놓으면 그 공간 최상위로 이동, 다른 공간이면 복사
-                    if (s.id === spaceId) onMove(ids[0], null)
-                    else copyToSpace(ids[0], s.id, s.name)
+                    // 소스 공간과 이 공간이 같으면 이동(이 공간 최상위로), 다르면 복사 — 활성 공간이 아니라 드래그한 파일의 공간으로 판단
+                    const srcSpace = e.dataTransfer.getData('application/x-node-space')
+                    dropNode(ids[0], { spaceId: s.id, spaceName: s.name }, srcSpace)
                   } else if (e.dataTransfer.types.includes('Files')) {
                     e.preventDefault()
                     // 로컬 파일/폴더 → 이 공간 최상위로 업로드
@@ -1155,7 +1168,9 @@ export default function Files() {
                   version={treeVersion}
                   onOpenFolder={openFolderById}
                   onOpenFile={openFileFromTree}
-                  onDropToFolder={(id, target) => onMove(id, target)}
+                  onDropToFolder={(id, target, ctx) =>
+                    dropNode(id, { spaceId: ctx.targetSpaceId, folderId: target }, ctx.srcSpaceId)
+                  }
                   onUploadFiles={(folderId, e) =>
                     uploadToTarget({ spaceId: s.id, parentId: folderId }, e)
                   }
