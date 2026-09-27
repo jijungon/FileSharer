@@ -996,15 +996,16 @@ button:focus-visible {
   max-width: 260px;
   padding: 6px 11px;
   border-radius: var(--radius-md);
-  background: color-mix(in srgb, var(--canvas) 90%, transparent);
+  /* 드래그 이미지는 브라우저가 스냅샷으로 뜨므로 반투명·큰 블러는 뭉개져 흐릿하게 끌린다.
+     불투명 배경 + 작은 그림자로 또렷하게 보이게 한다. */
+  background: var(--canvas);
   border: 1px solid var(--primary);
-  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.42);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
   color: var(--ink);
   font-size: 13px;
   font-weight: 500;
   line-height: 1.2;
   white-space: nowrap;
-  opacity: 0.9;
 }
 .drag-chip__icon {
   font-size: 14px;
@@ -2245,6 +2246,15 @@ button:focus-visible {
   gap: 2px;
   min-height: 24px; /* ROW_H(FolderTree)와 일치 — sticky 헤더 계단 높이 기준 */
   border-radius: var(--radius-sm);
+  /* 드롭 대상 강조가 행 사이를 지날 때 딱딱 점멸하지 않도록 아주 짧게 섞어준다.
+     (일반 UI 모션은 여전히 없음 — 드래그 피드백에만 한정) */
+  transition:
+    background 0.12s ease,
+    box-shadow 0.12s ease;
+}
+/* 지금 끌고 있는 원본 행 — "이걸 들고 있다"는 피드백 */
+.tree-row.dragging {
+  opacity: 0.45;
 }
 
 /* Sticky Scroll: 폴더 헤더를 스크롤 상단에 고정(불투명 배경으로 아래 내용 가림).

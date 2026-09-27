@@ -68,6 +68,7 @@ export default function FolderTree({
   const [rows, setRows] = useState<TreeRow[]>([])
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [dragOverId, setDragOverId] = useState<string | null>(null) // 드래그가 올라온 폴더(드롭 대상 강조)
+  const [draggingId, setDraggingId] = useState<string | null>(null) // 지금 끌고 있는 행(흐리게 표시)
   const [renaming, setRenaming] = useState<string | null>(null) // 인라인 이름변경 중인 노드 id
   // 우클릭 컨텍스트 메뉴: 대상 행 + 화면 좌표
   const [menu, setMenu] = useState<{ row: TreeRow; x: number; y: number } | null>(null)
@@ -231,10 +232,19 @@ export default function FolderTree({
         <div
           className={`tree-row${active ? ' active' : ''}${
             dragOverId === node.id ? ' drag-over' : ''
-          }${isFolder ? ' tree-row--sticky' : ''}`}
+          }${draggingId === node.id ? ' dragging' : ''}${
+            isFolder ? ' tree-row--sticky' : ''
+          }`}
           style={isFolder ? { top: depth * ROW_H, zIndex: 60 - depth } : undefined}
           draggable={renaming !== node.id}
-          onDragStart={(e) => rowDragStart(e, node)}
+          onDragStart={(e) => {
+            setDraggingId(node.id)
+            rowDragStart(e, node)
+          }}
+          onDragEnd={() => {
+            setDraggingId(null)
+            setDragOverId(null) // 드롭 밖에서 놓아도 강조가 남지 않게
+          }}
           {...dropHandlers(isFolder ? node.id : node.parent_id)}
           onContextMenu={(e) => {
             if (!onRenameCommit && !onDelete && !onToggleFavorite) return

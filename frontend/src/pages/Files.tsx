@@ -156,6 +156,10 @@ export default function Files() {
   })
   const fileInput = useRef<HTMLInputElement>(null)
   const tabBarRef = useRef<HTMLDivElement>(null) // 탭 스트립 가로 스크롤/드래그
+  // 드래그 중 사이드바 가장자리 근처면 자동 스크롤 — 화면 밖 폴더로 옮길 때 드래그를 멈추지 않아도 된다.
+  const sidebarScrollRef = useRef<HTMLDivElement>(null)
+  const autoScrollDir = useRef(0) // -1 위로, 1 아래로, 0 정지
+  const autoScrollRaf = useRef<number | null>(null)
   const tabDrag = useRef<{ x: number; scroll: number; moved: boolean } | null>(null)
   // 탭 줄 오른쪽 '저장/자동저장' 슬롯 — 활성 편집기가 이 DOM으로 portal 렌더한다(Stage B)
   const [actionSlot, setActionSlot] = useState<HTMLDivElement | null>(null)
@@ -498,6 +502,19 @@ export default function Files() {
     document.addEventListener('mousedown', onDown)
     return () => document.removeEventListener('mousedown', onDown)
   }, [searchFocused])
+
+  // 드래그가 어디서 끝나든(바깥에 놓거나 Esc로 취소해도) 사이드바 자동 스크롤을 멈춘다.
+  useEffect(() => {
+    const stop = () => {
+      autoScrollDir.current = 0
+    }
+    window.addEventListener('dragend', stop)
+    window.addEventListener('drop', stop)
+    return () => {
+      window.removeEventListener('dragend', stop)
+      window.removeEventListener('drop', stop)
+    }
+  }, [])
 
   // 파일을 열거나 다른 파일로 바뀌면 주소창을 '경로 모드'로 되돌린다(진행 중이던 검색어는 비운다).
   useEffect(() => {
@@ -905,6 +922,29 @@ export default function Files() {
     return one ? [one] : []
   }
 
+  // ── 드래그 중 사이드바 자동 스크롤 ──
+  // 가장자리 근처에 커서가 오면 그 방향으로 계속 스크롤한다(rAF라 프레임에 맞춰 부드럽게).
+  // 없으면 화면 밖 폴더로 옮길 때 드래그를 멈추고 수동으로 스크롤해야 한다.
+  function autoScrollStep() {
+    const el = sidebarScrollRef.current
+    if (!el || autoScrollDir.current === 0) {
+      autoScrollRaf.current = null
+      return
+    }
+    el.scrollTop += autoScrollDir.current * 10
+    autoScrollRaf.current = requestAnimationFrame(autoScrollStep)
+  }
+  function onSidebarDragOver(e: React.DragEvent) {
+    const el = sidebarScrollRef.current
+    if (!el) return
+    const r = el.getBoundingClientRect()
+    const EDGE = 44 // 가장자리 감지 폭(px)
+    autoScrollDir.current = e.clientY < r.top + EDGE ? -1 : e.clientY > r.bottom - EDGE ? 1 : 0
+    if (autoScrollDir.current !== 0 && autoScrollRaf.current === null) {
+      autoScrollRaf.current = requestAnimationFrame(autoScrollStep)
+    }
+  }
+
   // 이동·삭제한 항목이 지금 뷰어에 열려 있으면 닫는다.
   // (다중 이동 후 옮긴 파일이 뷰어에 잔상처럼 남아 보이던 문제 방지)
   function closeViewerIfAffected(ids: Iterable<string>) {
@@ -1163,7 +1203,14 @@ export default function Files() {
             />
           </div>
           <div className="sidebar-divider" />
-          <div className="sidebar-scroll">
+          <div
+            className="sidebar-scroll"
+            ref={sidebarScrollRef}
+            onDragOver={onSidebarDragOver}
+            onDragLeave={() => {
+              autoScrollDir.current = 0
+            }}
+          >
           {spaces.map((s) => (
             <div key={s.id}>
               <button
