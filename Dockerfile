@@ -36,6 +36,9 @@ COPY backend/pyproject.toml ./
 COPY backend/app ./app
 COPY backend/alembic.ini ./
 COPY backend/alembic ./alembic
+# 운영 스크립트(계정 복구·백업 목록·복원)는 **서버에서 실행하는 물건**이라 이미지에 있어야 한다.
+# 빠뜨리면 문서가 안내하는 명령이 "No such file"로 죽는다(실제로 그랬다).
+COPY backend/scripts ./scripts
 RUN pip install .
 COPY --from=web /web/dist ./static
 # 서버가 자기 버전을 말할 수 있어야 한다. 프런트 번들 안의 문자열은 파일명이 안 바뀌는
