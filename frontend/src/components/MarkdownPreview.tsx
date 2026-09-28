@@ -5,18 +5,26 @@ import remarkGfm from 'remark-gfm'
 // 코드블록 타일은 어둡게 설계됨(styles.css: .md-preview pre = --surface-tile 배경 + --on-dark 글자).
 // 라이트 테마(github.css)는 토큰을 어두운색으로 칠해 어두운 배경에 묻혀 안 보였음 → 다크 테마 사용.
 import 'highlight.js/styles/github-dark.css'
+import { useAppTheme } from '../lib/theme'
 
 let mermaidSeq = 0
 
 function MermaidBlock({ code }: { code: string }) {
   const ref = useRef<HTMLDivElement>(null)
   const [error, setError] = useState('')
+  // 다이어그램 테마를 화면 테마에 맞춘다. 'neutral'로 고정돼 있어서 다크모드에선 어두운
+  // 배경 위에 어두운 글자가 그려져 라벨이 보이지 않았다(공유받은 문서에서 특히 문제).
+  const appTheme = useAppTheme()
 
   useEffect(() => {
     let alive = true
     import('mermaid').then(async (mod) => {
       const mermaid = mod.default
-      mermaid.initialize({ startOnLoad: false, securityLevel: 'strict', theme: 'neutral' })
+      mermaid.initialize({
+        startOnLoad: false,
+        securityLevel: 'strict',
+        theme: appTheme === 'dark' ? 'dark' : 'neutral',
+      })
       try {
         const { svg } = await mermaid.render(`mmd-${(mermaidSeq += 1)}`, code)
         if (alive && ref.current) ref.current.innerHTML = svg
@@ -27,7 +35,8 @@ function MermaidBlock({ code }: { code: string }) {
     return () => {
       alive = false
     }
-  }, [code])
+    // 테마가 바뀌면 다시 그린다 — 토글 즉시 반영되도록
+  }, [code, appTheme])
 
   if (error) return <pre className="mermaid-error">mermaid: {error}</pre>
   return <div className="mermaid-block" ref={ref} />

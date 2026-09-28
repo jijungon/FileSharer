@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import MarkdownPreview from '../components/MarkdownPreview'
 import { formatBytes } from '../lib/format'
+import { toggleTheme, useAppTheme } from '../lib/theme'
 
 interface ShareMeta {
   name: string
@@ -19,6 +20,7 @@ function extOf(name: string) {
 
 export default function Share() {
   const { token } = useParams()
+  const theme = useAppTheme() // 토글하면 <html data-theme> 변화를 구독해 자동 반영
   const [meta, setMeta] = useState<ShareMeta | null>(null)
   const [gone, setGone] = useState('')
   const [password, setPassword] = useState('')
@@ -130,9 +132,20 @@ export default function Share() {
             {meta.expires_at.slice(0, 10)}
           </span>
         </div>
-        <a href={downloadHref}>
-          <button className="btn-primary">다운로드</button>
-        </a>
+        {/* 공유받은 사람도 보기 편한 모드를 고를 수 있어야 한다(다크에서 다이어그램·본문 대비) */}
+        <div className="share-page-actions">
+          <button
+            className="btn-utility theme-toggle"
+            onClick={() => toggleTheme()}
+            title={theme === 'dark' ? '라이트 모드로 전환' : '다크 모드로 전환'}
+            aria-label="테마 전환"
+          >
+            {theme === 'dark' ? '☀︎' : '☾'}
+          </button>
+          <a href={downloadHref}>
+            <button className="btn-primary">다운로드</button>
+          </a>
+        </div>
       </header>
 
       <main className="share-page-body">

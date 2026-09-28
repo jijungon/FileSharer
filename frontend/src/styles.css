@@ -1970,6 +1970,13 @@ button:focus-visible {
   border-bottom: 1px solid var(--hairline);
   margin-bottom: var(--sp-md);
 }
+/* 공유 페이지 우측 액션(테마 전환 + 다운로드) — 헤더가 2단 배치를 유지하도록 묶어 둔다 */
+.share-page-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-sm);
+  flex: none;
+}
 
 .share-page-body {
   background: var(--canvas);

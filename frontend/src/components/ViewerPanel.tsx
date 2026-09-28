@@ -9,6 +9,7 @@ import { createPortal } from 'react-dom'
 import { ApiError, SpaceInfo } from '../lib/api'
 import { acquireLock, downloadUrl, LockState, NodeInfo, releaseLock } from '../lib/files'
 import { formatBytes } from '../lib/format'
+import { useAppTheme } from '../lib/theme'
 
 // DnX풍 다크 에디터 테마 (near-black base + 골드 커서/활성줄)
 const EDITOR_DARK = EditorView.theme(
@@ -60,25 +61,6 @@ import MarkdownPreview from './MarkdownPreview'
 
 const AUTOSAVE_KEY = 'filesharer.autosave'
 const MAX_EDIT_BYTES = 5 * 1024 * 1024
-
-// 현재 앱 테마(라이트/다크)를 구독한다. Files.tsx의 토글이 <html data-theme>를 바꾸므로
-// 에디터가 열려 있는 동안 토글해도 즉시 반영되도록 MutationObserver로 감시한다.
-function useAppTheme(): 'light' | 'dark' {
-  const [theme, setTheme] = useState<'light' | 'dark'>(() =>
-    typeof document !== 'undefined' && document.documentElement.dataset.theme === 'light'
-      ? 'light'
-      : 'dark',
-  )
-  useEffect(() => {
-    const el = document.documentElement
-    const obs = new MutationObserver(() =>
-      setTheme(el.dataset.theme === 'light' ? 'light' : 'dark'),
-    )
-    obs.observe(el, { attributes: true, attributeFilter: ['data-theme'] })
-    return () => obs.disconnect()
-  }, [])
-  return theme
-}
 
 interface Props {
   node: NodeInfo
