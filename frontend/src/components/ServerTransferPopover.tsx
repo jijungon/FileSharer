@@ -165,6 +165,13 @@ export default function ServerTransferPopover({
               {copied === 'dl' ? '복사됨 ✓' : '복사'}
             </button>
           </div>
+          {/* 다운로드는 '실재하는 대상의 id'가 필요해 업로드처럼 파일·폴더 두 줄을 항상 띄울 수 없다.
+              그래서 지금 안 보이는 쪽이 존재한다는 사실만이라도 알려 준다. */}
+          <p className="muted" style={{ fontSize: 12, margin: '2px 0 0' }} data-testid="server-download-hint">
+            {downloadTarget.type === 'folder'
+              ? '파일을 고르면 그 파일 하나만 받는 명령으로 바뀝니다.'
+              : '폴더를 고르거나 폴더 안에서 열면 폴더째(받으면서 tar 해제) 받는 명령으로 바뀝니다.'}
+          </p>
         </section>
       )}
 
