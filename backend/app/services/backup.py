@@ -22,6 +22,7 @@ import json
 import re
 import shutil
 import sqlite3
+import tarfile
 import tempfile
 import time
 from abc import ABC, abstractmethod
@@ -447,3 +448,85 @@ def list_runs(store: BackupStore) -> Iterator[dict]:
                 yield {"kind": kind, "stamp": stamp, "manifest": None}
                 continue
             yield {"kind": kind, "stamp": stamp, "manifest": json.loads(store.read_bytes(key))}
+
+
+# ── 복원 ───────────────────────────────────────────────────────────────────
+# 백업과 **같은 파일**에 둔다. 공간 이름 규칙(backup_space_name)이 바뀌면 복원이 조용히
+# 깨지므로, 둘이 한눈에 보여야 한다. 왕복 테스트가 이 짝을 고정한다.
+def node_paths(db_path: Path) -> dict[str, tuple[str, int]]:
+    """(복원) DB에서 '공간이름/경로/파일명' → (storage_key, size) 표를 만든다.
+
+    tar 의 아카이브 경로와 맞추기 위한 것. 백업이 쓰는 공간 이름 규칙과 동일해야 한다.
+    """
+    con = sqlite3.connect(db_path)
+    con.row_factory = sqlite3.Row
+    try:
+        users = {r["id"]: r["email"] for r in con.execute("select id, email from users")}
+        teams = {r["id"]: r["name"] for r in con.execute("select id, name from teams")}
+        space_name: dict[str, str] = {}
+        for row in con.execute("select id, type, user_id, team_id from spaces"):
+            if row["type"] == "personal":
+                email = users.get(row["user_id"], "")
+                who = email.split("@", 1)[0] if email else (row["user_id"] or row["id"])[:8]
+                space_name[row["id"]] = f"개인-{who}"
+            elif row["type"] == "org":
+                space_name[row["id"]] = "전체 공간"
+            else:
+                space_name[row["id"]] = teams.get(row["team_id"], "팀 공간")
+
+        nodes = {
+            r["id"]: dict(r)
+            for r in con.execute(
+                "select id, space_id, parent_id, type, name, storage_key, size"
+                " from nodes where deleted_at is null"
+            )
+        }
+    finally:
+        con.close()
+
+    def full_path(node: dict) -> str:
+        parts = [node["name"]]
+        cur = node
+        while cur["parent_id"]:
+            cur = nodes.get(cur["parent_id"])
+            if cur is None:  # 부모가 삭제됨 — tar 에도 없으니 건너뛴다
+                return ""
+            parts.append(cur["name"])
+        parts.append(space_name.get(node["space_id"], "알수없는공간"))
+        return "/".join(reversed(parts))
+
+    table: dict[str, tuple[str, int]] = {}
+    for node in nodes.values():
+        if node["type"] != "file" or not node["storage_key"]:
+            continue
+        path = full_path(node)
+        if path:
+            table[path] = (node["storage_key"], node["size"] or 0)
+    return table
+
+
+def place_blobs(
+    tars: list[Path], table: dict[str, tuple[str, int]], blobs: Path
+) -> tuple[int, list[str]]:
+    """(복원) tar 안의 파일을 '원래 storage_key' 이름으로 blobs/ 에 놓는다."""
+    blobs.mkdir(parents=True, exist_ok=True)
+    placed = 0
+    missing: list[str] = []
+    for tar_path in tars:
+        with tarfile.open(tar_path, mode="r:gz") as tar:
+            for member in tar:
+                if not member.isfile():
+                    continue
+                found = table.get(member.name)
+                if found is None:
+                    missing.append(member.name)
+                    continue
+                key, _size = found
+                src = tar.extractfile(member)
+                if src is None:
+                    missing.append(member.name)
+                    continue
+                with (blobs / key).open("wb") as out:
+                    shutil.copyfileobj(src, out, _CHUNK)
+                placed += 1
+    return placed, missing
