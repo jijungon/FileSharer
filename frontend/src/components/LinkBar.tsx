@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import ServerUploadPopover from './ServerUploadPopover'
+import ServerTransferPopover from './ServerTransferPopover'
 import SharePopover from './SharePopover'
 import { SpaceInfo } from '../lib/api'
 import { downloadUrl, NodeInfo } from '../lib/files'
@@ -100,9 +100,9 @@ export default function LinkBar({
               setServerUpOpen((v) => !v)
               setShareOpen(false)
             }}
-            title="이 폴더로 서버에서 파일 올리기 (API 토큰)"
+            title="서버(헤드리스)에서 올리고 내리기 — API 토큰 + curl"
           >
-            ↥ 서버 업로드
+            ↕ 서버
           </button>
         )}
         {/* 링크: 공유 링크 (진한 노랑). '사내 링크 복사'는 공유 팝오버 안으로 옮겨 바를 정리했다. */}
@@ -117,10 +117,14 @@ export default function LinkBar({
           공유 링크
         </button>
         {serverUpOpen && space && (
-          <ServerUploadPopover
+          <ServerTransferPopover
             folderId={currentFolder?.id ?? null}
             spaceId={space.id}
             label={currentLabel}
+            // 내려받을 대상 = 선택한 파일, 없으면 지금 보고 있는 폴더(공유 버튼과 같은 기준)
+            downloadTarget={
+              target ? { id: target.id, name: target.name, type: target.type } : null
+            }
             activeToken={activeToken}
             onActiveToken={onActiveToken}
             onClose={() => setServerUpOpen(false)}

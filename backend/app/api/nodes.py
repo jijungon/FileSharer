@@ -775,14 +775,20 @@ def _node_sha256(storage: StorageBackend, node: Node) -> str:
 def download_file(
     node_id: str,
     request: Request,
-    user: User = Depends(current_user),
+    principal: Principal = Depends(current_principal),
     db: Session = Depends(get_db),
     storage: StorageBackend = Depends(get_storage),
 ):
+    """세션 쿠키 또는 API 토큰(Bearer)으로 내려받는다 — 헤드리스 서버가 끌어갈 수 있게."""
+    user = principal.user
     node = get_node_checked(db, user, node_id)
     if node.type != "file":
         raise HTTPException(status_code=400, detail="파일이 아닙니다")
-    audit.log(db, "download", user_id=user.id, node_id=node.id, detail=node.name)
+    if principal.token is not None:
+        tokens_svc.enforce_read_scope(db, principal.token, node)
+    via = _via_label(principal)
+    detail = node.name + (f" · 토큰:{via}" if via else "")
+    audit.log(db, "download", user_id=user.id, node_id=node.id, detail=detail)
     return serve_blob(
         storage,
         node.storage_key,
@@ -798,13 +804,16 @@ def download_file(
 def raw_file(
     node_id: str,
     request: Request,
-    user: User = Depends(current_user),
+    principal: Principal = Depends(current_principal),
     db: Session = Depends(get_db),
     storage: StorageBackend = Depends(get_storage),
 ):
+    user = principal.user
     node = get_node_checked(db, user, node_id)
     if node.type != "file":
         raise HTTPException(status_code=400, detail="파일이 아닙니다")
+    if principal.token is not None:
+        tokens_svc.enforce_read_scope(db, principal.token, node)
     media_type = media_type_for(node)
     extra: dict[str, str] = {}
     if media_type in ("text/html", "application/xhtml+xml"):
@@ -940,15 +949,21 @@ def collect_tar_entries(db: Session, root: Node):
 @router.get("/nodes/{node_id}/tar")
 def download_folder_tar(
     node_id: str,
-    user: User = Depends(current_user),
+    principal: Principal = Depends(current_principal),
     db: Session = Depends(get_db),
     storage: StorageBackend = Depends(get_storage),
 ):
+    """폴더를 tar.gz로 스트리밍. 세션 또는 API 토큰(Bearer) 둘 다 허용."""
+    user = principal.user
     node = get_node_checked(db, user, node_id)
     if node.type != "folder":
         raise HTTPException(status_code=400, detail="폴더가 아닙니다")
+    if principal.token is not None:
+        tokens_svc.enforce_read_scope(db, principal.token, node)
     entries = list(collect_tar_entries(db, node))
-    audit.log(db, "tar_download", user_id=user.id, node_id=node.id, detail=node.name)
+    via = _via_label(principal)
+    detail = node.name + (f" · 토큰:{via}" if via else "")
+    audit.log(db, "tar_download", user_id=user.id, node_id=node.id, detail=detail)
     filename = f"{node.name}.tar.gz"
     return StreamingResponse(
         stream_tar_gz(storage, entries),
