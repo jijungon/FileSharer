@@ -123,6 +123,11 @@ class ShareLink(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
+    # 표시용(누가 발급했는지). Node.creator 와 같은 방식 — 배치 로드·읽기 전용.
+    creator: Mapped["User | None"] = relationship(
+        "User", foreign_keys=[created_by], lazy="selectin", viewonly=True
+    )
+
 
 class ApiToken(Base):
     """서버(헤드리스) 업로드용 API 토큰. 원문은 절대 저장하지 않는다 —

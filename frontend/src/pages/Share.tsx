@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useState } from 'react'
+import { CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import MarkdownPreview from '../components/MarkdownPreview'
 import { formatBytes } from '../lib/format'
 import { toggleTheme, useAppTheme } from '../lib/theme'
+import { extractToc } from '../lib/toc'
 
 interface ShareMeta {
   name: string
@@ -29,8 +30,32 @@ export default function Share() {
   const [text, setText] = useState<string | null>(null)
   const [blobUrl, setBlobUrl] = useState('')
   const [showAdvanced, setShowAdvanced] = useState(false)
+  const [activeHeading, setActiveHeading] = useState('')
+  const headRef = useRef<HTMLElement>(null)
+  const [headH, setHeadH] = useState(96)
 
   const base = `/s/${token}`
+  // 공유받은 문서는 길어도 '스크롤만' 있어서 원하는 문단으로 가기 어렵다 → 좌측 목차.
+  const toc = useMemo(() => (text ? extractToc(text) : []), [text])
+
+  function jumpTo(id: string) {
+    const el = document.getElementById(id)
+    if (!el) return
+    setActiveHeading(id)
+    el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
+
+  // 고정 헤더 높이를 재서 CSS에 넘긴다 — 파일명이 길면 헤더가 두 줄이 되므로 상수로 박으면
+  // 목차가 헤더 밑에 깔리거나(가림), 문단으로 건너뛸 때 제목이 헤더에 가려진다.
+  useEffect(() => {
+    const el = headRef.current
+    if (!el) return
+    const measure = () => setHeadH(el.offsetHeight)
+    measure()
+    const ro = new ResizeObserver(measure)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [meta])
 
   useEffect(() => {
     fetch(`${base}/meta`).then(async (res) => {
@@ -123,8 +148,11 @@ export default function Share() {
       : `curl -fLOJ${auth} ${origin}${base}/download`
 
   return (
-    <div className="share-page">
-      <header className="share-page-head">
+    <div
+      className={`share-page${toc.length > 0 ? ' has-toc' : ''}`}
+      style={{ '--share-head-h': `${headH}px` } as CSSProperties}
+    >
+      <header className="share-page-head" ref={headRef}>
         <div>
           <h2>{meta.type === 'folder' ? '📁' : '📄'} {meta.name}</h2>
           <span className="muted">
@@ -148,32 +176,50 @@ export default function Share() {
         </div>
       </header>
 
-      <main className="share-page-body">
-        {isMd && text !== null && <MarkdownPreview text={text} />}
-        {isImg && blobUrl && (
-          <div className="image-preview">
-            <img src={blobUrl} alt={meta.name} />
-          </div>
-        )}
-        {isPdf && blobUrl && <iframe className="pdf-frame share-pdf" src={blobUrl} title={meta.name} />}
-        {meta.type === 'file' && !isMd && !isImg && !isPdf && (
-          <p className="muted">미리보기를 지원하지 않는 형식입니다 — 위의 다운로드를 이용하세요.</p>
-        )}
-        {meta.type === 'folder' && (
-          <p className="muted">폴더 공유입니다. 다운로드 버튼을 누르면 tar.gz로 받아집니다.</p>
+      <div className="share-main">
+        {toc.length > 0 && (
+          <nav className="share-toc" aria-label="목차">
+            <div className="share-toc-title">목차</div>
+            {toc.map((item) => (
+              <button
+                key={item.id}
+                className={`share-toc-item lv${item.level}${activeHeading === item.id ? ' active' : ''}`}
+                onClick={() => jumpTo(item.id)}
+                title={item.text}
+              >
+                {item.text}
+              </button>
+            ))}
+          </nav>
         )}
 
-        <button className="login-local-toggle" onClick={() => setShowAdvanced((v) => !v)}>
-          {showAdvanced ? '고급 명령 접기' : '고급: 터미널(VM)에서 받기'}
-        </button>
-        {showAdvanced && (
-          <pre className="share-curl">
-            {`# 원커맨드 (다운로드+해제+검증)\n${oneCommand}`}
-            {meta.protected ? '\n# 🔒 실행하면 비밀번호를 물어봅니다 (또는 끝에  | SHARE_PW=<비번> sh)' : ''}
-            {`\n\n# 수동\n${curl}`}
-          </pre>
-        )}
-      </main>
+        <main className="share-page-body">
+          {isMd && text !== null && <MarkdownPreview text={text} />}
+          {isImg && blobUrl && (
+            <div className="image-preview">
+              <img src={blobUrl} alt={meta.name} />
+            </div>
+          )}
+          {isPdf && blobUrl && <iframe className="pdf-frame share-pdf" src={blobUrl} title={meta.name} />}
+          {meta.type === 'file' && !isMd && !isImg && !isPdf && (
+            <p className="muted">미리보기를 지원하지 않는 형식입니다 — 위의 다운로드를 이용하세요.</p>
+          )}
+          {meta.type === 'folder' && (
+            <p className="muted">폴더 공유입니다. 다운로드 버튼을 누르면 tar.gz로 받아집니다.</p>
+          )}
+
+          <button className="login-local-toggle" onClick={() => setShowAdvanced((v) => !v)}>
+            {showAdvanced ? '고급 명령 접기' : '고급: 터미널(VM)에서 받기'}
+          </button>
+          {showAdvanced && (
+            <pre className="share-curl">
+              {`# 원커맨드 (다운로드+해제+검증)\n${oneCommand}`}
+              {meta.protected ? '\n# 🔒 실행하면 비밀번호를 물어봅니다 (또는 끝에  | SHARE_PW=<비번> sh)' : ''}
+              {`\n\n# 수동\n${curl}`}
+            </pre>
+          )}
+        </main>
+      </div>
     </div>
   )
 }
