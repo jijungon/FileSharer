@@ -195,16 +195,49 @@ def test_migrations_do_not_disable_loggers(tmp_path):
     assert not logging.getLogger("uvicorn.error").disabled
 
 
-def test_backup_status_requires_admin(client, app_factory):
-    """운영 정보라 관리자만 본다."""
+def test_backup_status_needs_login_but_not_admin(client):
+    """"내 파일이 언제 백업됐나"는 모두의 관심사 — 로그인만 하면 본다.
+
+    관리자 전용으로 걸어뒀다가, 정작 보고 싶어 한 사람이 관리자가 아니어서 안 보였다.
+    다만 **규모는 관리자에게만** — 자기가 못 보는 공간의 크기가 드러나기 때문.
+    """
     from app.bootstrap import create_user
+
+    assert client.get("/api/system/backup").status_code == 401  # 비로그인은 막는다
 
     SessionLocal = client.app.state.sessionmaker
     with SessionLocal() as db:
         create_user(db, email="member@test.local", password="pw-123456")
         db.commit()
     assert login(client, "member@test.local", "pw-123456").status_code == 200
-    assert client.get("/api/system/backup").status_code == 403
+    res = client.get("/api/system/backup")
+    assert res.status_code == 200
+    assert res.json()["enabled"] is True
+
+
+def test_backup_status_hides_scale_from_members(admin_client, tmp_path, monkeypatch):
+    """일반 사용자에게는 시각만, 관리자에게는 규모까지."""
+    from app.bootstrap import create_user
+    from app.services import backup as backup_svc
+
+    store = LocalBackupStore(tmp_path / "scale")
+    monkeypatch.setattr(backup_svc, "build_backup_store", lambda _settings: store)
+    monkeypatch.setattr(backup_svc, "_summary", (0.0, None))
+
+    settings = get_settings()
+    SessionLocal = admin_client.app.state.sessionmaker
+    with SessionLocal() as db:
+        run_backup(db, build_storage(settings), store, "weekly", settings=settings)
+        create_user(db, email="member2@test.local", password="pw-123456")
+        db.commit()
+
+    as_admin = admin_client.get("/api/system/backup").json()["last"]
+    assert as_admin["files"] is not None and as_admin["spaces"] is not None
+
+    assert login(admin_client, "member2@test.local", "pw-123456").status_code == 200
+    as_member = admin_client.get("/api/system/backup").json()["last"]
+    assert as_member["created_at"] == as_admin["created_at"]  # 시각은 보인다
+    assert "files" not in as_member and "bytes" not in as_member  # 규모는 안 보인다
 
 
 def test_backup_status_reports_latest(admin_client, tmp_path, monkeypatch):

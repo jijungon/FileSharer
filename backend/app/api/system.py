@@ -9,7 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..config import get_settings
-from ..deps import get_db, require_admin
+from ..deps import current_user, get_db, require_admin
 from ..models import AuditLog, User
 from ..services import audit
 from ..services import backup as backup_svc
@@ -22,8 +22,12 @@ logger = logging.getLogger("filesharer")
 
 
 @router.get("/backup")
-def backup_status(_: User = Depends(require_admin)) -> dict:
-    """마지막 백업 회차 — 화면 상단 배지가 "정말 돌고 있나"를 보여주는 데 쓴다."""
+def backup_status(user: User = Depends(current_user)) -> dict:
+    """마지막 백업 회차 — 화면 상단 배지가 "정말 돌고 있나"를 보여주는 데 쓴다.
+
+    **로그인한 사람 모두**가 본다. "내 파일이 언제 백업됐나"는 관리자만의 관심사가 아니다.
+    다만 규모(공간·파일 수·용량)는 **자기가 못 보는 공간의 크기까지 드러내므로** 관리자에게만.
+    """
     settings = get_settings()
     if not settings.backup_enabled:
         return {"enabled": False, "last": None}
@@ -32,6 +36,8 @@ def backup_status(_: User = Depends(require_admin)) -> dict:
     except Exception:  # 저장소가 잠깐 말썽이어도 화면이 깨지면 안 된다
         logger.exception("백업 상태 조회 실패")
         return {"enabled": True, "last": None, "unavailable": True}
+    if last and user.role != "admin":
+        last = {key: last[key] for key in ("kind", "stamp", "created_at")}
     return {"enabled": True, "last": last}
 
 
