@@ -74,6 +74,29 @@ docker exec filesharer-app-1 python scripts/user_admin.py list
 
 ## 3. 배포
 
+**main 에 머지해도 배포되지 않는다.** 이미지는 `:b<빌드>` 로만 쌓인다.
+`:latest` 를 움직이는 것이 곧 배포이고, 그건 **태그를 밀 때만** 일어난다.
+
+```bash
+# ① dev 로 — 시험 삼아 올려본다. 번호는 지금 빌드 번호를 그대로 쓴다.
+git fetch origin main
+git tag v0.0.$(git rev-list --count origin/main) && git push origin --tags
+
+# ② prod 로 — 정식 배포. 번호는 사람이 정한다.
+gh release create v1.0.1 --generate-notes
+
+# 되돌릴 때 — 옛 태그를 다시 밀면 그 이미지가 :latest 가 된다
+git tag -f v1.0.0 && git push -f origin v1.0.0
+```
+
+둘 다 **같은 서버로 나간다**(환경은 하나다). 앞자리는 *어떤 성격의 배포였는지*를 남긴다 —
+화면의 `v0.0.161` 을 보면 "시험용이 올라가 있구나", `v1.0.1` 이면 "정식이구나" 를 안다.
+
+서버에서는 아무것도 할 게 없다. watchtower 가 약 60초 안에 가져간다.
+확인: `curl -s https://file.rgrg.im/api/health` → `version` 이 태그와 같으면 반영된 것.
+
+### 3-1. 수동으로 당길 때
+
 ```bash
 # 서버에서 (compose.yml + deploy/ 를 올려둔 디렉터리)
 docker compose pull        # GHCR에서 최신 멀티아치 이미지

@@ -165,7 +165,9 @@ def create_app() -> FastAPI:
             "ok": True,
             "app": "filesharer",
             "version": settings.app_version or "dev",  # 제품 버전 (v1.0.0)
-            "build": settings.app_build,  # 어느 머지인지 (#151)
+            "build": settings.app_build,  # main 커밋 수 — 큰 쪽이 최신
+            "pr": settings.app_pr,  # 어느 작업이 들어갔는지 (#158)
+            "built_at": settings.app_built_at,  # 언제 만든 이미지인지
             # 프런트가 런타임에 Sentry를 켠다. 프런트 DSN은 원래 공개값이라(번들에 박는 게
             # 일반적) 숨길 대상이 아니고, 이렇게 두면 환경마다 다시 빌드하지 않아도 된다.
             "sentry_dsn": settings.sentry_dsn,

@@ -18,6 +18,9 @@ test('상단 버전 배지는 서버가 보고하는 값을 쓴다', async ({ pa
   // CDN이 옛 바이트를 계속 내주며 거짓 버전을 보여준다(실제로 겪었다).
   const health = await request.get('/api/health').then((r) => r.json())
   expect(health.version).toBeTruthy()
+  // 빌드 번호는 main 커밋 수 — 큰 쪽이 최신이어야 한다(PR 번호는 그 보장이 없다)
+  expect(health).toHaveProperty('build')
+  expect(health).toHaveProperty('built_at')
 
   await page.goto('/login')
   await page.getByRole('button', { name: /로컬 계정으로 로그인/ }).click()
