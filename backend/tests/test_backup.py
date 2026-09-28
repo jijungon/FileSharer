@@ -187,5 +187,9 @@ def test_migrations_do_not_disable_loggers(tmp_path):
     logger = logging.getLogger("filesharer")
     logger.disabled = False
     run_migrations(f"sqlite:///{tmp_path / 'mig.db'}")
+
+    # 전달한 URL이 실제로 쓰였는지 — env.py 가 설정값으로 덮어쓰면 여기가 아니라
+    # 저장소 상대경로(./data/app.db)에 만들어진다(CI에서 이 경로가 없어 실패했던 지점).
+    assert (tmp_path / "mig.db").exists()
     assert not logger.disabled
     assert not logging.getLogger("uvicorn.error").disabled

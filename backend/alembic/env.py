@@ -13,7 +13,10 @@ config = context.config
 if config.config_file_name is not None and config.attributes.get("configure_logger", True):
     fileConfig(config.config_file_name, disable_existing_loggers=False)
 
-config.set_main_option("sqlalchemy.url", get_settings().database_url)
+# 호출자가 URL을 이미 지정했으면 그걸 쓴다(db.run_migrations 의 인자가 무시되지 않도록).
+# alembic.ini 의 sqlalchemy.url 은 비어 있으므로, CLI로 직접 돌릴 때만 설정에서 가져온다.
+if not config.get_main_option("sqlalchemy.url", ""):
+    config.set_main_option("sqlalchemy.url", get_settings().database_url)
 
 # 모델 메타데이터 (autogenerate용) — 모델이 생기면 여기서 import
 try:
