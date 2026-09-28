@@ -1,4 +1,5 @@
 import { Component, ErrorInfo, ReactNode } from 'react'
+import { captureError } from '../lib/sentry'
 
 interface Props {
   children: ReactNode
@@ -17,6 +18,8 @@ export default class ErrorBoundary extends Component<Props, State> {
 
   componentDidCatch(error: Error, info: ErrorInfo) {
     console.error('[ErrorBoundary]', error, info.componentStack)
+    // 흰 화면을 본 사용자가 말해주기 전에 우리가 먼저 안다
+    captureError(error, { componentStack: info.componentStack })
   }
 
   render() {

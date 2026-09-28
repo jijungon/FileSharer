@@ -22,6 +22,7 @@ from .api.tokens import router as tokens_router
 from .bootstrap import run_bootstrap
 from .config import get_settings
 from .db import build_engine, make_sessionmaker, run_migrations
+from .observability import bind_user, init_sentry
 from .services import backup as backup_svc
 from .services import search_index
 from .services.storage import build_storage
@@ -42,6 +43,8 @@ def create_app() -> FastAPI:
     Path(settings.data_dir, "blobs").mkdir(parents=True, exist_ok=True)
 
     run_migrations(settings.database_url)
+    sentry_on = init_sentry(settings)
+
     engine = build_engine(settings.database_url)
     SessionLocal = make_sessionmaker(engine)
     with SessionLocal() as db:
@@ -125,6 +128,17 @@ def create_app() -> FastAPI:
     app.state.sessionmaker = SessionLocal
 
     @app.middleware("http")
+    async def sentry_user_middleware(request, call_next):
+        """이 요청이 누구 것인지 남긴다 — id 만(이메일은 보내지 않는다).
+        세션 쿠키에서 바로 읽으므로 DB 조회가 없다."""
+        if sentry_on:
+            try:
+                bind_user(request.session.get("uid"))
+            except Exception:  # 세션이 없는 경로(공유 페이지 등)
+                bind_user(None)
+        return await call_next(request)
+
+    @app.middleware("http")
     async def commit_db_middleware(request, call_next):
         # 요청 세션이 있으면 응답을 돌려보내기 '전에' 커밋한다 → 다음 요청이 방금 만든
         # 자원을 확실히 보게 된다(get_db teardown-after-response 경합 제거).
@@ -152,6 +166,10 @@ def create_app() -> FastAPI:
             "app": "filesharer",
             "version": settings.app_version or "dev",  # 제품 버전 (v1.0.0)
             "build": settings.app_build,  # 어느 머지인지 (#151)
+            # 프런트가 런타임에 Sentry를 켠다. 프런트 DSN은 원래 공개값이라(번들에 박는 게
+            # 일반적) 숨길 대상이 아니고, 이렇게 두면 환경마다 다시 빌드하지 않아도 된다.
+            "sentry_dsn": settings.sentry_dsn,
+            "environment": settings.app_env,
         }
 
     app.include_router(auth_router)
