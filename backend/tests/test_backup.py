@@ -229,3 +229,72 @@ def test_backup_status_reports_latest(admin_client, tmp_path, monkeypatch):
     assert after["kind"] == "weekly"
     assert after["spaces"] == len(made["spaces"])
     assert after["files"] == made["total_files"]
+
+
+def test_backup_restore_roundtrip(admin_client, tmp_path):
+    """백업 → 복원 → 원본과 **바이트가 같은가**.
+
+    복원은 tar 의 '사람이 읽는 경로'와 DB 의 storage_key 를 맞춰 붙인다. 그래서 백업이
+    공간 이름을 짓는 규칙(backup_space_name)이 바뀌면 복원이 **조용히** 깨진다.
+    이 왕복 테스트가 그 짝을 고정한다.
+    """
+    import gzip
+    import hashlib
+    import shutil
+    import sqlite3
+
+    spaces = admin_client.get("/api/spaces").json()
+    personal = next(s for s in spaces if s["type"] == "personal")
+
+    folder = admin_client.post(
+        "/api/nodes", json={"space_id": personal["id"], "name": "보고서", "type": "folder"}
+    )
+    assert folder.status_code == 201, folder.text
+    folder_id = folder.json()["id"]
+
+    body = ("한글 내용\n" * 500).encode()
+    up = admin_client.post(
+        f"/api/nodes/{folder_id}/files", files={"file": ("분기 보고서.md", body, "text/markdown")}
+    )
+    assert up.status_code == 201, up.text
+    node_id = up.json()["id"]
+
+    settings = get_settings()
+    store = LocalBackupStore(tmp_path / "bk")
+    SessionLocal = admin_client.app.state.sessionmaker
+    with SessionLocal() as db:
+        manifest = run_backup(db, build_storage(settings), store, "weekly", settings=settings)
+
+    # ── 복원: 백업만 가지고 빈 폴더에서 되살린다 ──
+    restored = tmp_path / "restored"
+    (restored / "download").mkdir(parents=True)
+    db_path = restored / "app.db"
+    with gzip.open(io.BytesIO(store.read_bytes(manifest["db"]["key"])), "rb") as src:
+        db_path.write_bytes(src.read())
+
+    tars = []
+    for item in manifest["spaces"]:
+        local = restored / "download" / Path(item["key"]).name
+        local.write_bytes(store.read_bytes(item["key"]))
+        tars.append(local)
+
+    table = backup.node_paths(db_path)
+    placed, missing = backup.place_blobs(tars, table, restored / "blobs")
+
+    assert missing == []  # tar 에 있는데 DB 가 모르는 파일이 없어야 한다
+    assert placed >= 1
+    # DB 가 가리키는 파일이 전부 제자리에 있어야 한다
+    assert all((restored / "blobs" / key).is_file() for key, _ in table.values())
+
+    con = sqlite3.connect(db_path)
+    try:
+        key, sha = con.execute(
+            "select storage_key, sha256 from nodes where id = ?", (node_id,)
+        ).fetchone()
+    finally:
+        con.close()
+    blob = (restored / "blobs" / key).read_bytes()
+    assert blob == body  # 바이트가 같아야 한다
+    assert hashlib.sha256(blob).hexdigest() == sha  # DB 가 기록한 해시와도 일치
+
+    shutil.rmtree(restored)
