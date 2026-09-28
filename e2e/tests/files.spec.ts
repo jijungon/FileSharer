@@ -28,7 +28,7 @@ test('local login → browse → create folder → upload file', async ({ page }
   // 파일 열기 → 공유 링크 팝오버가 열린다(외부 공유 전용).
   // '사내 링크 복사'는 상단 주소창(오미니박스)의 📋로 옮겨, 이 팝오버에는 더 이상 없다.
   await fileCell(page, /스모크\.txt/).click()
-  await page.locator('.topbar-fileactions').getByRole('button', { name: '공유 링크' }).click()
+  await page.locator('.topbar-fileactions').getByRole('button', { name: '공유 링크', exact: true }).click()
   await expect(page.locator('.share-popover')).toBeVisible()
   await expect(
     page.locator('.share-popover').getByRole('button', { name: /사내 링크 복사/ }),

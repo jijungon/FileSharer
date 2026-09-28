@@ -2,6 +2,9 @@ import { expect, test } from './fixtures'
 
 import { fileCell } from './helpers'
 
+// '공유 링크' 를 exact 로 찾는 이유: 주소창의 📋 버튼이 aria-label="사내 공유 링크 복사" 라
+// 부분 일치로 함께 잡힌다. 지금까지는 뷰어가 열리기 '전에' 클릭해 운좋게 하나만 맞았을 뿐이다.
+
 const EMAIL = 'e2e@test.local'
 const PASSWORD = 'e2e-password-123'
 
@@ -20,7 +23,7 @@ test('share link: create in UI, open without login, download', async ({ page, br
     buffer: Buffer.from('# 외부 공유 문서\n\n내용입니다.\n'),
   })
   await fileCell(page, /외부공유\.md/).click()
-  await page.getByRole('button', { name: '공유 링크' }).click()
+  await page.getByRole('button', { name: '공유 링크', exact: true }).click()
   await page.getByRole('button', { name: '링크 만들기' }).click()
 
   // 행 순서와 무관하게 '순수 URL'인 code만 선택 (첫 행은 원커맨드일 수 있음)
@@ -77,7 +80,7 @@ test('공유 문서: 목차 이동 · 고정 헤더 · 발급자/발급시각', 
     buffer: Buffer.from(doc),
   })
   await fileCell(page, /목차문서\.md/).click()
-  await page.getByRole('button', { name: '공유 링크' }).click()
+  await page.getByRole('button', { name: '공유 링크', exact: true }).click()
   await page.getByRole('button', { name: '링크 만들기' }).click()
 
   // 발급된 링크 목록: 누가(닉네임) · 언제 발급했는지
