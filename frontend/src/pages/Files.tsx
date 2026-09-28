@@ -114,6 +114,9 @@ export default function Files() {
   const [me, setMe] = useState<Me | null>(null)
   // 마지막 백업 — "정말 돌고 있나"를 상단에서 한눈에(관리자만).
   const [backup, setBackup] = useState<BackupSummary | null>(null)
+  // 'loading' | 'none'(백업 없음) | 'error'(조회 실패) — 배지가 말없이 사라지면
+  // "백업이 도는지" 확인하려고 만든 물건이 정작 제 기능을 못 한다.
+  const [backupState, setBackupState] = useState<'loading' | 'ok' | 'none' | 'error'>('loading')
   // 버전은 **서버가 말한다**. 번들에 박으면 CDN이 옛 바이트를 내줄 때 거짓말이 된다.
   // 제품 버전(v1.0.0)과 빌드 번호(#151)를 함께 — 전자는 '어디까지 왔나', 후자는 '지금 뭐가 떠 있나'.
   const [version, setVersion] = useState('')
@@ -246,9 +249,16 @@ export default function Files() {
   // 관리자에게만 마지막 백업 시각을 띄운다(일반 사용자에겐 운영 정보라 의미가 없다).
   useEffect(() => {
     if (me?.role !== 'admin') return
-    api<{ enabled: boolean; last: BackupSummary | null }>('/api/system/backup')
-      .then((res) => setBackup(res.last))
-      .catch(() => setBackup(null)) // 권한·저장소 문제면 배지를 숨기면 그만
+    api<{ enabled: boolean; last: BackupSummary | null; unavailable?: boolean }>(
+      '/api/system/backup',
+    )
+      .then((res) => {
+        setBackup(res.last)
+        if (!res.enabled) setBackupState('none')
+        else if (res.unavailable) setBackupState('error')
+        else setBackupState(res.last ? 'ok' : 'none')
+      })
+      .catch(() => setBackupState('error'))
   }, [me?.role])
 
   useEffect(() => {
@@ -1037,12 +1047,32 @@ export default function Files() {
     <div className="shell">
       <header className="topbar">
         {/* 로고 영역 폭을 사이드바에 맞춰, 검색창 왼쪽이 탭 바 시작선과 정렬되게 한다 */}
-        <h2 className="logo" style={{ width: sidebarWidth - 12, flexShrink: 0 }}>
+        <h2 className="logo" style={{ minWidth: sidebarWidth - 12, flexShrink: 0 }}>
           FileSharer{' '}
-          <span className="app-version" title="서버가 보고하는 버전(제품 버전 · 빌드)">
+          <span className="app-version" title={build ? `${version} (빌드 ${build})` : '서버가 보고하는 버전'}>
             {version || '…'}
-            {build && <span className="app-build"> · {build}</span>}
           </span>
+          {me.role === 'admin' && backupState !== 'loading' && (
+            <span
+              className={`backup-badge${backupStale || backupState !== 'ok' ? ' is-stale' : ''}`}
+              title={
+                backup
+                  ? `마지막 백업 ${formatDateTime(backup.created_at)}` +
+                    ` · ${backup.kind === 'weekly' ? '주간' : '월간'} ${backup.stamp}` +
+                    ` · 공간 ${backup.spaces}개 · 파일 ${backup.files}개 · ${formatBytes(backup.bytes)}` +
+                    (backupStale ? ' — 주기(주 1회)보다 오래됐습니다' : '')
+                  : backupState === 'error'
+                    ? '백업 상태를 읽지 못했습니다 — 저장소 접근을 확인하세요'
+                    : '아직 백업이 없습니다'
+              }
+            >
+              {backup
+                ? `⛁ ${formatAgo(backup.created_at)}`
+                : backupState === 'error'
+                  ? '⛁ 확인 불가'
+                  : '⛁ 없음'}
+            </span>
+          )}
         </h2>
         {/* 상단 검색 = 주소창(오미니박스). 파일을 열면 그 파일의 경로를 보여주고(주소 모드),
             타이핑하면 이름+내용 검색(검색 모드). 📋는 지금 파일의 사내 공유 링크를 복사한다. */}
@@ -1167,20 +1197,6 @@ export default function Files() {
           </div>
         )}
         <div className="topbar-right">
-          {/* 마지막 백업 — 로고 영역은 사이드바 폭에 고정돼 있어 자리가 없다(검색창 정렬 때문). */}
-          {backup && (
-            <span
-              className={`app-version backup-badge${backupStale ? ' is-stale' : ''}`}
-              title={
-                `마지막 백업 ${formatDateTime(backup.created_at)}` +
-                ` · ${backup.kind === 'weekly' ? '주간' : '월간'} ${backup.stamp}` +
-                ` · 공간 ${backup.spaces}개 · 파일 ${backup.files}개 · ${formatBytes(backup.bytes)}` +
-                (backupStale ? ' — 주기(주 1회)보다 오래됐습니다' : '')
-              }
-            >
-              ⛁ {formatAgo(backup.created_at)}
-            </span>
-          )}
           <span className="muted">{me.email}</span>
           {me.role === 'admin' && (
             <Link to="/admin">
