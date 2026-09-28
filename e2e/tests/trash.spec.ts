@@ -114,6 +114,46 @@ test('휴지통 항목에 자동 완전삭제까지 남은 시간이 표시된�
   await expect(trashRow.locator('.col-remaining .trash-remaining')).toContainText('남음')
 })
 
+test('휴지통에 든 폴더의 자식 파일 딥링크는 404 (복원하면 다시 열림)', async ({ page }) => {
+  // 프라이버시/정합성: 폴더를 휴지통에 넣으면 그 안의 자식 파일은 UI에서 사라지지만,
+  // soft_delete가 자식엔 deleted_at을 안 찍어 자식 id를 직접 아는 딥링크로는 여전히
+  // 열람/다운로드가 가능했다. 자식 딥링크(GET /api/files/{id}, /nodes/{id}/path)가
+  // 404가 되는지 API 레벨로 검증한다(로그인 세션 쿠키는 page.request가 공유).
+  await login(page)
+  const tag = Date.now()
+
+  const spaces = await (await page.request.get('/api/spaces')).json()
+  const personal = spaces.find((s: { type: string }) => s.type === 'personal')
+  const folder = await (
+    await page.request.post('/api/nodes', {
+      data: { space_id: personal.id, name: `딥링크폴더_${tag}` },
+    })
+  ).json()
+  const child = await (
+    await page.request.post(`/api/nodes/${folder.id}/files`, {
+      multipart: {
+        file: { name: `child_${tag}.txt`, mimeType: 'text/plain', buffer: Buffer.from('secret') },
+      },
+    })
+  ).json()
+
+  // 삭제 전: 자식 딥링크가 열린다
+  expect((await page.request.get(`/api/files/${child.id}`)).status()).toBe(200)
+  expect((await page.request.get(`/api/nodes/${child.id}/path`)).status()).toBe(200)
+
+  // 부모 폴더만 휴지통으로 (자식엔 deleted_at이 안 찍힌다)
+  expect((await page.request.delete(`/api/nodes/${folder.id}`)).ok()).toBeTruthy()
+
+  // 자식 파일 딥링크는 이제 404 (열람·raw·경로 복원 모두 차단)
+  expect((await page.request.get(`/api/files/${child.id}`)).status()).toBe(404)
+  expect((await page.request.get(`/api/files/${child.id}/raw`)).status()).toBe(404)
+  expect((await page.request.get(`/api/nodes/${child.id}/path`)).status()).toBe(404)
+
+  // 폴더를 복원하면 자식 딥링크가 다시 열린다
+  expect((await page.request.post(`/api/nodes/${folder.id}/restore`)).ok()).toBeTruthy()
+  expect((await page.request.get(`/api/files/${child.id}`)).status()).toBe(200)
+})
+
 test('휴지통 파일 행을 누르면 원래 위치(폴더)로 이동한다', async ({ page }) => {
   page.on('dialog', (d) => d.accept())
   await login(page)
