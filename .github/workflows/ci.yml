@@ -1,3 +1,13 @@
+# 러너 이미지는 모든 잡에서 **ubuntu-24.04 로 고정**한다.
+# `ubuntu-latest` 는 2026-10-19부터 Ubuntu 26 을 가리킨다. 그날 이미지가 말없이 바뀌면
+# 무관한 이유로 CI가 빨개지고 "내 PR이 깨뜨렸나"를 뒤지게 된다. 이 저장소는 CI가 배포의
+# 관문이라(그린이어야 머지·배포) 남의 일정에 흔들릴 이유가 없다.
+#
+# 값을 한 곳에 모으지 못하는 이유: `runs-on` 은 env 컨텍스트를 읽지 못한다
+# (github/needs/strategy/matrix/vars/inputs 만 가능). 그래서 6곳에 그대로 적는다.
+#
+# 올릴 때: 러너만 바꾸는 PR 하나로 6곳을 고치고, 잡이 전부 그린인지 보고 머지한다.
+# 고정 이미지도 언젠가 폐기 안내가 뜨므로 1년에 한 번쯤 확인한다.
 name: CI
 on:
   pull_request:
@@ -11,7 +21,7 @@ permissions:
 
 jobs:
   secrets-scan:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
         with:
@@ -21,7 +31,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   backend:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     defaults:
       run:
         working-directory: backend
@@ -35,7 +45,7 @@ jobs:
       - run: pytest -q
 
   frontend:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     defaults:
       run:
         working-directory: frontend
@@ -57,7 +67,7 @@ jobs:
   #    · npm audit: 프런트 '프로덕션' 의존성(--omit=dev)만 + high 이상 → 빌드/테스트 툴(vite·
   #      vitest·esbuild, prod 미탑재)과 moderate는 게이트에서 제외(존재 자체는 로그에 남음).
   deps-audit:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
@@ -81,7 +91,7 @@ jobs:
 
   # ── 통합 스모크(도커 컴포즈로 실제 구동 → Playwright). 모든 PR + main push에서 실행(라벨 불필요) ──
   e2e:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
       - name: CI용 .env 구성 (example의 안전한 기본값 + 테스트 관리자)
@@ -121,7 +131,7 @@ jobs:
 
   image:
     needs: [secrets-scan, backend, frontend]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
       # arm64(오라클 Ampere 등)용 크로스 빌드를 위해 QEMU + buildx
