@@ -22,12 +22,17 @@ from .api.tokens import router as tokens_router
 from .bootstrap import run_bootstrap
 from .config import get_settings
 from .db import build_engine, make_sessionmaker, run_migrations
+from .services import backup as backup_svc
 from .services import search_index
 from .services.storage import build_storage
 from .services.trash import purge_expired
 
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 TRASH_SWEEP_INTERVAL_SECONDS = 6 * 3600
+# uvicorn은 자기 로거만 설정한다. 루트에 핸들러가 없으면 앱의 INFO 로그(백업·휴지통 정리·
+# 검색 색인)가 조용히 버려져, "정말 돌았나"를 로그로 확인할 수 없다.
+# 이미 설정돼 있으면 basicConfig 는 아무것도 하지 않는다(uvicorn 설정을 덮지 않음).
+logging.basicConfig(level=logging.INFO, format="%(levelname)-8s [%(name)s] %(message)s")
 logger = logging.getLogger("filesharer")
 
 
@@ -71,6 +76,26 @@ def create_app() -> FastAPI:
         except Exception:  # 스위퍼 실패가 앱을 죽이면 안 된다
             logger.exception("휴지통 자동삭제 실패")
 
+    async def _run_backups() -> None:
+        """주/월 백업. '이번 회차 키가 있는지'로 판단하므로 재시작해도 중복되지 않는다.
+
+        prod에서만 돈다 — dev 머신이 같은 버킷을 보더라도 backup/ 을 건드리면
+        운영 백업이 지워질 수 있기 때문.
+        """
+        if not (settings.backup_enabled and settings.is_prod):
+            return
+
+        def work() -> list[str]:
+            store = backup_svc.build_backup_store(settings)
+            with SessionLocal() as db:
+                return backup_svc.run_due(db, build_storage(settings), store, settings)
+
+        try:
+            for line in await asyncio.to_thread(work):
+                logger.info("백업 완료: %s", line)
+        except Exception:  # 백업 실패가 앱을 죽이면 안 된다
+            logger.exception("백업 실패")
+
     @contextlib.asynccontextmanager
     async def lifespan(_app: FastAPI):
         await _sweep_trash()  # 기동 시 1회
@@ -80,13 +105,21 @@ def create_app() -> FastAPI:
                 await asyncio.sleep(TRASH_SWEEP_INTERVAL_SECONDS)
                 await _sweep_trash()
 
+        async def _backup_loop() -> None:
+            await _run_backups()  # 기동 시 1회(이번 회차가 없으면 바로 찍는다)
+            while True:
+                await asyncio.sleep(max(60, settings.backup_tick_minutes * 60))
+                await _run_backups()
+
         task = asyncio.create_task(_loop())
+        backup_task = asyncio.create_task(_backup_loop())
         try:
             yield
         finally:
-            task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await task
+            for running in (task, backup_task):
+                running.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await running
 
     app = FastAPI(title="FileSharer", docs_url=None, redoc_url=None, lifespan=lifespan)
     app.state.sessionmaker = SessionLocal

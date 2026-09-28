@@ -9,7 +9,7 @@ from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..models import Node, Space, TeamMember, User
+from ..models import Node, Space, Team, TeamMember, User
 
 
 def can_access_space(db: Session, user: User, space: Space) -> bool:
@@ -87,3 +87,17 @@ def is_descendant(db: Session, node_id: str, maybe_ancestor_id: str) -> bool:
         current = node.parent_id if node else None
         seen += 1
     return False
+
+
+def space_display_name(db: Session, space: Space) -> str:
+    """공간 하나의 표시 이름 — 개인은 '내 공간', 팀은 팀 이름, 전체는 '전체 공간'.
+
+    목록 API(`visible_spaces`)는 팀을 조인해 한 번에 만들고, 여기는 **공간 하나**를
+    이름으로 바꿀 때 쓴다(백업 파일명 등). 규칙은 같아야 한다.
+    """
+    if space.type == "personal":
+        return "내 공간"
+    if space.type == "org":
+        return "전체 공간"
+    team = db.get(Team, space.team_id) if space.team_id else None
+    return team.name if team else "팀 공간"

@@ -38,6 +38,8 @@ def run_migrations(database_url: str) -> None:
     cfg = Config(str(BACKEND_DIR / "alembic.ini"))
     cfg.set_main_option("script_location", str(BACKEND_DIR / "alembic"))
     cfg.set_main_option("sqlalchemy.url", database_url)
+    # alembic.ini 의 로깅 설정을 적용하지 않는다 — in-process 라 uvicorn·앱 로거를 꺼버린다.
+    cfg.attributes["configure_logger"] = False
     command.upgrade(cfg, "head")
 
 

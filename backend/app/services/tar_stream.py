@@ -9,6 +9,9 @@ import time
 from collections import deque
 from collections.abc import Iterable, Iterator
 
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
 from ..models import Node
 from .storage import StorageBackend
 
@@ -61,3 +64,44 @@ def stream_tar_gz(
                     body.close()
             yield from buf.drain()
     yield from buf.drain()
+
+
+def _children(db: Session, node: Node) -> list[Node]:
+    rows = db.scalars(
+        select(Node).where(Node.parent_id == node.id, Node.deleted_at.is_(None))
+    ).all()
+    return sorted(rows, key=lambda n: (0 if n.type == "folder" else 1, n.name))
+
+
+def _walk(db: Session, node: Node, prefix: str) -> Iterator[tuple[Node | None, str]]:
+    for child in _children(db, node):
+        arcname = f"{prefix}/{child.name}"
+        if child.type == "folder":
+            yield (None, arcname)
+            yield from _walk(db, child, arcname)
+        else:
+            yield (child, arcname)
+
+
+def collect_entries(db: Session, root: Node) -> Iterator[tuple[Node | None, str]]:
+    """폴더 서브트리를 (파일 노드|None(=디렉토리), 아카이브명)으로 평탄화 — 삭제 항목 제외."""
+    yield (None, root.name)
+    yield from _walk(db, root, root.name)
+
+
+def collect_space_entries(
+    db: Session, space_name: str, roots: list[Node]
+) -> Iterator[tuple[Node | None, str]]:
+    """공간 전체를 평탄화 — 루트 항목들을 '공간 이름' 폴더 밑에 담는다(백업용).
+
+    공간은 노드가 아니라서 collect_entries를 쓸 수 없다. 풀었을 때 어느 공간 것인지
+    바로 보이도록 최상위 디렉토리 하나를 만들어 그 안에 넣는다.
+    """
+    yield (None, space_name)
+    for item in sorted(roots, key=lambda n: (0 if n.type == "folder" else 1, n.name)):
+        arcname = f"{space_name}/{item.name}"
+        if item.type == "folder":
+            yield (None, arcname)
+            yield from _walk(db, item, arcname)
+        else:
+            yield (item, arcname)

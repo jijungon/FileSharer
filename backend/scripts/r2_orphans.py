@@ -91,6 +91,11 @@ def main() -> None:
     if prefix.startswith("prod"):
         print("prod 프리픽스는 이 스크립트로 다루지 않습니다. 중단.")
         return
+    # 백업은 '운영 DB가 참조하지 않는 키'로만 이루어져 있어, 이 스크립트에겐 전부 고아로 보인다.
+    # 한 번 잘못 돌면 백업 전체가 사라지므로 이름만 스쳐도 중단한다.
+    if "backup" in prefix:
+        print("backup 프리픽스는 이 스크립트로 다루지 않습니다(백업 보호). 중단.")
+        return
 
     print("참조 중인 storage_key 수집…")
     dbs = find_dbs()

@@ -36,6 +36,15 @@ class Settings(BaseSettings):
     # 버킷 안 환경 구분용 키 프리픽스(예: "dev/", "prod/"). 한 버킷을 dev/prod가
     # 공유해도 객체가 섞이지 않게 한다. 빈 값이면 프리픽스 없음(기존 동작).
     r2_prefix: str = ""
+    # --- 주기 백업 -------------------------------------------------------
+    # 공간별 tar.gz + DB 스냅샷을 버킷의 **별도 프리픽스**에 쌓는다(운영 키와 분리).
+    # 자동 실행은 prod에서만 — dev 머신이 같은 버킷을 봐도 backup/ 을 건드리지 않게.
+    backup_enabled: bool = True
+    backup_prefix: str = "backup/"
+    backup_keep_weekly: int = 8  # 최근 8주(약 2개월)를 주 단위로 되돌릴 수 있다
+    backup_keep_monthly: int = 12  # 그보다 오래된 건 월 단위로 1년치
+    backup_tick_minutes: int = 60  # 회차가 비었는지 확인하는 주기
+
     share_default_days: int = 7
     share_max_days: int = 30
     # 휴지통(soft delete) 보존 기간(일). 이보다 오래된 항목은 자동으로 완전삭제(purge).
