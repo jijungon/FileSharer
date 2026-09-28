@@ -43,7 +43,7 @@ GHCR 이미지를 받아 구동한다.
 **백업은 따로 설정할 게 없다.** `APP_ENV=prod` 면 앱이 알아서 주 1회·월 1회
 공간별 tar.gz + DB 스냅샷을 버킷의 `backup/` 프리픽스에 쌓는다(운영 키와 분리).
 보관 기간만 바꾸고 싶으면 `BACKUP_KEEP_WEEKLY` / `BACKUP_KEEP_MONTHLY`.
-돌고 있는지 확인: `backend/.venv/bin/python backend/scripts/backup_list.py` (읽기 전용)
+돌고 있는지 확인(서버에서, 읽기 전용): `docker compose exec app python scripts/backup_list.py`
 
 ## 2-1. 계정 잠김 복구 (관리자가 없거나 비밀번호를 잃었을 때)
 
@@ -54,10 +54,17 @@ GHCR 이미지를 받아 구동한다.
 서버 셸에서 (컨테이너 안):
 
 ```bash
+cd /home/ubuntu/filesharer          # compose.yml 이 있는 곳
 docker compose exec app python scripts/user_admin.py list
 docker compose exec app python scripts/user_admin.py promote joji@parametacorp.com
 docker compose exec -it app python scripts/user_admin.py create test@parametacorp.com --role member
 docker compose exec -it app python scripts/user_admin.py reset-password admin@parametacorp.com
+```
+
+compose.yml 이 있는 디렉터리가 아니면 컨테이너 이름으로 직접 부른다:
+
+```bash
+docker exec filesharer-app-1 python scripts/user_admin.py list
 ```
 
 - 비밀번호를 받는 명령(`create`, `reset-password`)은 **`-it`** 로 실행한다(입력을 물어본다).

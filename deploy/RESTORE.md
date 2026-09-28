@@ -22,6 +22,10 @@ backup/monthly/2026-09/…
 지금 뭐가 있는지 보기 (읽기 전용):
 
 ```bash
+# 서버에서 — 컨테이너 안에 스크립트가 들어 있다
+docker compose exec app python scripts/backup_list.py
+
+# 내 컴퓨터에서 — 저장소를 체크아웃한 경우
 backend/.venv/bin/python backend/scripts/backup_list.py
 ```
 
@@ -37,7 +41,15 @@ backend/.venv/bin/python backend/scripts/backup_list.py
 
 **운영을 건드리지 않는다.** 스크립트는 백업을 읽고, 지정한 빈 폴더에만 쓴다.
 
+복원은 **운영과 분리된 곳에서** 하는 게 안전하다. 서버에서 바로 하거나(컨테이너 안),
+내 컴퓨터에 저장소를 체크아웃해 하거나 둘 다 된다.
+
 ```bash
+# 서버에서 (컨테이너 안 /tmp 에 푼다 — 운영 볼륨을 건드리지 않는다)
+docker compose exec app python scripts/restore_backup.py \
+    --kind weekly --stamp 2026-W40 --into /tmp/restore-test
+
+# 내 컴퓨터에서
 backend/.venv/bin/python backend/scripts/restore_backup.py \
     --kind weekly --stamp 2026-W40 --into /tmp/restore-test
 ```
