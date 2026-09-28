@@ -7,10 +7,9 @@ import { useScrollSync } from '../lib/scrollsync'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { ApiError, SpaceInfo } from '../lib/api'
-import SharePopover from './SharePopover'
-import ServerUploadPopover from './ServerUploadPopover'
 import { acquireLock, downloadUrl, LockState, NodeInfo, releaseLock } from '../lib/files'
 import { formatBytes } from '../lib/format'
+import { useAppTheme } from '../lib/theme'
 
 // DnX풍 다크 에디터 테마 (near-black base + 골드 커서/활성줄)
 const EDITOR_DARK = EditorView.theme(
@@ -63,25 +62,6 @@ import MarkdownPreview from './MarkdownPreview'
 const AUTOSAVE_KEY = 'filesharer.autosave'
 const MAX_EDIT_BYTES = 5 * 1024 * 1024
 
-// 현재 앱 테마(라이트/다크)를 구독한다. Files.tsx의 토글이 <html data-theme>를 바꾸므로
-// 에디터가 열려 있는 동안 토글해도 즉시 반영되도록 MutationObserver로 감시한다.
-function useAppTheme(): 'light' | 'dark' {
-  const [theme, setTheme] = useState<'light' | 'dark'>(() =>
-    typeof document !== 'undefined' && document.documentElement.dataset.theme === 'light'
-      ? 'light'
-      : 'dark',
-  )
-  useEffect(() => {
-    const el = document.documentElement
-    const obs = new MutationObserver(() =>
-      setTheme(el.dataset.theme === 'light' ? 'light' : 'dark'),
-    )
-    obs.observe(el, { attributes: true, attributeFilter: ['data-theme'] })
-    return () => obs.disconnect()
-  }, [])
-  return theme
-}
-
 interface Props {
   node: NodeInfo
   space: SpaceInfo | null
@@ -96,81 +76,6 @@ interface Props {
   onDirtyChange?: (dirty: boolean) => void // 미저장(dirty) 변화 — 다중 탭 ● 뱃지/닫기 확인용
   active?: boolean // 지금 활성 탭인지 — 활성일 때만 저장/자동저장을 탭 줄 슬롯으로 portal(Stage B)
   actionSlot?: HTMLElement | null // 탭 줄의 저장/자동저장 slot(Files.tsx가 제공)
-}
-
-// 파일 액션(다운로드 · 서버 업로드 · 공유 링크 · 📋 사내 링크 복사). Stage B: 상단 바에서 렌더된다.
-// 서버 업로드는 '이 파일이 있는 폴더'가 대상(파일 자체가 아니라 폴더로 push). 공유 링크 바로 옆.
-export function FileActions({
-  node,
-  space,
-  path,
-  activeToken,
-  onActiveToken,
-  onLocalUpload,
-}: {
-  node: NodeInfo
-  space: SpaceInfo | null
-  path: NodeInfo[]
-  activeToken?: string | null
-  onActiveToken: (token: string | null) => void
-  onLocalUpload?: () => void
-}) {
-  const [shareOpen, setShareOpen] = useState(false)
-  const [serverUpOpen, setServerUpOpen] = useState(false)
-  const folder = path.length > 0 ? path[path.length - 1] : null
-  return (
-    <>
-      {/* 로컬: 다운로드 · 로컬 업로드 (연한 노랑) */}
-      <a href={downloadUrl(node)}>
-        <button className="btn-utility btn-tier-local">다운로드</button>
-      </a>
-      {onLocalUpload && (
-        <button
-          className="btn-utility btn-tier-local"
-          onClick={onLocalUpload}
-          title="내 PC에서 이 파일의 폴더로 업로드 (폴더는 끌어다 놓기)"
-        >
-          ↑ 로컬 업로드
-        </button>
-      )}
-      <span className="action-divider" aria-hidden="true" />
-      {/* 서버(헤드리스) 업로드 (중간 노랑) */}
-      {space && (
-        <button
-          className="btn-utility btn-tier-server"
-          onClick={() => {
-            setServerUpOpen((v) => !v)
-            setShareOpen(false)
-          }}
-          title="이 폴더로 서버에서 파일 올리기 (API 토큰)"
-        >
-          ↥ 서버 업로드
-        </button>
-      )}
-      {/* 링크: 공유 링크 (진한 노랑). '사내 링크 복사'는 공유 팝오버 안으로 옮겨 액션 바를 정리했다. */}
-      <button
-        className="btn-utility btn-tier-link linkbar-share"
-        onClick={() => {
-          setShareOpen((v) => !v)
-          setServerUpOpen(false)
-        }}
-      >
-        공유 링크
-      </button>
-      {/* 사내 링크(📋) 바로 복사는 상단 주소창(오미니박스)으로 이동했다 */}
-      {serverUpOpen && space && (
-        <ServerUploadPopover
-          folderId={folder?.id ?? null}
-          spaceId={space.id}
-          label={folder?.name ?? space.name}
-          activeToken={activeToken}
-          onActiveToken={onActiveToken}
-          onClose={() => setServerUpOpen(false)}
-        />
-      )}
-      {shareOpen && <SharePopover node={node} onClose={() => setShareOpen(false)} />}
-    </>
-  )
 }
 
 export default function ViewerPanel(props: Props) {

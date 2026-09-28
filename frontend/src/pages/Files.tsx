@@ -8,6 +8,7 @@ import NewMarkdownModal from '../components/NewMarkdownModal'
 import ViewerPanel from '../components/ViewerPanel'
 import { api, ApiError, Me, SpaceInfo } from '../lib/api'
 import { copyText } from '../lib/clipboard'
+import { toggleTheme as applyToggle } from '../lib/theme'
 import { formatBytes, formatDateTime, formatTrashRemaining } from '../lib/format'
 import {
   dropUploads,
@@ -186,14 +187,8 @@ export default function Files() {
   }
 
   function toggleTheme() {
-    const next = theme === 'dark' ? 'light' : 'dark'
-    setTheme(next)
-    document.documentElement.dataset.theme = next
-    try {
-      localStorage.setItem('fs:theme', next)
-    } catch {
-      /* localStorage 불가 — 세션 동안만 적용 */
-    }
+    // 적용·저장은 공용 모듈이 담당한다(공유 페이지와 같은 동작을 쓰기 위해).
+    setTheme(applyToggle())
   }
 
   // 사이드바 우측 경계선을 드래그해 폭 조절(160~560px). 놓을 때 localStorage에 저장.

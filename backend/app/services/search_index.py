@@ -23,11 +23,16 @@ from .storage import StorageBackend
 logger = logging.getLogger("filesharer")
 
 
-def index_node(db: Session, storage: StorageBackend, node: Node) -> None:
+def index_node(
+    db: Session, storage: StorageBackend, node: Node, blob: bytes | None = None
+) -> None:
     """node의 내용을 FTS 인덱스에 반영한다(요청 세션 안에서 — 커밋은 호출부/미들웨어가).
 
     텍스트 파일이면 앞부분을 읽어 (재)적재하고, 아니면(타입이 바뀌었을 수 있으니) 기존
     행을 지우기만 한다. 스토리지 읽기 실패는 삼켜서(로그만 남기고) 요청을 깨지 않는다.
+
+    ``blob`` 을 주면 스토리지를 읽지 않고 그 바이트를 쓴다 — 방금 저장한 내용을 다시
+    원격(R2)에서 받아오는 왕복을 없앤다. 자르기·디코딩은 출처와 무관하게 여기서 한다.
 
     순서가 중요하다: **느린 스토리지 읽기를 먼저** 끝내고 그 다음에 DELETE/INSERT 한다.
     쓰기를 먼저 하면 SQLite 쓰기 잠금을 쥔 채 원격(R2) 왕복을 기다리게 되어, 그동안 다른
@@ -39,13 +44,16 @@ def index_node(db: Session, storage: StorageBackend, node: Node) -> None:
     node_id = node.id
     content: str | None = None
     if _is_text_node(node) and node.storage_key:
-        try:
-            with storage.open_stream(node.storage_key) as fh:
-                blob = fh.read(_CONTENT_MAX_BYTES)
-            content = blob.decode("utf-8", "ignore")
-        except Exception:
-            # 읽기 실패 → 인덱스에서 빼둔다(아래 DELETE만 수행). 다음 저장 때 다시 채워진다.
-            logger.exception("FTS 인덱싱: 내용 읽기 실패 node=%s", node_id)
+        raw = blob
+        if raw is None:
+            try:
+                with storage.open_stream(node.storage_key) as fh:
+                    raw = fh.read(_CONTENT_MAX_BYTES)
+            except Exception:
+                # 읽기 실패 → 인덱스에서 빼둔다(아래 DELETE만 수행). 다음 저장 때 다시 채워진다.
+                logger.exception("FTS 인덱싱: 내용 읽기 실패 node=%s", node_id)
+        if raw is not None:
+            content = raw[:_CONTENT_MAX_BYTES].decode("utf-8", "ignore")
 
     # 여기서부터가 쓰기 구간 — 잠금을 짧게 잡기 위해 읽기가 끝난 뒤에 둔다.
     # 기존 행은 항상 지운다(내용 갱신·타입 변경·읽기 실패 모두 커버).

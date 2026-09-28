@@ -69,6 +69,7 @@ export default function FolderTree({
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [dragOverId, setDragOverId] = useState<string | null>(null) // 드래그가 올라온 폴더(드롭 대상 강조)
   const [draggingId, setDraggingId] = useState<string | null>(null) // 지금 끌고 있는 행(흐리게 표시)
+  const [hoverRowId, setHoverRowId] = useState<string | null>(null) // 커서가 실제로 올라간 행(약한 표시)
   const [renaming, setRenaming] = useState<string | null>(null) // 인라인 이름변경 중인 노드 id
   // 우클릭 컨텍스트 메뉴: 대상 행 + 화면 좌표
   const [menu, setMenu] = useState<{ row: TreeRow; x: number; y: number } | null>(null)
@@ -162,7 +163,10 @@ export default function FolderTree({
     if (name && name !== node.name) onRenameCommit?.(node, name)
   }
 
-  function dropHandlers(targetId: string | null) {
+  // targetId = 실제로 놓이는 곳(파일 위에 놓으면 그 파일의 '부모 폴더'), rowId = 커서가 올라간 행.
+  // 파일 위에서는 둘이 달라진다 — 그때 대상 폴더만 강조하면 강조가 커서를 안 따라오는 것처럼
+  // 보이므로, 커서가 올라간 행에도 약한 표시를 줘서 "여기 놓으면 저 폴더로 간다"가 같이 읽히게 한다.
+  function dropHandlers(targetId: string | null, rowId: string | null) {
     if (!onDropToFolder && !onUploadFiles) return {}
     return {
       onDragOver: (e: React.DragEvent) => {
@@ -171,11 +175,16 @@ export default function FolderTree({
         if (t.includes('application/x-node-id') || t.includes('Files')) {
           e.preventDefault()
           setDragOverId(targetId)
+          setHoverRowId(rowId)
         }
       },
-      onDragLeave: () => setDragOverId((cur) => (cur === targetId ? null : cur)),
+      onDragLeave: () => {
+        setDragOverId((cur) => (cur === targetId ? null : cur))
+        setHoverRowId((cur) => (cur === rowId ? null : cur))
+      },
       onDrop: (e: React.DragEvent) => {
         setDragOverId(null)
+        setHoverRowId(null)
         const id = e.dataTransfer.getData('application/x-node-id')
         if (id) {
           e.preventDefault()
@@ -232,6 +241,9 @@ export default function FolderTree({
         <div
           className={`tree-row${active ? ' active' : ''}${
             dragOverId === node.id ? ' drag-over' : ''
+          }${
+            // 커서가 올라간 행이 실제 대상과 다를 때만(=파일 위) 약한 표시를 덧붙인다
+            hoverRowId === node.id && dragOverId !== node.id ? ' drag-hover' : ''
           }${draggingId === node.id ? ' dragging' : ''}${
             isFolder ? ' tree-row--sticky' : ''
           }`}
@@ -244,8 +256,9 @@ export default function FolderTree({
           onDragEnd={() => {
             setDraggingId(null)
             setDragOverId(null) // 드롭 밖에서 놓아도 강조가 남지 않게
+            setHoverRowId(null)
           }}
-          {...dropHandlers(isFolder ? node.id : node.parent_id)}
+          {...dropHandlers(isFolder ? node.id : node.parent_id, node.id)}
           onContextMenu={(e) => {
             if (!onRenameCommit && !onDelete && !onToggleFavorite) return
             e.preventDefault()

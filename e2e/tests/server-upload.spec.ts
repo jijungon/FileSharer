@@ -15,10 +15,10 @@ async function loginAsAdmin(page) {
   await expect(page).toHaveURL(/\/files/)
 }
 
-// '서버 업로드' 버튼은 title에도 문구가 겹칠 수 있어 '보이는 텍스트'로 특정한다.
+// 버튼은 업로드/다운로드를 함께 다루므로 '↕ 서버'로 이름이 바뀌었고, 팝오버는 '서버 전송'이다.
 async function openServerUpload(page) {
-  await page.getByRole('button').filter({ hasText: '서버 업로드' }).first().click()
-  await expect(page.getByRole('dialog', { name: '서버 업로드' })).toBeVisible()
+  await page.getByRole('button').filter({ hasText: '서버' }).first().click()
+  await expect(page.getByRole('dialog', { name: '서버 전송' })).toBeVisible()
 }
 
 test('임시 토큰 발급(버튼) → 한 토큰으로 여러 파일 Bearer 업로드 → 해제/회수', async ({ page }) => {
@@ -65,9 +65,16 @@ test('임시 토큰 발급(버튼) → 한 토큰으로 여러 파일 Bearer 업
     await expect(fileCell(page, name)).toBeVisible()
   }
 
-  // 파일을 열면 에디터 툴바에도 '서버 업로드' 버튼이 있다(폴더뷰뿐 아니라 파일뷰에도).
+  // 파일을 열면 상단 액션에도 '서버' 버튼이 있다(폴더뷰뿐 아니라 파일뷰에도).
   await fileCell(page, names[0]).click()
-  await expect(page.getByRole('button').filter({ hasText: '서버 업로드' })).toBeVisible()
+  await expect(page.getByRole('button').filter({ hasText: '서버' }).first()).toBeVisible()
+
+  // 같은 토큰으로 '내려받기' 명령도 제공된다(filesharer → 원격지). 공개 링크 없이 헤더 인증.
+  await openServerUpload(page)
+  const dl = page.getByTestId('server-download-curl')
+  await expect(dl).toContainText('Authorization: Bearer')
+  await expect(dl).toContainText('/api/files/')
+  await page.locator('.share-popover').getByRole('button', { name: /닫기/ }).click()
 
   // 회수하면 같은 토큰의 업로드는 401 (방금 발급한 것 = 목록 최상단).
   const rows = await page.request.get('/api/tokens').then((r) => r.json())
