@@ -25,12 +25,14 @@ test('local login → browse → create folder → upload file', async ({ page }
   })
   await expect(fileCell(page, /스모크\.txt/)).toBeVisible()
 
-  // 파일 열기 → 공유 링크 팝오버 안에 '사내 링크 복사'가 있다(액션 바에서 팝오버로 이동됨)
+  // 파일 열기 → 공유 링크 팝오버가 열린다(외부 공유 전용).
+  // '사내 링크 복사'는 상단 주소창(오미니박스)의 📋로 옮겨, 이 팝오버에는 더 이상 없다.
   await fileCell(page, /스모크\.txt/).click()
-  await page.locator('.editor-toolbar').getByRole('button', { name: '공유 링크' }).click()
+  await page.locator('.topbar-fileactions').getByRole('button', { name: '공유 링크' }).click()
+  await expect(page.locator('.share-popover')).toBeVisible()
   await expect(
     page.locator('.share-popover').getByRole('button', { name: /사내 링크 복사/ }),
-  ).toBeVisible()
+  ).toHaveCount(0)
 })
 
 // 1x1 투명 PNG (텍스트가 아닌 미리보기 = MediaPreview 경로)
@@ -72,16 +74,17 @@ test('browser back/forward syncs the folder view', async ({ page }) => {
   const folder = `뒤로폴더-${Date.now()}`
   await newFolder(page, folder)
   await page.locator('.tree-name', { hasText: folder }).click()
-  await expect(page.locator('.crumb-current, .crumb', { hasText: folder })).toBeVisible()
+  // 진입 확인은 트리의 현재 폴더 활성 표시로(브레드크럼은 상단 주소창으로 통합돼 사라짐)
+  await expect(page.locator('.tree-row.active', { hasText: folder })).toBeVisible()
   await expect(page).toHaveURL(/\/files\/.+/)
 
   // 브라우저 뒤로가기 → URL도 화면 상태도 루트로 (예전엔 URL만 바뀌고 화면은 안 바뀜)
   await page.goBack()
   await expect(page).toHaveURL(/\/files$/)
-  await expect(page.locator('.crumb-current, .crumb', { hasText: folder })).toHaveCount(0)
+  await expect(page.locator('.tree-row.active', { hasText: folder })).toHaveCount(0)
 
   // 앞으로가기 → 다시 폴더 안
   await page.goForward()
   await expect(page).toHaveURL(/\/files\/.+/)
-  await expect(page.locator('.crumb-current, .crumb', { hasText: folder })).toBeVisible()
+  await expect(page.locator('.tree-row.active', { hasText: folder })).toBeVisible()
 })

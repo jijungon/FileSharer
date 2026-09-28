@@ -11,7 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..config import get_settings
-from ..models import Node, ShareLink, User, as_utc, utcnow
+from ..models import Node, ShareLink, User, as_utc, email_nickname, utcnow
 from ..security import hash_password, verify_password
 from .permissions import has_deleted_ancestor
 
@@ -61,6 +61,9 @@ def share_out(share: ShareLink) -> dict:
         "max_downloads": share.max_downloads,
         "download_count": share.download_count,
         "revoked": share.revoked_at is not None,
+        # 여러 사람이 쓰는 공간에서 "이 링크 누가 언제 만든 건지" 알 수 있게 한다.
+        "created_at": as_utc(share.created_at).isoformat() if share.created_at else None,
+        "created_by_name": email_nickname(share.creator.email) if share.creator else "",
     }
 
 

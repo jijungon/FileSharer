@@ -13,6 +13,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..models import Node, ShareLink, utcnow
+from . import search_index
 from .storage import StorageBackend
 
 
@@ -24,6 +25,7 @@ def purge_subtree(db: Session, storage: StorageBackend, node: Node) -> int:
         count += purge_subtree(db, storage, child)
     if node.type == "file" and node.storage_key:
         storage.delete(node.storage_key)
+    search_index.remove_node(db, node.id)  # 내용 검색 인덱스에서도 제거(영구삭제)
     db.execute(sql_delete(ShareLink).where(ShareLink.node_id == node.id))
     db.delete(node)
     return count + 1

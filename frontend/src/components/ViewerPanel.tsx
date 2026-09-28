@@ -4,12 +4,12 @@ import { markdown } from '@codemirror/lang-markdown'
 import type { Extension } from '@codemirror/state'
 import CodeMirror, { EditorView } from '@uiw/react-codemirror'
 import { useScrollSync } from '../lib/scrollsync'
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { ApiError, SpaceInfo } from '../lib/api'
-import SharePopover from './SharePopover'
-import ServerUploadPopover from './ServerUploadPopover'
 import { acquireLock, downloadUrl, LockState, NodeInfo, releaseLock } from '../lib/files'
 import { formatBytes } from '../lib/format'
+import { useAppTheme } from '../lib/theme'
 
 // DnX풍 다크 에디터 테마 (near-black base + 골드 커서/활성줄)
 const EDITOR_DARK = EditorView.theme(
@@ -62,25 +62,6 @@ import MarkdownPreview from './MarkdownPreview'
 const AUTOSAVE_KEY = 'filesharer.autosave'
 const MAX_EDIT_BYTES = 5 * 1024 * 1024
 
-// 현재 앱 테마(라이트/다크)를 구독한다. Files.tsx의 토글이 <html data-theme>를 바꾸므로
-// 에디터가 열려 있는 동안 토글해도 즉시 반영되도록 MutationObserver로 감시한다.
-function useAppTheme(): 'light' | 'dark' {
-  const [theme, setTheme] = useState<'light' | 'dark'>(() =>
-    typeof document !== 'undefined' && document.documentElement.dataset.theme === 'light'
-      ? 'light'
-      : 'dark',
-  )
-  useEffect(() => {
-    const el = document.documentElement
-    const obs = new MutationObserver(() =>
-      setTheme(el.dataset.theme === 'light' ? 'light' : 'dark'),
-    )
-    obs.observe(el, { attributes: true, attributeFilter: ['data-theme'] })
-    return () => obs.disconnect()
-  }, [])
-  return theme
-}
-
 interface Props {
   node: NodeInfo
   space: SpaceInfo | null
@@ -93,173 +74,8 @@ interface Props {
   onActiveToken: (token: string | null) => void // 임시 토큰 발급/해제 반영
   onLocalUpload?: () => void // 내 PC에서 현재 위치로 업로드(파일 선택창 열기)
   onDirtyChange?: (dirty: boolean) => void // 미저장(dirty) 변화 — 다중 탭 ● 뱃지/닫기 확인용
-}
-
-// 편집/미리보기 상단 경로(예전 LinkBar의 브레드크럼). 파일을 열면 LinkBar를 숨기고
-// 이 경로를 에디터 툴바에 넣어 한 줄로 통합한다(폴더 클릭 시 그 폴더로 이동 → 뷰어 닫힘).
-function CrumbPath({
-  space,
-  path,
-  onNavigate,
-}: {
-  space: SpaceInfo | null
-  path: NodeInfo[]
-  onNavigate: (index: number | null) => void
-}) {
-  return (
-    <nav className="editor-crumbs" aria-label="경로">
-      <button className="crumb" onClick={() => onNavigate(null)}>
-        {space?.name ?? '…'}
-      </button>
-      {path.map((folder, i) => (
-        <span key={folder.id} className="editor-crumb-seg">
-          <span className="crumb-sep">/</span>
-          <button className="crumb" onClick={() => onNavigate(i)}>
-            {folder.name}
-          </button>
-        </span>
-      ))}
-    </nav>
-  )
-}
-
-// 파일 액션(다운로드 · 서버 업로드 · 사내 링크 복사 · 공유 링크) — 예전 LinkBar에서 옮겨왔다.
-// 서버 업로드는 '이 파일이 있는 폴더'가 대상(파일 자체가 아니라 폴더로 push). 공유 링크 바로 옆.
-function FileActions({
-  node,
-  space,
-  path,
-  activeToken,
-  onActiveToken,
-  onLocalUpload,
-}: {
-  node: NodeInfo
-  space: SpaceInfo | null
-  path: NodeInfo[]
-  activeToken?: string | null
-  onActiveToken: (token: string | null) => void
-  onLocalUpload?: () => void
-}) {
-  const [shareOpen, setShareOpen] = useState(false)
-  const [serverUpOpen, setServerUpOpen] = useState(false)
-  const folder = path.length > 0 ? path[path.length - 1] : null
-  return (
-    <>
-      {/* 로컬: 다운로드 · 로컬 업로드 (연한 노랑) */}
-      <a href={downloadUrl(node)}>
-        <button className="btn-utility btn-tier-local">다운로드</button>
-      </a>
-      {onLocalUpload && (
-        <button
-          className="btn-utility btn-tier-local"
-          onClick={onLocalUpload}
-          title="내 PC에서 이 파일의 폴더로 업로드 (폴더는 끌어다 놓기)"
-        >
-          ↑ 로컬 업로드
-        </button>
-      )}
-      <span className="action-divider" aria-hidden="true" />
-      {/* 서버(헤드리스) 업로드 (중간 노랑) */}
-      {space && (
-        <button
-          className="btn-utility btn-tier-server"
-          onClick={() => {
-            setServerUpOpen((v) => !v)
-            setShareOpen(false)
-          }}
-          title="이 폴더로 서버에서 파일 올리기 (API 토큰)"
-        >
-          ↥ 서버 업로드
-        </button>
-      )}
-      {/* 링크: 공유 링크 (진한 노랑). '사내 링크 복사'는 공유 팝오버 안으로 옮겨 액션 바를 정리했다. */}
-      <button
-        className="btn-utility btn-tier-link linkbar-share"
-        onClick={() => {
-          setShareOpen((v) => !v)
-          setServerUpOpen(false)
-        }}
-      >
-        공유 링크
-      </button>
-      {serverUpOpen && space && (
-        <ServerUploadPopover
-          folderId={folder?.id ?? null}
-          spaceId={space.id}
-          label={folder?.name ?? space.name}
-          activeToken={activeToken}
-          onActiveToken={onActiveToken}
-          onClose={() => setServerUpOpen(false)}
-        />
-      )}
-      {shareOpen && <SharePopover node={node} onClose={() => setShareOpen(false)} />}
-    </>
-  )
-}
-
-// 뷰어/에디터 공통 상단 툴바. children = 형식별 컨트롤(자동저장·저장 등).
-// 사용자 요청대로 다운로드/링크 버튼을 저장 '왼쪽'에 두려고 파일 액션을 children 앞에 놓는다.
-function ViewerToolbar({
-  node,
-  space,
-  path,
-  onNavigate,
-  onClose,
-  onDelete,
-  name,
-  status,
-  statusClass,
-  extraStatus,
-  activeToken,
-  onActiveToken,
-  onLocalUpload,
-  children,
-}: {
-  node: NodeInfo
-  space: SpaceInfo | null
-  path: NodeInfo[]
-  onNavigate: (index: number | null) => void
-  onClose: () => void
-  onDelete: () => void
-  name?: ReactNode
-  status?: ReactNode
-  statusClass?: string
-  extraStatus?: ReactNode
-  activeToken?: string | null
-  onActiveToken: (token: string | null) => void
-  onLocalUpload?: () => void
-  children?: ReactNode
-}) {
-  return (
-    <div className="editor-toolbar">
-      <CrumbPath space={space} path={path} onNavigate={onNavigate} />
-      <span className="editor-name">{name ?? node.name}</span>
-      {status != null && (
-        <span className={`editor-status${statusClass ? ` ${statusClass}` : ''}`}>{status}</span>
-      )}
-      {extraStatus}
-      <span className="toolbar-spacer" />
-      <FileActions
-        node={node}
-        space={space}
-        path={path}
-        activeToken={activeToken}
-        onActiveToken={onActiveToken}
-        onLocalUpload={onLocalUpload}
-      />
-      {children}
-      <button
-        className="btn-utility btn-danger-ghost"
-        onClick={onDelete}
-        title="이 파일을 휴지통으로 이동 (복원 가능)"
-      >
-        🗑 삭제
-      </button>
-      <button className="btn-utility" onClick={onClose}>
-        닫기
-      </button>
-    </div>
-  )
+  active?: boolean // 지금 활성 탭인지 — 활성일 때만 저장/자동저장을 탭 줄 슬롯으로 portal(Stage B)
+  actionSlot?: HTMLElement | null // 탭 줄의 저장/자동저장 slot(Files.tsx가 제공)
 }
 
 export default function ViewerPanel(props: Props) {
@@ -276,45 +92,13 @@ export default function ViewerPanel(props: Props) {
 
 type MediaKind = 'image' | 'pdf' | 'video' | 'audio' | 'html'
 
-function MediaPreview({
-  node,
-  space,
-  path,
-  onNavigate,
-  onClose,
-  onDelete,
-  kind,
-  activeToken,
-  onActiveToken,
-  onLocalUpload,
-}: Props & { kind: MediaKind }) {
+function MediaPreview({ node, kind }: Props & { kind: MediaKind }) {
   const raw = `/api/files/${node.id}/raw`
   // 영상 재생은 preview.mp4로 — 브라우저가 못 푸는 오디오 코덱(AC-3 등)이면 서버가 AAC로 변환해 준다.
   const videoSrc = `/api/files/${node.id}/preview.mp4`
   return (
     <div className="editor-shell">
-      <ViewerToolbar
-        node={node}
-        space={space}
-        path={path}
-        onNavigate={onNavigate}
-        onClose={onClose}
-        onDelete={onDelete}
-        activeToken={activeToken}
-        onActiveToken={onActiveToken}
-        onLocalUpload={onLocalUpload}
-        status={formatBytes(node.size)}
-        extraStatus={
-          kind === 'html' ? (
-            <span
-              className="editor-status"
-              title="업로드된 HTML은 보안을 위해 스크립트 없이 표시됩니다"
-            >
-              HTML · 스크립트 미실행
-            </span>
-          ) : undefined
-        }
-      />
+      {/* Stage B: 파일 액션은 상단 바, 삭제/닫기는 탭 줄로 이동 — 미디어 뷰어엔 자체 툴바 없음 */}
       {kind === 'image' ? (
         <div className="image-preview">
           <img src={raw} alt={node.name} />
@@ -366,17 +150,7 @@ function HtmlFrame({ node }: { node: NodeInfo }) {
 
 /** 오피스 문서 미리보기 — 서버가 LibreOffice로 변환한 PDF를 받아 보여준다.
  * 변환에 몇 초 걸릴 수 있어 로딩 상태를 표시하고, 실패하면 안내한다. */
-function OfficePreview({
-  node,
-  space,
-  path,
-  onNavigate,
-  onClose,
-  onDelete,
-  activeToken,
-  onActiveToken,
-  onLocalUpload,
-}: Props) {
+function OfficePreview({ node }: Props) {
   const [state, setState] = useState<'loading' | 'ready' | 'error'>('loading')
   const [pdfUrl, setPdfUrl] = useState('')
   const [err, setErr] = useState('')
@@ -411,19 +185,7 @@ function OfficePreview({
 
   return (
     <div className="editor-shell">
-      <ViewerToolbar
-        node={node}
-        space={space}
-        path={path}
-        onNavigate={onNavigate}
-        onClose={onClose}
-        onDelete={onDelete}
-        activeToken={activeToken}
-        onActiveToken={onActiveToken}
-        onLocalUpload={onLocalUpload}
-        status={formatBytes(node.size)}
-        extraStatus={<span className="editor-status">PDF로 변환됨</span>}
-      />
+      {/* Stage B: 파일 액션은 상단 바, 삭제/닫기는 탭 줄로 이동 — 오피스 뷰어엔 자체 툴바 없음 */}
       {state === 'loading' ? (
         <div className="viewer-card-wrap">
           <p className="muted">PDF로 변환하는 중… (처음 한 번은 몇 초 걸릴 수 있어요)</p>
@@ -480,19 +242,7 @@ function DownloadCard({ node, onClose }: Props) {
   )
 }
 
-function TextEditor({
-  node,
-  space,
-  path,
-  onNavigate,
-  onNodeUpdated,
-  onClose,
-  onDelete,
-  activeToken,
-  onActiveToken,
-  onLocalUpload,
-  onDirtyChange,
-}: Props) {
+function TextEditor({ node, onNodeUpdated, onDirtyChange, active, actionSlot }: Props) {
   const appTheme = useAppTheme() // 라이트/다크 토글에 따라 에디터 테마도 전환
   const [text, setText] = useState<string | null>(null)
   const [loadError, setLoadError] = useState('')
@@ -728,46 +478,39 @@ function TextEditor({
           ? '● 저장 안 됨'
           : '저장됨'
 
+  const statusClass =
+    [dirty && !saving ? 'dirty' : '', savedFlash ? 'saved' : ''].filter(Boolean).join(' ')
   return (
     <div className={`editor-shell${autosave ? ' autosave-on' : ''}`}>
-      <ViewerToolbar
-        node={node}
-        space={space}
-        path={path}
-        onNavigate={onNavigate}
-        onClose={onClose}
-        onDelete={onDelete}
-        activeToken={activeToken}
-        onActiveToken={onActiveToken}
-        onLocalUpload={onLocalUpload}
-        status={status}
-        statusClass={
-          [dirty && !saving ? 'dirty' : '', savedFlash ? 'saved' : '']
-            .filter(Boolean)
-            .join(' ') || undefined
-        }
-      >
-        <label className="autosave-toggle">
-          <span>자동저장</span>
-          <button
-            type="button"
-            role="switch"
-            aria-checked={autosave}
-            className={`switch${autosave ? ' on' : ''}`}
-            onClick={toggleAutosave}
-            title={autosave ? '자동저장 켜짐' : '자동저장 꺼짐'}
-          >
-            <span className="switch-knob" />
-          </button>
-        </label>
-        <button
-          className="btn-utility"
-          onClick={() => doSave()}
-          disabled={saving || !dirty || readOnly}
-        >
-          저장 ⌘S
-        </button>
-      </ViewerToolbar>
+      {/* Stage B: 상태·자동저장·저장을 탭 줄 슬롯으로 portal(활성 탭일 때만). 나머지 파일 액션은 상단 바로 이동 */}
+      {active &&
+        actionSlot &&
+        createPortal(
+          <>
+            <span className={`editor-status${statusClass ? ` ${statusClass}` : ''}`}>{status}</span>
+            <label className="autosave-toggle">
+              <span>자동저장</span>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={autosave}
+                className={`switch${autosave ? ' on' : ''}`}
+                onClick={toggleAutosave}
+                title={autosave ? '자동저장 켜짐' : '자동저장 꺼짐'}
+              >
+                <span className="switch-knob" />
+              </button>
+            </label>
+            <button
+              className="btn-utility"
+              onClick={() => doSave()}
+              disabled={saving || !dirty || readOnly}
+            >
+              저장 ⌘S
+            </button>
+          </>,
+          actionSlot,
+        )}
 
       {readOnly && (
         <div className="lock-banner">

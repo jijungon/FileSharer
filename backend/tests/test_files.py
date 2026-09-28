@@ -564,6 +564,78 @@ def test_search_escapes_like_wildcards(admin_client):
     assert names == {"a_b.txt"}  # axb.txt 는 매칭 안 됨(_ 가 임의문자면 매칭됐을 것)
 
 
+def test_search_by_content_returns_match(admin_client):
+    """텍스트 파일 내용 전문검색 — 이름엔 없고 내용에만 있는 토큰으로 찾으면 match=='content'.
+    내용에 토큰이 없는 파일은 매칭되지 않는다."""
+    pid = spaces_of(admin_client)["personal"]["id"]
+    upload(
+        admin_client, f"/api/spaces/{pid}/files", "notes.md",
+        content="회의 요약: 프로젝트 zqxwvtoken 관련 결정".encode(),
+    )
+    upload(
+        admin_client, f"/api/spaces/{pid}/files", "empty.md",
+        content="관련 내용 없음".encode(),
+    )
+    res = admin_client.get(f"/api/spaces/{pid}/search", params={"q": "zqxwvtoken"}).json()
+    by_name = {r["name"]: r for r in res}
+    assert by_name["notes.md"]["match"] == "content"  # 이름 아닌 내용에서 매치
+    assert "empty.md" not in by_name  # 토큰 없는 파일은 제외
+
+
+def test_search_content_survives_rename(admin_client):
+    """파일 이름을 바꿔도 내용 매치는 유지된다(내용 불변 → 인덱스 그대로)."""
+    pid = spaces_of(admin_client)["personal"]["id"]
+    node = upload(
+        admin_client, f"/api/spaces/{pid}/files", "before.md",
+        content="본문에 uniquephrase42 포함".encode(),
+    ).json()
+    admin_client.patch(f"/api/nodes/{node['id']}", json={"name": "after.md"})
+    res = admin_client.get(f"/api/spaces/{pid}/search", params={"q": "uniquephrase42"}).json()
+    by_name = {r["name"]: r for r in res}
+    assert "after.md" in by_name
+    assert by_name["after.md"]["match"] == "content"
+
+
+def test_search_reindexes_on_content_save(admin_client):
+    """편집기 저장(PUT content)이 인덱스를 갱신 — 새 토큰은 잡히고 옛 토큰은 빠진다."""
+    pid = spaces_of(admin_client)["personal"]["id"]
+    node = upload(
+        admin_client, f"/api/spaces/{pid}/files", "doc.md",
+        content="oldtoken 초기 내용".encode(),
+    ).json()
+    r = admin_client.put(
+        f"/api/files/{node['id']}/content", json={"content": "newtoken 갱신된 내용"}
+    )
+    assert r.status_code == 200
+    hit = admin_client.get(f"/api/spaces/{pid}/search", params={"q": "newtoken"}).json()
+    assert any(x["id"] == node["id"] and x["match"] == "content" for x in hit)
+    gone = admin_client.get(f"/api/spaces/{pid}/search", params={"q": "oldtoken"}).json()
+    assert all(x["id"] != node["id"] for x in gone)  # 옛 토큰은 더는 매칭 안 됨
+
+
+def test_backfill_indexes_preexisting_file(admin_client, db):
+    """백필: 인덱스에 없던 기존 텍스트 파일을 채워 내용검색이 다시 잡히게 한다."""
+    from app.config import get_settings
+    from app.services import search_index
+    from app.services.storage import build_storage
+
+    pid = spaces_of(admin_client)["personal"]["id"]
+    node = upload(
+        admin_client, f"/api/spaces/{pid}/files", "legacy.md",
+        content="backfilltoken 옛 파일 내용".encode(),
+    ).json()
+    # 인덱스 행을 지워 '아직 인덱싱 안 된 기존 파일' 상태를 만든다.
+    search_index.remove_node(db, node["id"])
+    db.commit()
+    res0 = admin_client.get(f"/api/spaces/{pid}/search", params={"q": "backfilltoken"}).json()
+    assert all(r["id"] != node["id"] for r in res0)  # 인덱스에서 빠져 내용 매치 없음
+
+    indexed = search_index.backfill(db, build_storage(get_settings()))
+    assert indexed >= 1
+    res1 = admin_client.get(f"/api/spaces/{pid}/search", params={"q": "backfilltoken"}).json()
+    assert any(r["id"] == node["id"] and r["match"] == "content" for r in res1)
+
+
 def test_search_denied_in_others_personal_space(admin_client, db):
     """남의 개인공간은 검색 불가(프라이버시)."""
     from app.bootstrap import create_user

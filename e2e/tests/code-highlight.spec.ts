@@ -26,7 +26,7 @@ test('코드 파일(.py)은 편집기로 열리고 프리뷰 없이 풀폭이다
 
   // 트리에서 열기 → 다운로드 카드가 아니라 '편집기'로 열린다
   await page.locator('.tree-name').filter({ hasText: 'script.py' }).click()
-  await expect(page.locator('.editor-toolbar')).toBeVisible()
+  await expect(page.locator('.editor-shell')).toBeVisible()
   await expect(page.locator('.cm-editor')).toBeVisible()
   // 코드 파일은 마크다운과 달리 프리뷰 패널이 없다(에디터 풀폭)
   await expect(page.locator('.preview-pane')).toHaveCount(0)
@@ -41,6 +41,6 @@ test('마크다운(.md)은 여전히 편집|프리뷰 분할로 열린다', asyn
   })
   await expect(page.locator('.upload-row')).toHaveCount(0)
   await page.locator('.tree-name').filter({ hasText: 'doc.md' }).click()
-  await expect(page.locator('.editor-toolbar')).toBeVisible()
+  await expect(page.locator('.editor-shell')).toBeVisible()
   await expect(page.locator('.preview-pane')).toBeVisible() // md는 프리뷰 유지
 })

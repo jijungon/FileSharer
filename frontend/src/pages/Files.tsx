@@ -7,6 +7,8 @@ import NameModal from '../components/NameModal'
 import NewMarkdownModal from '../components/NewMarkdownModal'
 import ViewerPanel from '../components/ViewerPanel'
 import { api, ApiError, Me, SpaceInfo } from '../lib/api'
+import { copyText } from '../lib/clipboard'
+import { toggleTheme as applyToggle } from '../lib/theme'
 import { formatBytes, formatDateTime, formatTrashRemaining } from '../lib/format'
 import {
   dropUploads,
@@ -26,7 +28,6 @@ import {
   listFavoriteIds,
   listFavorites,
   listNodeChildren,
-  listRecent,
   listSpaceChildren,
   listTrash,
   copyNode,
@@ -34,7 +35,6 @@ import {
   NodeInfo,
   purgeNode,
   TreeRow,
-  recordView,
   removeFavorite,
   renameNode,
   restoreNode,
@@ -128,10 +128,14 @@ export default function Files() {
   } | null>(null)
   const [searchQ, setSearchQ] = useState('')
   const [searchResults, setSearchResults] = useState<NodeInfo[] | null>(null) // null=검색 안 함
+  const [searchFocused, setSearchFocused] = useState(false) // 상단 검색 드롭다운 열림 여부
+  const [searchIdx, setSearchIdx] = useState(-1) // 키보드로 하이라이트한 결과(-1=없음)
+  const [searchTyping, setSearchTyping] = useState(false) // true=검색 타이핑 중, false=주소(현재 파일 경로) 표시
+  const [copiedLink, setCopiedLink] = useState(false) // 주소창 📋 복사 피드백
+  const searchRef = useRef<HTMLDivElement>(null)
   const [favIds, setFavIds] = useState<Set<string>>(new Set()) // 내 즐겨찾기 노드 id
   const [favMode, setFavMode] = useState(false) // 즐겨찾기 뷰
   const [favItems, setFavItems] = useState<NodeInfo[]>([])
-  const [recentItems, setRecentItems] = useState<NodeInfo[]>([])
   const [dropActive, setDropActive] = useState(false)
   const [bootError, setBootError] = useState('')
   // 지금 메모리에 든 임시 토큰 원문 — 서버 업로드 curl 자동 채움용. 새로고침/해제하면 사라진다.
@@ -152,6 +156,14 @@ export default function Files() {
     }
   })
   const fileInput = useRef<HTMLInputElement>(null)
+  const tabBarRef = useRef<HTMLDivElement>(null) // 탭 스트립 가로 스크롤/드래그
+  // 드래그 중 사이드바 가장자리 근처면 자동 스크롤 — 화면 밖 폴더로 옮길 때 드래그를 멈추지 않아도 된다.
+  const sidebarScrollRef = useRef<HTMLDivElement>(null)
+  const autoScrollDir = useRef(0) // -1 위로, 1 아래로, 0 정지
+  const autoScrollRaf = useRef<number | null>(null)
+  const tabDrag = useRef<{ x: number; scroll: number; moved: boolean } | null>(null)
+  // 탭 줄 오른쪽 '저장/자동저장' 슬롯 — 활성 편집기가 이 DOM으로 portal 렌더한다(Stage B)
+  const [actionSlot, setActionSlot] = useState<HTMLDivElement | null>(null)
   const restoredFromUrl = useRef(false)
   const navSynced = useRef(false) // 부팅 완료 후 브라우저 뒤로/앞으로(URL) 동기화 활성화
 
@@ -175,14 +187,8 @@ export default function Files() {
   }
 
   function toggleTheme() {
-    const next = theme === 'dark' ? 'light' : 'dark'
-    setTheme(next)
-    document.documentElement.dataset.theme = next
-    try {
-      localStorage.setItem('fs:theme', next)
-    } catch {
-      /* localStorage 불가 — 세션 동안만 적용 */
-    }
+    // 적용·저장은 공용 모듈이 담당한다(공유 페이지와 같은 동작을 쓰기 위해).
+    setTheme(applyToggle())
   }
 
   // 사이드바 우측 경계선을 드래그해 폭 조절(160~560px). 놓을 때 localStorage에 저장.
@@ -253,10 +259,6 @@ export default function Files() {
         }
         const savedSpace = spacesRes.find((s) => s.id === saved.spaceId)?.id
         setSpaceId((prev) => prev ?? savedSpace ?? spacesRes[0]?.id ?? null)
-        // 최근은 이제 사이드바 인라인(MAX 5)이므로 항상 로드해 둔다(별도 뷰 아님)
-        listRecent()
-          .then(setRecentItems)
-          .catch(() => setRecentItems([]))
         if (saved.view === 'fav') {
           setFavMode(true)
           listFavorites()
@@ -351,7 +353,6 @@ export default function Files() {
     try {
       if (favMode) setFavItems(await listFavorites())
       else await reload()
-      listRecent().then(setRecentItems).catch(() => {}) // 사이드바 인라인 최근 갱신
       setTreeVersion((v) => v + 1) // 사이드바 폴더 트리도 갱신
     } catch {
       /* reload/loader 내부에서 에러 표시 처리 */
@@ -365,18 +366,6 @@ export default function Files() {
   useEffect(() => {
     setSearchQ('')
   }, [spaceId, currentFolder?.id, trashMode])
-
-  // 파일을 열면(뷰어에 뜨면) '최근 열어본 항목'에 기록 후, 사이드바 인라인 최근을 갱신.
-  // id/type만 의존(같은 파일 재렌더엔 중복 기록 안 함)
-  useEffect(() => {
-    if (selected && selected.type === 'file') {
-      recordView(selected.id)
-        .then(() => listRecent())
-        .then(setRecentItems)
-        .catch(() => {})
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selected?.id, selected?.type])
 
   // 활성 파일이 바뀌면 탭 목록에 추가(없으면)하거나 최신 node로 갱신한다.
   useEffect(() => {
@@ -433,7 +422,8 @@ export default function Files() {
     })
   }
 
-  // 검색어 디바운스 → 현재 공간에서 이름 검색. 빈 문자열이면 검색 모드 해제.
+  // 검색어 디바운스 → 현재 공간에서 이름·내용 검색. 빈 문자열이면 검색 모드 해제.
+  // 예외: 사내 링크/해시(32자리 hex)를 붙여넣으면 그 파일을 바로 결과로 띄운다(📋 해시 복사와 짝).
   useEffect(() => {
     if (!spaceId) return
     const q = searchQ.trim()
@@ -442,16 +432,105 @@ export default function Files() {
       return
     }
     let alive = true
+    const idMatch = q.match(/([0-9a-f]{32})/i)
+    if (idMatch) {
+      getNodePath(idMatch[1])
+        .then((found) => {
+          if (alive)
+            setSearchResults([
+              { ...found.node, path: found.ancestors.map((a) => a.name).join('/') },
+            ])
+        })
+        .catch(() => alive && setSearchResults([]))
+      return () => {
+        alive = false
+      }
+    }
     const timer = setTimeout(() => {
-      searchNodes(spaceId, q)
-        .then((rows) => alive && setSearchResults(rows))
+      // 현재 공간만이 아니라 접근 가능한 모든 공간에서 찾아 합친다.
+      const targetIds = spaces.length > 0 ? spaces.map((s) => s.id) : [spaceId]
+      const nameOf = (id: string) => spaces.find((s) => s.id === id)?.name ?? ''
+      Promise.all(targetIds.map((id) => searchNodes(id, q).catch(() => [] as NodeInfo[])))
+        .then((perSpace) => {
+          if (!alive) return
+          const seen = new Set<string>()
+          const merged: NodeInfo[] = []
+          for (const rows of perSpace) {
+            for (const n of rows) {
+              if (seen.has(n.id)) continue
+              seen.add(n.id)
+              // 여러 공간을 한꺼번에 보여주므로 경로 앞에 공간 이름을 붙여 구분한다.
+              merged.push({ ...n, path: [nameOf(n.space_id), n.path].filter(Boolean).join('/') })
+            }
+          }
+          setSearchResults(merged)
+        })
         .catch(() => alive && setSearchResults([]))
     }, 300)
     return () => {
       alive = false
       clearTimeout(timer)
     }
-  }, [searchQ, spaceId])
+  }, [searchQ, spaceId, spaces])
+
+  // 검색 결과가 바뀌면 키보드 하이라이트를 초기화(Enter는 없으면 첫 결과를 연다)
+  useEffect(() => {
+    setSearchIdx(-1)
+  }, [searchResults])
+
+  // 하이라이트한 결과를 드롭다운 안에서 보이게 스크롤
+  useEffect(() => {
+    if (searchIdx < 0) return
+    searchRef.current?.querySelector('.search-result.active')?.scrollIntoView({ block: 'nearest' })
+  }, [searchIdx])
+
+  // 검색창 바깥을 누르면 드롭다운을 닫고 포커스를 바깥으로 넘긴다
+  useEffect(() => {
+    if (!searchFocused) return
+    function onDown(e: MouseEvent) {
+      if (searchRef.current && !searchRef.current.contains(e.target as Node)) {
+        setSearchFocused(false)
+        setSearchTyping(false) // 바깥 클릭 = 검색 포기 → 주소(경로) 모드로 복귀
+        setSearchQ('')
+      }
+    }
+    document.addEventListener('mousedown', onDown)
+    return () => document.removeEventListener('mousedown', onDown)
+  }, [searchFocused])
+
+  // 드래그가 어디서 끝나든(바깥에 놓거나 Esc로 취소해도) 사이드바 자동 스크롤을 멈춘다.
+  useEffect(() => {
+    const stop = () => {
+      autoScrollDir.current = 0
+    }
+    window.addEventListener('dragend', stop)
+    window.addEventListener('drop', stop)
+    return () => {
+      window.removeEventListener('dragend', stop)
+      window.removeEventListener('drop', stop)
+    }
+  }, [])
+
+  // 파일을 열거나 다른 파일로 바뀌면 주소창을 '경로 모드'로 되돌린다(진행 중이던 검색어는 비운다).
+  useEffect(() => {
+    const fileOpen = !!selected && selected.type === 'file' && !trashMode && !favMode
+    if (fileOpen) {
+      setSearchTyping(false)
+      setSearchQ('')
+      setSearchIdx(-1)
+    }
+    // selected.id만 추적(같은 파일 객체 교체마다 재실행 방지)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected?.id, trashMode, favMode])
+
+  // 검색 결과 선택 → 그 파일을 열고 검색을 닫는다(클릭·Enter 공통)
+  function openSearchResult(node: NodeInfo) {
+    openLocated(node)
+    setSearchQ('')
+    setSearchTyping(false) // 주소(경로) 모드로 복귀 — 연 파일의 경로가 검색창에 뜬다
+    setSearchFocused(false)
+    setSearchIdx(-1)
+  }
 
   function flash(msg: string) {
     setNotice(msg)
@@ -510,17 +589,11 @@ export default function Files() {
     }
   }
 
-  // 휴지통 항목 클릭 → 그 항목이 있던 '원래 폴더'로 이동(파일을 여는 게 아니라 위치로).
-  // openFolderById가 trashMode 해제 + 경로 복원을 처리한다. 루트 항목이면 공간 최상위로.
-  function locateTrashed(node: NodeInfo) {
-    if (node.parent_id) openFolderById(node.parent_id)
-    else if (spaceId) switchSpace(spaceId)
-  }
-
   // 검색/즐겨찾기/최근 결과 클릭: 폴더면 그 폴더로, 파일이면 경로 복원 후 뷰어로 연다.
   async function openLocated(node: NodeInfo) {
     setSearchQ('') // 검색 모드 종료
     setFavMode(false) // 즐겨찾기 뷰 종료
+    setTrashMode(false) // 휴지통 모드였어도 벗어나 뷰어/폴더를 연다
     if (node.type === 'folder') {
       openFolderById(node.id)
       return
@@ -541,6 +614,7 @@ export default function Files() {
   async function openFileFromTree(row: TreeRow) {
     setSearchQ('')
     setFavMode(false)
+    setTrashMode(false) // 휴지통 모드에서 트리 파일을 눌러도 뷰어가 열리게
     try {
       const found = await getNodePath(row.id)
       setSpaceId(found.space_id)
@@ -780,9 +854,14 @@ export default function Files() {
   }
 
   // ── 사이드바 트리 우클릭 메뉴 동작(파일목록 표 대체) ──
-  // 인라인 이름변경 커밋(빈/동일 이름 무시는 FolderTree 쪽에서 처리) — guard가 reload + treeVersion 갱신
-  function renameCommit(row: TreeRow, name: string) {
-    void guard(() => renameNode(row.id, name))
+  // 인라인 이름변경 커밋(빈/동일 이름 무시는 FolderTree 쪽에서 처리) — guard가 reload + treeVersion 갱신.
+  // 백엔드가 돌려준 실제 새 이름(중복 시 "(2)" 포함)으로, 열린 탭·선택 파일·주소창 경로를 함께 갱신한다.
+  async function renameCommit(row: TreeRow, name: string) {
+    const fresh = await guard(() => renameNode(row.id, name))
+    if (!fresh) return
+    setOpenTabs((tabs) => tabs.map((t) => (t.id === fresh.id ? { ...t, name: fresh.name } : t)))
+    setSelected((sel) => (sel?.id === fresh.id ? { ...sel, name: fresh.name } : sel))
+    setPath((p) => p.map((f) => (f.id === fresh.id ? { ...f, name: fresh.name } : f)))
   }
   async function deleteFromTree(row: TreeRow) {
     if (!window.confirm(`"${row.name}"을(를) 휴지통으로 이동할까요?`)) return
@@ -800,19 +879,29 @@ export default function Files() {
     toggleFav({ ...row, space_id: spaceId ?? '', created_at: null, updated_at: null })
   }
 
-  async function onMove(draggedId: string, targetFolderId: string | null) {
-    if (!spaceId || draggedId === targetFolderId) return
-    await guard(() =>
-      moveNode(draggedId, targetFolderId ? { parentId: targetFolderId } : { spaceId }),
-    )
-    closeViewerIfAffected([draggedId]) // 열려 있던 파일을 옮겼으면 뷰어를 닫는다
-  }
-
-  async function copyToSpace(draggedId: string, targetSpaceId: string, spaceName: string) {
-    if (draggedId === targetSpaceId || targetSpaceId === spaceId) return
-    // 공간 간 전송은 복사 — 원본은 그대로 두고 대상 공간에 복사본을 만든다.
-    const ok = await guard(() => copyNode(draggedId, { spaceId: targetSpaceId }))
-    if (ok) flash(`${spaceName}(으)로 복사했습니다`)
+  // 드래그 항목을 폴더/공간에 놓았을 때: 같은 공간이면 이동, 다른 공간이면 복사(원본 유지).
+  // 판단 기준은 "드래그한 파일의 실제 공간(srcSpaceId) vs 놓은 대상의 공간" — 활성 공간이 아니다.
+  // (두 공간 트리를 동시에 보여준 뒤로, 활성 공간 기준 판단은 크로스공간 드롭을 이동으로 오판했다.)
+  async function dropNode(
+    draggedId: string,
+    target: { spaceId: string; folderId?: string | null; spaceName?: string },
+    srcSpaceId?: string,
+  ) {
+    const folderId = target.folderId ?? null
+    if (draggedId === folderId) return
+    if (srcSpaceId && srcSpaceId !== target.spaceId) {
+      // 다른 공간 → 복사
+      const ok = await guard(() =>
+        copyNode(draggedId, folderId ? { parentId: folderId } : { spaceId: target.spaceId }),
+      )
+      if (ok) flash(target.spaceName ? `${target.spaceName}(으)로 복사했습니다` : '복사했습니다')
+    } else {
+      // 같은 공간 → 이동
+      await guard(() =>
+        moveNode(draggedId, folderId ? { parentId: folderId } : { spaceId: target.spaceId }),
+      )
+      closeViewerIfAffected([draggedId]) // 열려 있던 파일을 옮겼으면 뷰어를 닫는다
+    }
   }
 
   function draggedIds(e: React.DragEvent): string[] {
@@ -826,6 +915,29 @@ export default function Files() {
     }
     const one = e.dataTransfer.getData('application/x-node-id')
     return one ? [one] : []
+  }
+
+  // ── 드래그 중 사이드바 자동 스크롤 ──
+  // 가장자리 근처에 커서가 오면 그 방향으로 계속 스크롤한다(rAF라 프레임에 맞춰 부드럽게).
+  // 없으면 화면 밖 폴더로 옮길 때 드래그를 멈추고 수동으로 스크롤해야 한다.
+  function autoScrollStep() {
+    const el = sidebarScrollRef.current
+    if (!el || autoScrollDir.current === 0) {
+      autoScrollRaf.current = null
+      return
+    }
+    el.scrollTop += autoScrollDir.current * 10
+    autoScrollRaf.current = requestAnimationFrame(autoScrollStep)
+  }
+  function onSidebarDragOver(e: React.DragEvent) {
+    const el = sidebarScrollRef.current
+    if (!el) return
+    const r = el.getBoundingClientRect()
+    const EDGE = 44 // 가장자리 감지 폭(px)
+    autoScrollDir.current = e.clientY < r.top + EDGE ? -1 : e.clientY > r.bottom - EDGE ? 1 : 0
+    if (autoScrollDir.current !== 0 && autoScrollRaf.current === null) {
+      autoScrollRaf.current = requestAnimationFrame(autoScrollStep)
+    }
   }
 
   // 이동·삭제한 항목이 지금 뷰어에 열려 있으면 닫는다.
@@ -868,17 +980,26 @@ export default function Files() {
 
   // 파일을 열면 메인 영역이 편집+프리뷰로 바뀐다 → 트리(사이드바) | 편집 | 프리뷰 3분할(VS Code식)
   const viewerOpen = !!selected && selected.type === 'file' && !trashMode && !favMode
+  // 오미니박스: 파일을 열면 상단 검색창이 '주소창'이 되어 그 파일의 읽기 좋은 경로를 보여준다.
+  // 타이핑을 시작하면(searchTyping) 검색 모드로 전환, 결과를 고르면 다시 주소(경로) 모드로 돌아온다.
+  const filePath =
+    viewerOpen && selected
+      ? [space?.name, ...path.map((p) => p.name), selected.name].filter(Boolean).join('/')
+      : ''
+  const addressMode = viewerOpen && !searchTyping // true=경로 표시(드롭다운 숨김), false=검색 모드
 
   return (
     <div className="shell">
       <header className="topbar">
-        <h2 className="logo">
+        {/* 로고 영역 폭을 사이드바에 맞춰, 검색창 왼쪽이 탭 바 시작선과 정렬되게 한다 */}
+        <h2 className="logo" style={{ width: sidebarWidth - 12, flexShrink: 0 }}>
           FileSharer <span className="app-version">{__APP_VERSION__}</span>
         </h2>
-        {/* 상단 검색 — 현재 공간에서 파일 이름 + 내용(텍스트)으로 찾고, 누르면 그 파일로 이동 */}
-        <div className="topbar-search">
+        {/* 상단 검색 = 주소창(오미니박스). 파일을 열면 그 파일의 경로를 보여주고(주소 모드),
+            타이핑하면 이름+내용 검색(검색 모드). 📋는 지금 파일의 사내 공유 링크를 복사한다. */}
+        <div className={`topbar-search${addressMode ? ' is-address' : ''}`} ref={searchRef}>
           <span className="topbar-search-icon" aria-hidden>
-            🔎
+            {addressMode ? '📄' : '🔎'}
           </span>
           <input
             type="search"
@@ -887,14 +1008,67 @@ export default function Files() {
             spellCheck={false}
             autoCapitalize="off"
             autoCorrect="off"
-            value={searchQ}
-            onChange={(e) => setSearchQ(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Escape') setSearchQ('')
+            value={addressMode ? filePath : searchQ}
+            title={addressMode ? filePath : undefined}
+            onFocus={(e) => {
+              setSearchFocused(true)
+              if (addressMode) e.currentTarget.select() // 경로 전체 선택 → 타이핑하면 바로 검색으로 대체
             }}
-            aria-label="파일 이름·내용 검색"
+            onMouseUp={(e) => {
+              // 주소 모드에서 클릭이 커서를 옮겨 전체선택을 풀면 타이핑이 경로 뒤에 붙어 검색이 안 된다.
+              // 마우스업 기본동작을 막아 onFocus의 전체선택을 유지 → 타이핑하면 경로를 통째로 대체.
+              if (addressMode) e.preventDefault()
+            }}
+            onChange={(e) => {
+              setSearchTyping(true) // 타이핑 시작 = 검색 모드
+              setSearchQ(e.target.value)
+              setSearchFocused(true)
+            }}
+            onKeyDown={(e) => {
+              const rows = searchResults ?? []
+              if (e.key === 'ArrowDown') {
+                e.preventDefault()
+                setSearchFocused(true)
+                setSearchIdx((i) => Math.min(i + 1, rows.length - 1))
+              } else if (e.key === 'ArrowUp') {
+                e.preventDefault()
+                setSearchIdx((i) => Math.max(i - 1, 0))
+              } else if (e.key === 'Enter') {
+                const pick = rows[searchIdx >= 0 ? searchIdx : 0]
+                if (pick) {
+                  e.preventDefault()
+                  openSearchResult(pick)
+                }
+              } else if (e.key === 'Escape') {
+                setSearchQ('')
+                setSearchTyping(false) // 주소(경로) 모드로 복귀
+                setSearchFocused(false)
+                setSearchIdx(-1)
+                e.currentTarget.blur()
+              }
+            }}
+            aria-label="파일 경로·검색 주소창"
           />
-          {searchResults !== null && searchQ.trim() && (
+          {addressMode && selected && (
+            <button
+              type="button"
+              className="topbar-search-copy"
+              title="사내 공유 링크 복사 (로그인 사용자용)"
+              aria-label="사내 공유 링크 복사"
+              onClick={async () => {
+                const ok = await copyText(`${window.location.origin}/files/${selected.id}`)
+                if (ok) {
+                  setCopiedLink(true)
+                  setTimeout(() => setCopiedLink(false), 1500)
+                } else {
+                  flash('복사하지 못했어요 — 주소를 길게 눌러 수동 복사해 주세요')
+                }
+              }}
+            >
+              {copiedLink ? '✓' : '📋'}
+            </button>
+          )}
+          {searchTyping && searchResults !== null && searchQ.trim() && searchFocused && (
             <div className="topbar-search-results">
               <div className="search-results-head muted">
                 {searchResults.length > 0
@@ -903,14 +1077,12 @@ export default function Files() {
               </div>
               {searchResults.length > 0 && (
                 <ul className="search-results-list">
-                  {searchResults.map((node) => (
+                  {searchResults.map((node, idx) => (
                     <li
                       key={node.id}
-                      className="search-result"
-                      onClick={() => {
-                        openLocated(node)
-                        setSearchQ('')
-                      }}
+                      className={`search-result${idx === searchIdx ? ' active' : ''}`}
+                      onMouseEnter={() => setSearchIdx(idx)}
+                      onClick={() => openSearchResult(node)}
                     >
                       <span className="node-icon">{node.type === 'folder' ? '📁' : '📄'}</span>
                       <span className="search-result-name">{node.name}</span>
@@ -929,6 +1101,22 @@ export default function Files() {
             </div>
           )}
         </div>
+        <div className="topbar-flex-spacer" />
+        {/* 파일 액션(다운로드·로컬/서버 업로드·공유)을 상단 바로 통합 — 파일을 열든(선택 파일 대상)
+            안 열든(현재 폴더/공간 대상) 같은 자리에 둔다. 경로는 위 주소창(오미니박스)이 보여준다. */}
+        {space && !trashMode && !favMode && (
+          <div className="topbar-fileactions">
+            <LinkBar
+              actionsOnly
+              space={space}
+              path={path}
+              selected={selected}
+              activeToken={activeToken}
+              onActiveToken={setActiveToken}
+              onLocalUpload={() => fileInput.current?.click()}
+            />
+          </div>
+        )}
         <div className="topbar-right">
           <span className="muted">{me.email}</span>
           {me.role === 'admin' && (
@@ -954,20 +1142,6 @@ export default function Files() {
           </button>
         </div>
       </header>
-
-      {/* 파일을 열면(뷰어) LinkBar를 숨긴다 — 경로·다운로드·링크·공유는 에디터 툴바로 통합됨 */}
-      {!viewerOpen && (
-        <LinkBar
-          space={space}
-          path={path}
-          selected={selected}
-          onNavigate={crumbNavigate}
-          onDropToCrumb={(id, idx) => onMove(id, idx === null ? null : path[idx].id)}
-          activeToken={activeToken}
-          onActiveToken={setActiveToken}
-          onLocalUpload={() => fileInput.current?.click()}
-        />
-      )}
 
       <div className="workspace">
         <aside
@@ -1024,30 +1198,14 @@ export default function Files() {
             />
           </div>
           <div className="sidebar-divider" />
-          <div className="sidebar-section-label">🕘 최근</div>
-          {recentItems.length === 0 ? (
-            <div className="recent-empty muted">열어본 파일이 없습니다</div>
-          ) : (
-            <ul className="recent-inline">
-              {recentItems.slice(0, 5).map((n) => (
-                <li key={n.id}>
-                  <button
-                    className={`recent-item${selected?.id === n.id ? ' active' : ''}`}
-                    onClick={() => openLocated(n)}
-                    title={n.name}
-                  >
-                    <span className="tree-icon" aria-hidden="true">
-                      {n.type === 'folder' ? '📁' : '📄'}
-                    </span>
-                    <span className="recent-name">{n.name}</span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-          <div className="sidebar-divider" />
-          <div className="sidebar-section-label">공간 · 폴더</div>
-          <div className="sidebar-scroll">
+          <div
+            className="sidebar-scroll"
+            ref={sidebarScrollRef}
+            onDragOver={onSidebarDragOver}
+            onDragLeave={() => {
+              autoScrollDir.current = 0
+            }}
+          >
           {spaces.map((s) => (
             <div key={s.id}>
               <button
@@ -1060,7 +1218,11 @@ export default function Files() {
                 onClick={() => switchSpace(s.id)}
                 onDragOver={(e) => {
                   const t = e.dataTransfer.types
-                  if (t.includes('application/x-node-id') || t.includes('Files')) {
+                  if (
+                    t.includes('application/x-node-id') ||
+                    t.includes('application/x-trash-node-id') ||
+                    t.includes('Files')
+                  ) {
                     e.preventDefault()
                     setDragOverSpace(s.id)
                   }
@@ -1068,12 +1230,19 @@ export default function Files() {
                 onDragLeave={() => setDragOverSpace((cur) => (cur === s.id ? null : cur))}
                 onDrop={(e) => {
                   setDragOverSpace(null)
+                  // 휴지통 항목을 공간 위에 놓으면 원래 위치로 복원(어느 공간에 놓든 restoreNode가 원위치로)
+                  const trashId = e.dataTransfer.getData('application/x-trash-node-id')
+                  if (trashId) {
+                    e.preventDefault()
+                    void guard(() => restoreNode(trashId)).then((r) => r && flash('복원했습니다'))
+                    return
+                  }
                   const ids = draggedIds(e)
                   if (ids.length > 0) {
                     e.preventDefault()
-                    // 활성 공간 위에 놓으면 그 공간 최상위로 이동, 다른 공간이면 복사
-                    if (s.id === spaceId) onMove(ids[0], null)
-                    else copyToSpace(ids[0], s.id, s.name)
+                    // 소스 공간과 이 공간이 같으면 이동(이 공간 최상위로), 다르면 복사 — 활성 공간이 아니라 드래그한 파일의 공간으로 판단
+                    const srcSpace = e.dataTransfer.getData('application/x-node-space')
+                    dropNode(ids[0], { spaceId: s.id, spaceName: s.name }, srcSpace)
                   } else if (e.dataTransfer.types.includes('Files')) {
                     e.preventDefault()
                     // 로컬 파일/폴더 → 이 공간 최상위로 업로드
@@ -1088,9 +1257,8 @@ export default function Files() {
               >
                 {s.name}
               </button>
-              {/* 모든 공간의 폴더 트리를 동시에 펼쳐 오갈 수 있게 한다(활성 공간만 폴더 하이라이트) */}
-              {!trashMode && (
-                <FolderTree
+              {/* 모든 공간의 폴더 트리를 항상 펼쳐 둔다 — 휴지통 모드에서도 사라지지 않게(활성 공간만 하이라이트) */}
+              <FolderTree
                   spaceId={s.id}
                   currentFolderId={s.id === spaceId ? currentFolder?.id ?? null : null}
                   selectedFileId={selected?.id ?? null}
@@ -1098,7 +1266,9 @@ export default function Files() {
                   version={treeVersion}
                   onOpenFolder={openFolderById}
                   onOpenFile={openFileFromTree}
-                  onDropToFolder={(id, target) => onMove(id, target)}
+                  onDropToFolder={(id, target, ctx) =>
+                    dropNode(id, { spaceId: ctx.targetSpaceId, folderId: target }, ctx.srcSpaceId)
+                  }
                   onUploadFiles={(folderId, e) =>
                     uploadToTarget({ spaceId: s.id, parentId: folderId }, e)
                   }
@@ -1106,7 +1276,6 @@ export default function Files() {
                   onToggleFavorite={toggleFavFromTree}
                   onDelete={deleteFromTree}
                 />
-              )}
             </div>
           ))}
           </div>
@@ -1158,7 +1327,31 @@ export default function Files() {
         <div className="content-col">
           {/* 다중 탭 바 — 열린 파일 탭. 활성 하이라이트 · 미저장 ●(호버 시 ✕) · 클릭 전환 · 가운데클릭 닫기 */}
           {openTabs.length > 0 && !trashMode && !favMode && (
-            <div className="tab-bar" role="tablist">
+            <div className="tab-bar">
+              <div
+                className="tab-strip"
+                role="tablist"
+                ref={tabBarRef}
+                onWheel={(e) => {
+                  // 세로 휠을 탭 스트립 가로 스크롤로 (탭이 넘칠 때만)
+                  const el = tabBarRef.current
+                  if (el && el.scrollWidth > el.clientWidth) el.scrollLeft += e.deltaY
+                }}
+                onPointerDown={(e) => {
+                  const el = tabBarRef.current
+                  if (el) tabDrag.current = { x: e.clientX, scroll: el.scrollLeft, moved: false }
+                }}
+                onPointerMove={(e) => {
+                  const el = tabBarRef.current
+                  const d = tabDrag.current
+                  if (!el || !d) return
+                  if (Math.abs(e.clientX - d.x) > 4) d.moved = true
+                  if (d.moved) el.scrollLeft = d.scroll - (e.clientX - d.x)
+                }}
+                onPointerLeave={() => {
+                  tabDrag.current = null
+                }}
+              >
               {openTabs.map((tab) => {
                 const active = viewerOpen && selected?.id === tab.id
                 const isDirty = dirtyTabs.has(tab.id)
@@ -1169,7 +1362,14 @@ export default function Files() {
                     role="tab"
                     aria-selected={active}
                     title={tab.name}
-                    onClick={() => activateTab(tab)}
+                    onClick={() => {
+                      // 드래그로 스크롤한 경우엔 탭 전환을 억제(다음 pointerdown에서 리셋됨)
+                      if (tabDrag.current?.moved) {
+                        tabDrag.current = null
+                        return
+                      }
+                      activateTab(tab)
+                    }}
                     onAuxClick={(e) => {
                       if (e.button === 1) {
                         e.preventDefault()
@@ -1193,6 +1393,24 @@ export default function Files() {
                   </div>
                 )
               })}
+              </div>
+              {/* Stage B: 탭 줄 오른쪽 — | 칸막이 + (활성 편집기가 portal로 넣는 저장/자동저장) + 삭제 + 닫기 */}
+              {viewerOpen && selected && (
+                <div className="tab-actions">
+                  <span className="tab-actions-divider" aria-hidden="true" />
+                  <div className="tab-action-slot" ref={setActionSlot} />
+                  <button
+                    className="btn-utility btn-danger-ghost"
+                    onClick={() => deleteTab(selected)}
+                    title="이 파일을 휴지통으로 이동 (복원 가능)"
+                  >
+                    🗑 삭제
+                  </button>
+                  <button className="btn-utility" onClick={() => closeTab(selected.id)}>
+                    닫기
+                  </button>
+                </div>
+              )}
             </div>
           )}
 
@@ -1303,9 +1521,13 @@ export default function Files() {
               {sortedItems.map((node) => (
                 <tr
                   key={node.id}
-                  className="trash-row"
-                  title="원래 위치(폴더)로 이동"
-                  onClick={() => locateTrashed(node)}
+                  draggable
+                  onDragStart={(e) => {
+                    // 휴지통 항목을 공간 위로 끌어다 놓으면 복원 — 공간 드롭 핸들러가 읽는 마커
+                    e.dataTransfer.setData('application/x-trash-node-id', node.id)
+                    e.dataTransfer.effectAllowed = 'move'
+                  }}
+                  title="공간으로 끌어다 놓으면 원래 위치로 복원됩니다"
                 >
                   <td>
                     <span className="node-icon">{node.type === 'folder' ? '📁' : '📄'}</span>{' '}
@@ -1328,17 +1550,13 @@ export default function Files() {
                   <td className="col-actions">
                     <button
                       className="row-action"
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        guard(() => restoreNode(node.id))
-                      }}
+                      onClick={() => guard(() => restoreNode(node.id))}
                     >
                       복원
                     </button>
                     <button
                       className="row-action danger"
-                      onClick={(e) => {
-                        e.stopPropagation()
+                      onClick={() => {
                         if (
                           window.confirm(
                             `"${node.name}"을(를) 완전히 삭제할까요? 되돌릴 수 없습니다.`,
@@ -1380,6 +1598,8 @@ export default function Files() {
           >
             <ViewerPanel
               node={tab}
+              active={viewerOpen && selected?.id === tab.id}
+              actionSlot={actionSlot}
               space={space}
               path={path}
               onNavigate={crumbNavigate}

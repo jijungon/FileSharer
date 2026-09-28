@@ -38,7 +38,11 @@ interface Props {
   version: number // 구조 변경 시 증가 → 다시 로드
   onOpenFolder: (folderId: string) => void
   onOpenFile: (row: TreeRow) => void
-  onDropToFolder?: (draggedId: string, targetFolderId: string | null) => void
+  onDropToFolder?: (
+    draggedId: string,
+    targetFolderId: string | null,
+    ctx: { srcSpaceId: string; targetSpaceId: string },
+  ) => void
   onUploadFiles?: (targetFolderId: string | null, e: React.DragEvent) => void // 로컬 파일/폴더 → 그 폴더(null=공간 루트)로 업로드
   // 우클릭 컨텍스트 메뉴 동작(파일목록 표를 대체 — 이름변경/즐겨찾기/삭제)
   // 이름변경은 인라인(제자리 입력) — 빈/동일 이름이면 호출 안 함.
@@ -64,6 +68,8 @@ export default function FolderTree({
   const [rows, setRows] = useState<TreeRow[]>([])
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [dragOverId, setDragOverId] = useState<string | null>(null) // 드래그가 올라온 폴더(드롭 대상 강조)
+  const [draggingId, setDraggingId] = useState<string | null>(null) // 지금 끌고 있는 행(흐리게 표시)
+  const [hoverRowId, setHoverRowId] = useState<string | null>(null) // 커서가 실제로 올라간 행(약한 표시)
   const [renaming, setRenaming] = useState<string | null>(null) // 인라인 이름변경 중인 노드 id
   // 우클릭 컨텍스트 메뉴: 대상 행 + 화면 좌표
   const [menu, setMenu] = useState<{ row: TreeRow; x: number; y: number } | null>(null)
@@ -157,7 +163,10 @@ export default function FolderTree({
     if (name && name !== node.name) onRenameCommit?.(node, name)
   }
 
-  function dropHandlers(targetId: string | null) {
+  // targetId = 실제로 놓이는 곳(파일 위에 놓으면 그 파일의 '부모 폴더'), rowId = 커서가 올라간 행.
+  // 파일 위에서는 둘이 달라진다 — 그때 대상 폴더만 강조하면 강조가 커서를 안 따라오는 것처럼
+  // 보이므로, 커서가 올라간 행에도 약한 표시를 줘서 "여기 놓으면 저 폴더로 간다"가 같이 읽히게 한다.
+  function dropHandlers(targetId: string | null, rowId: string | null) {
     if (!onDropToFolder && !onUploadFiles) return {}
     return {
       onDragOver: (e: React.DragEvent) => {
@@ -166,15 +175,22 @@ export default function FolderTree({
         if (t.includes('application/x-node-id') || t.includes('Files')) {
           e.preventDefault()
           setDragOverId(targetId)
+          setHoverRowId(rowId)
         }
       },
-      onDragLeave: () => setDragOverId((cur) => (cur === targetId ? null : cur)),
+      onDragLeave: () => {
+        setDragOverId((cur) => (cur === targetId ? null : cur))
+        setHoverRowId((cur) => (cur === rowId ? null : cur))
+      },
       onDrop: (e: React.DragEvent) => {
         setDragOverId(null)
+        setHoverRowId(null)
         const id = e.dataTransfer.getData('application/x-node-id')
         if (id) {
           e.preventDefault()
-          onDropToFolder?.(id, targetId)
+          // 소스 공간을 함께 넘겨, 드롭 지점에서 같은 공간이면 이동·다른 공간이면 복사로 판단하게 한다.
+          const srcSpace = e.dataTransfer.getData('application/x-node-space')
+          onDropToFolder?.(id, targetId, { srcSpaceId: srcSpace, targetSpaceId: spaceId })
         } else if (e.dataTransfer.types.includes('Files')) {
           e.preventDefault()
           onUploadFiles?.(targetId, e) // 로컬 파일/폴더 → 이 폴더(targetId=null이면 공간 루트) 안으로 업로드
@@ -188,6 +204,8 @@ export default function FolderTree({
   function rowDragStart(e: React.DragEvent, node: TreeNode) {
     e.dataTransfer.setData('application/x-node-id', node.id)
     e.dataTransfer.setData('application/x-node-ids', JSON.stringify([node.id]))
+    e.dataTransfer.setData('application/x-node-space', spaceId) // 소스 공간 — 드롭 시 이동/복사 판단 기준
+
     e.dataTransfer.effectAllowed = 'copyMove'
     // 기본 고스트는 뒤(드롭 위치)를 가리므로 커서 옆 작은 칩으로 대체(#81)
     if (typeof document !== 'undefined' && e.dataTransfer.setDragImage) {
@@ -223,11 +241,24 @@ export default function FolderTree({
         <div
           className={`tree-row${active ? ' active' : ''}${
             dragOverId === node.id ? ' drag-over' : ''
-          }${isFolder ? ' tree-row--sticky' : ''}`}
+          }${
+            // 커서가 올라간 행이 실제 대상과 다를 때만(=파일 위) 약한 표시를 덧붙인다
+            hoverRowId === node.id && dragOverId !== node.id ? ' drag-hover' : ''
+          }${draggingId === node.id ? ' dragging' : ''}${
+            isFolder ? ' tree-row--sticky' : ''
+          }`}
           style={isFolder ? { top: depth * ROW_H, zIndex: 60 - depth } : undefined}
           draggable={renaming !== node.id}
-          onDragStart={(e) => rowDragStart(e, node)}
-          {...dropHandlers(isFolder ? node.id : node.parent_id)}
+          onDragStart={(e) => {
+            setDraggingId(node.id)
+            rowDragStart(e, node)
+          }}
+          onDragEnd={() => {
+            setDraggingId(null)
+            setDragOverId(null) // 드롭 밖에서 놓아도 강조가 남지 않게
+            setHoverRowId(null)
+          }}
+          {...dropHandlers(isFolder ? node.id : node.parent_id, node.id)}
           onContextMenu={(e) => {
             if (!onRenameCommit && !onDelete && !onToggleFavorite) return
             e.preventDefault()

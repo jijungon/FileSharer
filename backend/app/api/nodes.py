@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from ..config import get_settings
 from ..deps import Principal, current_principal, current_user, get_db
 from ..models import Favorite, Node, NodeView, Space, User, email_nickname, utcnow
-from ..services import archive, audit, locks
+from ..services import archive, audit, locks, search_index
 from ..services import tokens as tokens_svc
 from ..services.media import (
     TranscodeError,
@@ -204,7 +204,8 @@ def space_tree(
 
 
 # 내용(전문) 검색 대상 텍스트 파일. mime이 text/ 이거나 아래 확장자.
-# 큰 파일·개수는 제한해 검색 지연을 막는다(정식 인덱스가 아닌 즉석 스캔).
+# 파일이 바뀔 때 앞 _CONTENT_MAX_BYTES 만큼을 FTS 인덱스(services.search_index)에 적재하고
+# 검색은 그 인덱스만 훑는다 — 더는 검색 때 스토리지에서 blob을 읽지 않는다.
 _CONTENT_EXTS = {
     "md", "markdown", "txt", "log", "json", "yml", "yaml", "csv", "tsv",
     "sh", "bash", "zsh", "py", "rb", "pl", "lua", "r",
@@ -214,8 +215,7 @@ _CONTENT_EXTS = {
     "go", "rs", "java", "kt", "swift", "php", "c", "h", "cpp", "cc", "hpp", "cs",
     "tf", "gradle", "html", "htm",
 }
-_CONTENT_MAX_BYTES = 512 * 1024  # 파일당 앞 512KB만 읽어 검사
-_CONTENT_MAX_FILES = 400  # 한 검색에서 스캔할 최대 파일 수
+_CONTENT_MAX_BYTES = 512 * 1024  # 파일당 앞 512KB만 인덱싱(검사)
 
 
 def _is_text_node(node: Node) -> bool:
@@ -231,7 +231,6 @@ def search_nodes(
     q: str = "",
     user: User = Depends(current_user),
     db: Session = Depends(get_db),
-    storage: StorageBackend = Depends(get_storage),
 ) -> list[dict]:
     """공간 안에서 q가 이름 또는 (텍스트 파일) 내용에 포함된 비삭제 노드를 찾는다.
     각 결과에 상위 폴더 경로(path)와 매치 종류(match: 'name'|'content')를 붙인다."""
@@ -239,6 +238,8 @@ def search_nodes(
     term = q.strip()
     if not term:
         return []
+    # 경로처럼 입력하면(예: '내 공간/폴더/ip.md') 마지막 조각(파일명)으로 찾는다.
+    term = term.rsplit("/", 1)[-1].strip() or term
     # 1) 이름 매치 — SQL LIKE 와일드카드/이스케이프 문자를 리터럴로 처리
     escaped = term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
     name_rows = db.scalars(
@@ -256,36 +257,15 @@ def search_nodes(
         n.id: (n, "name") for n in name_rows if not has_deleted_ancestor(db, n)
     }
 
-    # 2) 내용 매치 — 텍스트 파일의 앞부분을 읽어 term 포함 여부 확인(이름서 잡힌 건 제외)
-    term_low = term.lower()
-    candidates = db.scalars(
-        select(Node)
-        .where(
-            Node.space_id == space.id,
-            Node.type == "file",
-            Node.deleted_at.is_(None),
-            Node.size > 0,
-            Node.size <= _CONTENT_MAX_BYTES,
-        )
-        .limit(2000)
-    ).all()
-    scanned = 0
-    for n in candidates:
-        if n.id in matched or not n.storage_key or not _is_text_node(n):
+    # 2) 내용 매치 — FTS 트라이그램 인덱스에서 찾는다(이름서 잡힌 건 제외).
+    # 더는 검색 때 스토리지에서 blob을 읽지 않는다 — 인덱스만 훑는다.
+    for nid in search_index.search_content_ids(db, space.id, term):
+        if nid in matched:
             continue
-        # 휴지통 폴더의 자식은 내용도 읽지 않고 건너뛴다(존재·내용 유출 및 불필요 blob 읽기 차단)
-        if has_deleted_ancestor(db, n):
-            continue
-        if scanned >= _CONTENT_MAX_FILES:
-            break
-        scanned += 1
-        try:
-            with storage.open_stream(n.storage_key) as fh:
-                blob = fh.read(_CONTENT_MAX_BYTES)
-        except Exception:
-            continue
-        if term_low in blob.decode("utf-8", "ignore").lower():
-            matched[n.id] = (n, "content")
+        node = db.get(Node, nid)
+        # 휴지통 폴더의 자식(자신엔 deleted_at 없음)은 조상이 휴지통이면 내용 매치에서 제외
+        if node is not None and not has_deleted_ancestor(db, node):
+            matched[nid] = (node, "content")
 
     # 상위 경로 표시용으로 공간의 폴더를 한 번에 로드해 메모리에서 경로를 해석
     folders = db.scalars(
@@ -632,6 +612,7 @@ def _upload_one(
     )
     db.add(node)
     db.flush()
+    search_index.index_node(db, storage, node)  # 내용 검색 인덱스 적재(같은 트랜잭션)
     # 토큰 업로드면 detail에 토큰 라벨을 남긴다(사용자=토큰 소유자). 토큰 원문은 절대 안 남긴다.
     detail = f"{name} ({size}B)" + (f" · 토큰:{via}" if via else "")
     audit.log(db, "upload", user_id=user.id, node_id=node.id, detail=detail)
@@ -686,6 +667,7 @@ def _extract_archive(
         )
         db.add(node)
         db.flush()
+        search_index.index_node(db, storage, node)  # 내용 검색 인덱스 적재(같은 트랜잭션)
         detail = f"{name} ({size}B) · 압축해제" + (f" · 토큰:{via}" if via else "")
         audit.log(db, "upload", user_id=user.id, node_id=node.id, detail=detail)
         outs.append(node_out(node))
@@ -809,14 +791,20 @@ def _node_sha256(storage: StorageBackend, node: Node) -> str:
 def download_file(
     node_id: str,
     request: Request,
-    user: User = Depends(current_user),
+    principal: Principal = Depends(current_principal),
     db: Session = Depends(get_db),
     storage: StorageBackend = Depends(get_storage),
 ):
+    """세션 쿠키 또는 API 토큰(Bearer)으로 내려받는다 — 헤드리스 서버가 끌어갈 수 있게."""
+    user = principal.user
     node = get_node_checked(db, user, node_id)
     if node.type != "file":
         raise HTTPException(status_code=400, detail="파일이 아닙니다")
-    audit.log(db, "download", user_id=user.id, node_id=node.id, detail=node.name)
+    if principal.token is not None:
+        tokens_svc.enforce_read_scope(db, principal.token, node)
+    via = _via_label(principal)
+    detail = node.name + (f" · 토큰:{via}" if via else "")
+    audit.log(db, "download", user_id=user.id, node_id=node.id, detail=detail)
     return serve_blob(
         storage,
         node.storage_key,
@@ -832,13 +820,16 @@ def download_file(
 def raw_file(
     node_id: str,
     request: Request,
-    user: User = Depends(current_user),
+    principal: Principal = Depends(current_principal),
     db: Session = Depends(get_db),
     storage: StorageBackend = Depends(get_storage),
 ):
+    user = principal.user
     node = get_node_checked(db, user, node_id)
     if node.type != "file":
         raise HTTPException(status_code=400, detail="파일이 아닙니다")
+    if principal.token is not None:
+        tokens_svc.enforce_read_scope(db, principal.token, node)
     media_type = media_type_for(node)
     extra: dict[str, str] = {}
     if media_type in ("text/html", "application/xhtml+xml"):
@@ -974,15 +965,21 @@ def collect_tar_entries(db: Session, root: Node):
 @router.get("/nodes/{node_id}/tar")
 def download_folder_tar(
     node_id: str,
-    user: User = Depends(current_user),
+    principal: Principal = Depends(current_principal),
     db: Session = Depends(get_db),
     storage: StorageBackend = Depends(get_storage),
 ):
+    """폴더를 tar.gz로 스트리밍. 세션 또는 API 토큰(Bearer) 둘 다 허용."""
+    user = principal.user
     node = get_node_checked(db, user, node_id)
     if node.type != "folder":
         raise HTTPException(status_code=400, detail="폴더가 아닙니다")
+    if principal.token is not None:
+        tokens_svc.enforce_read_scope(db, principal.token, node)
     entries = list(collect_tar_entries(db, node))
-    audit.log(db, "tar_download", user_id=user.id, node_id=node.id, detail=node.name)
+    via = _via_label(principal)
+    detail = node.name + (f" · 토큰:{via}" if via else "")
+    audit.log(db, "tar_download", user_id=user.id, node_id=node.id, detail=detail)
     filename = f"{node.name}.tar.gz"
     return StreamingResponse(
         stream_tar_gz(storage, entries),
@@ -1073,6 +1070,7 @@ def _copy_node(
     )
     db.add(copy)
     db.flush()
+    search_index.index_node(db, storage, copy)  # 복제본 내용도 인덱스에 적재
     if src.type == "folder":
         children = db.scalars(
             select(Node).where(Node.parent_id == src.id, Node.deleted_at.is_(None))
@@ -1234,6 +1232,8 @@ def save_content(
     node.updated_by = user.id  # 수정자 = 방금 저장한 사람
     db.flush()
     db.expire(node, ["editor"])  # updated_by가 바뀌었으니 editor 관계 캐시 갱신
+    # 방금 저장한 바이트를 그대로 넘겨 인덱싱한다 — 다시 스토리지(R2)에서 받아오는 왕복을 없앤다.
+    search_index.index_node(db, storage, node, blob=data)
     storage.delete(old_key)
     audit.log(db, "edit", user_id=user.id, node_id=node.id, detail=node.name)
     return node_out(node)

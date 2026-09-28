@@ -25,6 +25,11 @@ def bare_client(admin_client) -> TestClient:
     return TestClient(admin_client.app)
 
 
+def upload(client, url, name, content=b"hello", mime="text/plain"):
+    """세션(쿠키) 업로드 — 토큰 다운로드 테스트의 사전 준비용."""
+    return client.post(url, files={"file": (name, io.BytesIO(content), mime)})
+
+
 def upload_with_token(client, url, token, name="a.log", content=b"log-bytes"):
     return client.post(
         url,
@@ -414,3 +419,49 @@ def test_upload_extract_rejects_path_traversal(admin_client):
 def test_reset_route_absent_without_flag(admin_client):
     """프로덕션 안전장치: 플래그 없으면 reset 핸들러가 없다(404/405 — 실행 안 됨)."""
     assert admin_client.post("/api/test/reset").status_code in (404, 405)
+
+
+# ── 토큰으로 '내려받기' (filesharer → 원격지) ──────────────────────────────────
+# 예전엔 토큰이 업로드 전용이라, 서버로 파일을 내리려면 '공개 공유 링크'를 만들어야 했다.
+# 스코프 걸린 짧은 수명의 헤더 토큰이 공개 URL보다 안전하므로 읽기도 같은 토큰으로 연다.
+# 단, 범위는 업로드와 동일하게 강제한다 — 방향과 무관하게 범위 밖은 막힌다.
+
+
+def test_token_can_download_file_in_scope(admin_client):
+    pid = spaces_of(admin_client)["personal"]["id"]
+    node = upload(admin_client, f"/api/spaces/{pid}/files", "내려받기.txt", b"payload").json()
+    created = make_token(admin_client, label="puller")  # null 범위 = 소유자 개인 공간
+
+    res = bare_client(admin_client).get(
+        f"/api/files/{node['id']}", headers={"Authorization": f"Bearer {created['token']}"}
+    )
+    assert res.status_code == 200, res.text
+    assert res.content == b"payload"
+
+
+def test_token_download_blocked_outside_scope(admin_client, db):
+    """폴더 범위 토큰은 그 폴더 밖 파일을 못 내려받는다(403)."""
+    pid = spaces_of(admin_client)["personal"]["id"]
+    folder = admin_client.post("/api/nodes", json={"space_id": pid, "name": "허용폴더"}).json()
+    inside = upload(admin_client, f"/api/nodes/{folder['id']}/files", "안.txt", b"in").json()
+    outside = upload(admin_client, f"/api/spaces/{pid}/files", "밖.txt", b"out").json()
+    created = make_token(admin_client, label="scoped", node_id=folder["id"])
+
+    c = bare_client(admin_client)
+    h = {"Authorization": f"Bearer {created['token']}"}
+    assert c.get(f"/api/files/{inside['id']}", headers=h).status_code == 200
+    assert c.get(f"/api/files/{outside['id']}", headers=h).status_code == 403
+
+
+def test_token_can_download_folder_tar_in_scope(admin_client):
+    pid = spaces_of(admin_client)["personal"]["id"]
+    folder = admin_client.post("/api/nodes", json={"space_id": pid, "name": "받을폴더"}).json()
+    upload(admin_client, f"/api/nodes/{folder['id']}/files", "x.txt", b"tar-me")
+    created = make_token(admin_client, label="tar-puller", node_id=folder["id"])
+
+    res = bare_client(admin_client).get(
+        f"/api/nodes/{folder['id']}/tar", headers={"Authorization": f"Bearer {created['token']}"}
+    )
+    assert res.status_code == 200, res.text
+    names = tarfile.open(fileobj=io.BytesIO(res.content), mode="r:gz").getnames()
+    assert any(n.endswith("x.txt") for n in names)

@@ -8,6 +8,8 @@ interface Props {
   folderId: string | null
   spaceId: string | null
   label: string // 현재 위치 표시용(공간·폴더 이름)
+  // 내려받을 대상(선택 파일 또는 현재 폴더). 없으면 다운로드 섹션을 숨긴다.
+  downloadTarget?: { id: string; name: string; type: 'file' | 'folder' } | null
   activeToken?: string | null // 지금 메모리에 든 임시 토큰 — 있으면 curl에 자동 채움
   onActiveToken: (token: string | null) => void // 발급 시 원문 올림 / null=해제
   onClose: () => void
@@ -17,10 +19,11 @@ interface Props {
 // 헤드리스 서버가 파일(여러 개 가능)을 밀어 넣게 하는 팝오버. 관리 페이지 없이 버튼 하나로 끝난다.
 const EXPIRES_MIN = 10 // 임시 토큰 유효(분). 짧게 — 그 안에 여러 파일 OK, 지나면 자동 만료.
 
-export default function ServerUploadPopover({
+export default function ServerTransferPopover({
   folderId,
   spaceId,
   label,
+  downloadTarget,
   activeToken,
   onActiveToken,
   onClose,
@@ -37,6 +40,12 @@ export default function ServerUploadPopover({
   const curl = `curl -H "Authorization: Bearer ${tokenForCurl}" -F file=@a.log -F file=@b.log ${endpoint}`
   // 폴더째: tar로 묶어 보내면 서버가 ?extract=tar 로 풀어 하위 구조까지 재현한다.
   const tarCurl = `tar czf - mydir | curl -H "Authorization: Bearer ${tokenForCurl}" -F file=@- "${endpoint}?extract=tar"`
+  // 내려받기: 같은 토큰을 헤더로 보낸다(URL엔 비밀이 없다). 폴더는 tar로 스트리밍된다.
+  const dlCurl = downloadTarget
+    ? downloadTarget.type === 'folder'
+      ? `curl -H "Authorization: Bearer ${tokenForCurl}" -fL ${origin}/api/nodes/${downloadTarget.id}/tar | tar xzf -`
+      : `curl -H "Authorization: Bearer ${tokenForCurl}" -fLOJ ${origin}/api/files/${downloadTarget.id}`
+    : ''
   // 표시용 마스킹: fsk_<id>. 까지만 보여주고 나머지 비밀은 가린다.
   const masked = activeToken
     ? `${activeToken.slice(0, activeToken.indexOf('.') + 1 || 12)}••••••`
@@ -72,9 +81,9 @@ export default function ServerUploadPopover({
   }
 
   return (
-    <div className="share-popover" role="dialog" aria-label="서버 업로드">
+    <div className="share-popover" role="dialog" aria-label="서버 전송">
       <div className="share-head">
-        <strong>서버 업로드</strong> <span className="muted">{label}</span>
+        <strong>서버 전송</strong> <span className="muted">{label}</span>
         <span className="toolbar-spacer" style={{ flex: 1 }} />
         <button className="row-action" style={{ visibility: 'visible' }} onClick={onClose}>
           닫기 ✕
@@ -110,7 +119,7 @@ export default function ServerUploadPopover({
         </>
       )}
 
-      <label className="share-label">업로드 엔드포인트 (POST · multipart)</label>
+      <label className="share-label">⬆ 업로드 — 엔드포인트 (POST · multipart)</label>
       <div className="share-copyrow">
         <code>{endpoint}</code>
         <button className="btn-utility" onClick={() => copy(endpoint, 'ep')}>
@@ -133,6 +142,21 @@ export default function ServerUploadPopover({
           {copied === 'tar' ? '복사됨 ✓' : '복사'}
         </button>
       </div>
+
+      {downloadTarget && (
+        <>
+          <label className="share-label">
+            ⬇ 다운로드 — {downloadTarget.type === 'folder' ? '폴더(tar 해제까지)' : '파일'}:{' '}
+            {downloadTarget.name}
+          </label>
+          <div className="share-copyrow">
+            <code data-testid="server-download-curl">{dlCurl}</code>
+            <button className="btn-utility" onClick={() => copy(dlCurl, 'dl')}>
+              {copied === 'dl' ? '복사됨 ✓' : '복사'}
+            </button>
+          </div>
+        </>
+      )}
 
       <p className="muted" style={{ margin: '4px 0 0' }}>
         단일 파일은 <code>-F file=@a.log</code> 하나 · <code>mydir</code>는 올릴 폴더 경로로 바꾸세요 ·

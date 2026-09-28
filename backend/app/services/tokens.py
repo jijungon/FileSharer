@@ -131,6 +131,31 @@ def enforce_scope(db: Session, token: ApiToken, space: Space, parent_id: str | N
         raise HTTPException(status_code=403, detail="토큰 범위 밖의 공간입니다")
 
 
+def enforce_read_scope(db: Session, token: ApiToken, node: Node) -> None:
+    """토큰이 이 노드를 '읽을' 수 있는지 검사. 범위 밖이면 403.
+
+    업로드(enforce_scope)와 같은 경계를 읽기에도 그대로 적용한다 — 토큰 하나로 그 범위 안에서
+    올리고 내리는 건 되지만, 범위 밖은 방향과 무관하게 막힌다.
+
+    * node_id 범위: 그 폴더이거나 하위여야 한다(is_descendant 는 자기 자신도 참).
+    * space_id 범위: 그 공간의 노드여야 한다.
+    * null 범위: 소유자 개인 공간이어야 한다(안전한 기본값).
+    """
+    if token.node_id:
+        if not is_descendant(db, node.id, token.node_id):
+            raise HTTPException(status_code=403, detail="토큰 범위 밖의 항목입니다")
+        return
+    if token.space_id:
+        if node.space_id != token.space_id:
+            raise HTTPException(status_code=403, detail="토큰 범위 밖의 공간입니다")
+        return
+    personal = db.scalar(
+        select(Space).where(Space.type == "personal", Space.user_id == token.user_id)
+    )
+    if personal is None or node.space_id != personal.id:
+        raise HTTPException(status_code=403, detail="토큰 범위 밖의 공간입니다")
+
+
 def resolve_upload_target(db: Session, token: ApiToken) -> tuple[Space, str | None]:
     """토큰 범위 → 업로드 목적지 (space, parent_id). URL에 경로 id 없이 토큰만으로 올릴 때 쓴다.
 

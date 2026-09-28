@@ -1,5 +1,4 @@
 import { expect, test } from './fixtures'
-import { newFolder } from './helpers'
 
 const EMAIL = 'e2e@test.local'
 const PASSWORD = 'e2e-password-123'
@@ -31,6 +30,50 @@ test('트리 행의 🗑 버튼으로 파일을 휴지통으로 보낸다', asyn
   await expect(page.locator('.tree-name').filter({ hasText: fname })).toHaveCount(0)
   await page.getByRole('button', { name: '휴지통' }).click()
   await expect(page.getByRole('row', { name: new RegExp(fname.replace('.', '\\.')) })).toBeVisible()
+})
+
+test('휴지통 항목을 공간으로 끌어다 놓으면 원래 위치로 복원된다', async ({ page }) => {
+  page.on('dialog', (d) => d.accept())
+  await login(page)
+  const fname = `복원드래그_${Date.now()}.txt`
+  await page.locator('input[type="file"]:not([webkitdirectory])').setInputFiles({
+    name: fname,
+    mimeType: 'text/plain',
+    buffer: Buffer.from('x'),
+  })
+  await expect(page.locator('.upload-row')).toHaveCount(0)
+
+  // 휴지통으로 이동 → 트리에서 사라진다
+  await page
+    .locator('.tree-row')
+    .filter({ hasText: fname })
+    .getByRole('button', { name: '휴지통으로 이동' })
+    .click()
+  await expect(page.locator('.tree-name').filter({ hasText: fname })).toHaveCount(0)
+
+  // 휴지통 열기 → 항목이 보인다
+  await page.getByRole('button', { name: '휴지통' }).click()
+  const rx = new RegExp(fname.replace('.', '\\.'))
+  await expect(page.getByRole('row', { name: rx })).toBeVisible()
+
+  // 휴지통 행을 공간 헤더(.space-root)로 끌어다 놓으면 복원 — 합성 DataTransfer dispatch
+  await page.evaluate((fileText) => {
+    const rows = Array.from(document.querySelectorAll('.file-table tbody tr'))
+    const src = rows.find((r) =>
+      r.querySelector('.node-name')?.textContent?.includes(fileText),
+    ) as HTMLElement | undefined
+    const tgt = document.querySelector('.space-root') as HTMLElement | null
+    if (!src || !tgt) throw new Error('휴지통 행 또는 공간 헤더를 못 찾음')
+    const dt = new DataTransfer()
+    src.dispatchEvent(new DragEvent('dragstart', { dataTransfer: dt, bubbles: true }))
+    tgt.dispatchEvent(new DragEvent('dragover', { dataTransfer: dt, bubbles: true, cancelable: true }))
+    tgt.dispatchEvent(new DragEvent('drop', { dataTransfer: dt, bubbles: true, cancelable: true }))
+    src.dispatchEvent(new DragEvent('dragend', { dataTransfer: dt, bubbles: true }))
+  }, fname)
+
+  // 복원됨 → 휴지통에서 사라지고 사이드바 트리에 다시 나타난다
+  await expect(page.getByRole('row', { name: rx })).toHaveCount(0)
+  await expect(page.locator('.tree-name').filter({ hasText: fname })).toBeVisible()
 })
 
 test('휴지통에서 완전 삭제하면 파일이 영구히 사라진다', async ({ page }) => {
@@ -75,10 +118,10 @@ test('파일을 열고 뷰어의 🗑 삭제를 누르면 휴지통으로 가고
 
   // 트리에서 파일 열기 → 에디터 뷰어가 뜬다
   await page.locator('.tree-name').filter({ hasText: /뷰어삭제\.txt/ }).click()
-  await expect(page.locator('.editor-toolbar')).toBeVisible()
+  await expect(page.locator('.editor-shell')).toBeVisible()
 
   // 뷰어 액션 바의 🗑 삭제 → confirm 수락 → 뷰어 닫힘 + 트리에서 사라짐
-  await page.locator('.editor-toolbar').getByRole('button', { name: /삭제/ }).click()
+  await page.locator('.tab-actions').getByRole('button', { name: /삭제/ }).click()
   await expect(page.locator('.tree-name').filter({ hasText: /뷰어삭제\.txt/ })).toHaveCount(0)
   await expect(page.locator('.browser-welcome')).toBeVisible()
 
@@ -112,6 +155,30 @@ test('휴지통 항목에 자동 완전삭제까지 남은 시간이 표시된�
   const trashRow = page.getByRole('row', { name: /카운트다운\.txt/ }).first()
   await expect(trashRow.locator('.col-remaining .trash-remaining')).toBeVisible()
   await expect(trashRow.locator('.col-remaining .trash-remaining')).toContainText('남음')
+})
+
+test('휴지통 모드에서 (휴지통에 없는) 트리 파일을 누르면 휴지통을 벗어나 뷰어가 열린다', async ({
+  page,
+}) => {
+  await login(page)
+  const fname = `트리열기_${Date.now()}.md`
+  await page.locator('input[type="file"]:not([webkitdirectory])').setInputFiles({
+    name: fname,
+    mimeType: 'text/markdown',
+    buffer: Buffer.from('# 안녕'),
+  })
+  await expect(page.locator('.tree-name').filter({ hasText: fname })).toBeVisible()
+
+  // 휴지통 모드 진입 → 메인에 휴지통 목록(.file-table), 트리는 그대로 보임
+  await page.locator('.sidebar-trash').click()
+  await expect(page.locator('.file-table')).toBeVisible()
+  await expect(page.locator('.tree-name').filter({ hasText: fname })).toBeVisible()
+
+  // 휴지통 모드에서 트리 파일 클릭 → 휴지통을 벗어나 그 파일 뷰어(에디터)가 열린다
+  await page.locator('.tree-name').filter({ hasText: fname }).click()
+  await expect(page.locator('.editor-shell')).toBeVisible()
+  await expect(page.locator('.sidebar-trash.active')).toHaveCount(0) // 휴지통 모드 해제
+  await expect(page.locator('.file-table')).toHaveCount(0) // 휴지통 목록 사라짐
 })
 
 test('휴지통에 든 폴더의 자식 파일 딥링크는 404 (복원하면 다시 열림)', async ({ page }) => {
@@ -152,42 +219,4 @@ test('휴지통에 든 폴더의 자식 파일 딥링크는 404 (복원하면 �
   // 폴더를 복원하면 자식 딥링크가 다시 열린다
   expect((await page.request.post(`/api/nodes/${folder.id}/restore`)).ok()).toBeTruthy()
   expect((await page.request.get(`/api/files/${child.id}`)).status()).toBe(200)
-})
-
-test('휴지통 파일 행을 누르면 원래 위치(폴더)로 이동한다', async ({ page }) => {
-  page.on('dialog', (d) => d.accept())
-  await login(page)
-  const tag = Date.now()
-  const folder = `상위폴더_${tag}`
-  const fname = `위치찾기_${tag}.txt`
-
-  // 폴더 만들고 그 안에 파일 업로드
-  await newFolder(page, folder)
-  const folderItem = page.locator('.tree-name').filter({ hasText: folder })
-  await expect(folderItem).toBeVisible()
-  await folderItem.click()
-  await expect(page.locator('.crumb-current, .crumb', { hasText: folder })).toBeVisible()
-  await page.locator('input[type="file"]:not([webkitdirectory])').setInputFiles({
-    name: fname,
-    mimeType: 'text/plain',
-    buffer: Buffer.from('here'),
-  })
-  await expect(page.locator('.upload-row')).toHaveCount(0)
-
-  // 파일을 휴지통으로(트리 행 🗑) → 트리에서 사라짐
-  await page
-    .locator('.tree-row')
-    .filter({ hasText: fname })
-    .getByRole('button', { name: '휴지통으로 이동' })
-    .click()
-  await expect(page.locator('.tree-name').filter({ hasText: fname })).toHaveCount(0)
-
-  // 휴지통 열기 → 그 파일 행을 클릭 → 원래 폴더로 이동(휴지통 해제 + 크럼에 폴더)
-  // (폴더가 트리에 남아 있어 그 행의 🗑도 '휴지통' 이름에 걸리므로 사이드바 휴지통을 특정)
-  await page.locator('.sidebar-trash').click()
-  const trashRow = page.locator('.trash-row').filter({ hasText: fname })
-  await expect(trashRow).toBeVisible()
-  await trashRow.click()
-  await expect(page.locator('.crumb-current, .crumb', { hasText: folder })).toBeVisible()
-  await expect(page.locator('.trash-row')).toHaveCount(0) // 휴지통 목록에서 나옴
 })

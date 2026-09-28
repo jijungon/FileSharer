@@ -10,6 +10,8 @@ interface ShareInfo {
   protected: boolean
   max_downloads: number | null
   download_count: number
+  created_at?: string | null // 언제 발급했는지
+  created_by_name?: string // 누가 발급했는지(여러 사람이 쓰는 공간에서 필요)
 }
 
 interface CreatedShare extends ShareInfo {
@@ -84,26 +86,7 @@ export default function SharePopover({ node, onClose }: { node: NodeInfo; onClos
         </button>
       </div>
 
-      {/* 사내 링크 복사(전체 URL) + 오른쪽 📋 는 파일 해시(ID)만 복사. 액션 바에서 이리로 옮겨왔다. */}
-      <div className="share-internal-row">
-        <button
-          className="share-internal-copy"
-          onClick={() => copy(`${window.location.origin}/files/${node.id}`, 'internal')}
-          title="로그인한 사내 사용자가 이 파일로 바로 오는 링크"
-        >
-          <span>🔗 사내 링크 복사</span>
-          <span className="muted">{copied === 'internal' ? '복사됨 ✓' : '로그인 사용자용'}</span>
-        </button>
-        <button
-          className="share-hash-copy"
-          onClick={() => copy(node.id, 'hash')}
-          title="이 파일의 해시(ID)만 복사"
-          aria-label="파일 해시 복사"
-        >
-          {copied === 'hash' ? '✓' : '📋'}
-        </button>
-      </div>
-
+      {/* 사내 링크 복사는 상단 주소창(오미니박스)의 📋로 이동해 여기선 제거 — 이 팝오버는 외부 공유 링크 전용 */}
       {created ? (
         <div className="share-result">
           <label className="share-label">원커맨드 — VM·터미널에서 한 줄로 받기+해제</label>
@@ -179,9 +162,17 @@ export default function SharePopover({ node, onClose }: { node: NodeInfo; onClos
           {existing.map((s) => (
             <div key={s.id} className="share-row">
               <span className="muted">
-                ~{s.expires_at.slice(0, 10)}
-                {s.protected && ' · 🔒'}
-                {s.max_downloads != null && ` · ${s.download_count}/${s.max_downloads}회`}
+                {/* 여러 사람이 쓰는 공간이라 "이 링크 누가 언제 만든 건지"가 먼저 보여야 한다 */}
+                {s.created_by_name && <strong>{s.created_by_name}</strong>}
+                {(s.created_by_name ? ' · ' : '') +
+                  [
+                    s.created_at ? `${s.created_at.slice(0, 10)} 발급` : null,
+                    `~${s.expires_at.slice(0, 10)} 만료`,
+                    s.protected ? '🔒' : null,
+                    s.max_downloads != null ? `${s.download_count}/${s.max_downloads}회` : null,
+                  ]
+                    .filter(Boolean)
+                    .join(' · ')}
               </span>
               <button
                 className="row-action"
