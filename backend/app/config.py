@@ -16,8 +16,10 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file_encoding="utf-8", extra="ignore")
 
     app_env: str = "dev"
-    # 이미지 빌드 때 주입되는 버전(v0.0.<PR>). 비면 'dev' — 로컬·미배포.
+    # 이미지 빌드 때 주입된다. 제품 버전은 VERSION 파일(사람이 올림),
+    # 빌드 번호는 머지 PR 번호(#151, 자동). 비면 'dev' — 로컬·미배포.
     app_version: str = ""
+    app_build: str = ""
     # True일 때만 /api/test/reset 라우트 마운트(테스트 격리 전용). 프로덕션 금지.
     enable_test_reset: bool = False
     secret_key: str = "dev-only-not-for-prod"
