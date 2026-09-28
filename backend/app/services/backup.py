@@ -23,6 +23,7 @@ import re
 import shutil
 import sqlite3
 import tempfile
+import time
 from abc import ABC, abstractmethod
 from collections.abc import Iterator
 from datetime import datetime
@@ -353,7 +354,47 @@ def run_backup(
     }
     # manifest 를 맨 마지막에 — 이게 있으면 '완결된 회차'다(중간에 죽으면 다음 틱이 다시 만든다)
     store.put_bytes(manifest_key, json.dumps(manifest, ensure_ascii=False, indent=2).encode())
+    global _summary
+    _summary = (time.monotonic(), _summarize(manifest))  # 방금 만든 걸 바로 보여준다
     return manifest
+
+
+# 화면 상단 배지가 이 값을 매번 묻는다. 원격 저장소 왕복이 비싸니 잠깐 캐시한다.
+_SUMMARY_TTL = 300.0
+_summary: tuple[float, dict | None] = (0.0, None)
+
+
+def _summarize(manifest: dict) -> dict:
+    return {
+        "kind": manifest["kind"],
+        "stamp": manifest["stamp"],
+        "created_at": manifest["created_at"],
+        "spaces": len(manifest["spaces"]),
+        "files": manifest["total_files"],
+        "bytes": manifest["total_bytes"],
+    }
+
+
+def latest_summary(store: BackupStore, *, ttl: float = _SUMMARY_TTL) -> dict | None:
+    """가장 최근 회차 요약(주간·월간 통틀어). 없으면 None."""
+    global _summary
+    at, cached = _summary
+    if cached is not None and time.monotonic() - at < ttl:
+        return cached
+    best: dict | None = None
+    for kind in KINDS:
+        stamps = [s for s in store.list_stamps(kind) if STAMP_RE.match(s)]
+        if not stamps:
+            continue
+        key = f"{kind}/{max(stamps)}/manifest.json"
+        if not store.exists(key):
+            continue  # 만들다 만 회차 — manifest 가 없으면 완결되지 않은 것
+        manifest = json.loads(store.read_bytes(key))
+        if best is None or manifest["created_at"] > best["created_at"]:
+            best = manifest
+    summary = _summarize(best) if best else None
+    _summary = (time.monotonic(), summary)
+    return summary
 
 
 def prune(store: BackupStore, kind: str, keep: int) -> list[str]:

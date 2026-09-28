@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { formatBytes, formatDateTime, formatTrashRemaining, normalizeFileName } from './format'
+import {
+  formatAgo,
+  formatBytes,
+  formatDateTime,
+  formatTrashRemaining,
+  normalizeFileName,
+} from './format'
 
 describe('formatBytes', () => {
   it('formats byte ranges', () => {
@@ -54,5 +60,25 @@ describe('formatTrashRemaining', () => {
     expect(formatTrashRemaining(null, now)).toBe('')
     expect(formatTrashRemaining(undefined, now)).toBe('')
     expect(formatTrashRemaining('nope', now)).toBe('')
+  })
+})
+
+describe('formatAgo', () => {
+  const NOW = Date.parse('2026-09-28T12:00:00Z')
+
+  it('서버의 naive-UTC 문자열을 UTC로 읽는다 (로컬 시각으로 오해하면 9시간이 틀어진다)', () => {
+    expect(formatAgo('2026-09-28T09:00:00', NOW)).toBe('3시간 전')
+    expect(formatAgo('2026-09-28T09:00:00Z', NOW)).toBe('3시간 전')
+  })
+
+  it('단위를 자리에 맞게 줄인다', () => {
+    expect(formatAgo('2026-09-28T11:59:30', NOW)).toBe('방금')
+    expect(formatAgo('2026-09-28T11:30:00', NOW)).toBe('30분 전')
+    expect(formatAgo('2026-09-20T12:00:00', NOW)).toBe('8일 전')
+  })
+
+  it('값이 없으면 빈 문자열', () => {
+    expect(formatAgo(null, NOW)).toBe('')
+    expect(formatAgo('엉터리', NOW)).toBe('')
   })
 })

@@ -456,6 +456,17 @@ button:focus-visible {
   transform: translateY(-1px);
 }
 
+/* 마지막 백업 배지 — 버전 뱃지와 같은 모양, 오래되면 눈에 띄게 */
+.backup-badge {
+  margin-left: var(--sp-xxs);
+  cursor: default;
+}
+
+.backup-badge.is-stale {
+  color: var(--pending);
+  border-color: color-mix(in srgb, var(--pending) 55%, transparent);
+}
+
 .topbar-right {
   display: flex;
   gap: var(--sp-sm);

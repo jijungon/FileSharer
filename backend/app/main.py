@@ -146,7 +146,8 @@ def create_app() -> FastAPI:
 
     @app.get("/api/health")
     def health() -> dict:
-        return {"ok": True, "app": "filesharer"}
+        # 화면 상단 뱃지가 이 값을 쓴다 — 번들에 박힌 문자열과 달리 CDN 캐시에 속지 않는다.
+        return {"ok": True, "app": "filesharer", "version": settings.app_version or "dev"}
 
     app.include_router(auth_router)
     app.include_router(me_router)

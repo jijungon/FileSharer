@@ -2,20 +2,10 @@
 import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vite'
 
-import pkg from './package.json'
-
-declare const process: { env: Record<string, string | undefined> }
-
-// 배포 버전 라벨 = 머지된 PR 번호("버전 == PR 번호" 규칙). prod 빌드에선 CI(ci.yml image 잡)가
-// 머지 커밋의 (#NN)을 뽑아 APP_VERSION=v0.0.NN 로 주입한다(Dockerfile ARG→ENV 경유).
-// APP_VERSION이 없을 때(로컬 dev·직접 푸시)만 package.json 버전으로 폴백.
-const appVersion = process.env.APP_VERSION || `v${pkg.version}`
-
+// 버전은 **서버가 말한다**(/api/health). 번들 안에 문자열로 박으면, 프런트가 안 바뀐 배포에서
+// 파일명이 그대로라 CDN이 옛 바이트를 계속 내주며 거짓 버전을 보여준다(실제로 겪었다).
 // https://vite.dev/config/
 export default defineConfig({
-  define: {
-    __APP_VERSION__: JSON.stringify(appVersion),
-  },
   plugins: [react()],
   server: {
     port: 5173,

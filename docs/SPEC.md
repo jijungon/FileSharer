@@ -112,9 +112,13 @@ PK는 모두 uuid4 hex 32자 문자열(`new_id()`). 시각은 UTC.
 - **주요 컴포넌트**: `ViewerPanel`(에디터·프리뷰·미디어·오피스 호스트), `FolderTree`(스티키 조상 헤더·인라인 리네임·드롭 타깃), `LinkBar`(액션 바), `MarkdownPreview`(GFM+하이라이트+Mermaid), `SharePopover`, `ServerUploadPopover`, `NewMarkdownModal`, `NameModal`(네이티브 prompt 대체), `ErrorBoundary`.
 - **lib**: `api`(동일 오리진 fetch, `no-store`, `ApiError`), `files`, `upload`(크기 분할·진행률), `dragout`(크롬 드래그 아웃), `scrollsync`, `clipboard`(execCommand 폴백), `globalErrors`(전역 에러→토스트).
 
-### 2.6 버전 문자열 주입
+### 2.6 버전은 서버가 말한다
 
-vite가 `__APP_VERSION__`에 **고정 플레이스홀더**(`__FS_APP_VERSION__`)를 박아 빌드한다(그래야 버전이 바뀌어도 무거운 npm/vite 레이어 캐시가 무효화되지 않는다). 그 뒤 `sed`로 `dist/assets`에서 실제 값으로 치환한다.
+화면 상단 뱃지는 **`/api/health`가 돌려주는 버전**을 표시한다. 이미지 빌드 때 `APP_VERSION`(= `v0.0.<PR#>`)을 런타임 스테이지의 ENV로 넣고, 서버가 그 값을 보고한다.
+
+**왜 번들에 박지 않나**: 예전에는 vite가 플레이스홀더를 박고 빌드 뒤 `sed`로 치환했다. 그런데 프런트 소스가 안 바뀐 배포(백엔드만 변경)에서는 **번들 파일명이 그대로인데 내용만 달라진다.** vite의 파일명 해시는 치환 전 내용으로 계산되므로, CDN·브라우저는 같은 이름의 옛 바이트를 계속 내주고 **뱃지가 옛 버전을 표시한다.** 실제로 v0.0.147 배포 후 38분 동안 화면이 146으로 보였다(`cf-cache-status: HIT`).
+
+서버가 말하면 캐시와 무관하게 항상 맞고, 덤으로 무거운 프런트 빌드 레이어가 버전과 무관해져 캐시가 그대로 재사용된다(배포 속도).
 
 ---
 
@@ -556,4 +560,6 @@ Playwright는 `overflow`로 **잘려 보이지 않는 요소도 클릭**하므�
 | 토글 색이 안 변함 | portal된 요소가 스코프 전용 CSS 변수 참조 | 전역 토큰 사용 |
 | 검색이 느림 | 질의마다 원격 블롭 읽기 | FTS 인덱스(D6) |
 | e2e는 통과하는데 화면이 깨짐 | 잘린 요소도 클릭됨 | 계산된 스타일·위치를 직접 측정 |
+| 배포했는데 버전 뱃지가 옛날 값 | 번들 파일명은 그대로인데 내용만 치환 → CDN이 옛 바이트 제공 | 버전을 서버가 보고(2.6) |
+| 기동 이후 로그가 하나도 안 남음 | alembic `fileConfig` 가 기존 로거를 disable | in-process 실행 땐 로깅 설정 생략(D14) |
 | 가만히 있어도 화면이 주기적으로 튐 | 인라인 `components`로 미리보기가 재마운트 | 매핑을 모듈 상수로 + `memo`(D13) |
