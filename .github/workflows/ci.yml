@@ -19,6 +19,12 @@ permissions:
   contents: read
   packages: write
 
+# PR 에 다시 푸시하면 **옛 실행을 취소**한다(고치고 또 밀 때마다 두 벌씩 도는 걸 막는다).
+# main push 는 취소하지 않는다 — 머지마다 결과를 남겨야 나중에 "그때 초록이었나"를 볼 수 있다.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   secrets-scan:
     runs-on: ubuntu-24.04
@@ -136,8 +142,20 @@ jobs:
             compose.log
             e2e/test-results/
 
+  # e2e 를 needs 에 넣는 이유: **이 잡이 곧 배포**이기 때문이다.
+  # 원래는 SSH로 배포하는 deploy 잡이 따로 있었고 그게 needs: [image, e2e] 였다(#71).
+  # watchtower(pull 방식)로 바꾸면서 deploy 잡을 지웠는데(#74), 그때 e2e 게이트도 같이
+  # 사라졌다. 지금은 GHCR 에 :latest 를 푸시하는 순간 watchtower 가 가져가 배포된다 —
+  # 즉 image 가 예전 deploy 의 자리를 물려받았으니 조건도 물려받아야 한다.
+  # 대가: image 가 e2e 를 기다리므로 배포가 1~2분 느려진다. e2e 가 깨진 코드가 나가는 것보다 낫다.
   image:
-    needs: [secrets-scan, backend, frontend]
+    needs: [secrets-scan, backend, frontend, e2e]
+    # PR 을 3개쯤 연달아 머지하면 **배포는 한 번만** 한다 — 앞선 이미지 빌드를 취소하고
+    # 마지막 것만 GHCR 로 올린다. 머지마다 배포·확인을 반복하던 정체가 사라진다.
+    # (main push 의 다른 잡들은 그대로 돌아 기록이 남는다. 취소되는 건 배포뿐이다.)
+    concurrency:
+      group: deploy-${{ github.ref }}
+      cancel-in-progress: true
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
