@@ -103,9 +103,10 @@ interface BackupSummary {
   kind: string
   stamp: string
   created_at: string
-  spaces: number
-  files: number
-  bytes: number
+  // 규모는 관리자에게만 내려온다(자기가 못 보는 공간의 크기가 드러나므로)
+  spaces?: number
+  files?: number
+  bytes?: number
 }
 
 export default function Files() {
@@ -246,9 +247,10 @@ export default function Files() {
       .catch(() => setVersion(''))
   }, [])
 
-  // 관리자에게만 마지막 백업 시각을 띄운다(일반 사용자에겐 운영 정보라 의미가 없다).
+  // "내 파일이 언제 백업됐나"는 모두의 관심사다 — 관리자 전용으로 걸어뒀다가 정작
+  // 보고 싶어 한 사람이 관리자가 아니어서 안 보였다.
   useEffect(() => {
-    if (me?.role !== 'admin') return
+    if (!me) return
     api<{ enabled: boolean; last: BackupSummary | null; unavailable?: boolean }>(
       '/api/system/backup',
     )
@@ -259,7 +261,7 @@ export default function Files() {
         else setBackupState(res.last ? 'ok' : 'none')
       })
       .catch(() => setBackupState('error'))
-  }, [me?.role])
+  }, [me])
 
   useEffect(() => {
     async function boot() {
@@ -1052,14 +1054,17 @@ export default function Files() {
           <span className="app-version" title={build ? `${version} (빌드 ${build})` : '서버가 보고하는 버전'}>
             {version || '…'}
           </span>
-          {me.role === 'admin' && backupState !== 'loading' && (
+          {backupState !== 'loading' && (
             <span
               className={`backup-badge${backupStale || backupState !== 'ok' ? ' is-stale' : ''}`}
               title={
                 backup
                   ? `마지막 백업 ${formatDateTime(backup.created_at)}` +
                     ` · ${backup.kind === 'weekly' ? '주간' : '월간'} ${backup.stamp}` +
-                    ` · 공간 ${backup.spaces}개 · 파일 ${backup.files}개 · ${formatBytes(backup.bytes)}` +
+                    (backup.files != null
+                      ? ` · 공간 ${backup.spaces}개 · 파일 ${backup.files}개` +
+                        ` · ${formatBytes(backup.bytes ?? 0)}`
+                      : '') +
                     (backupStale ? ' — 주기(주 1회)보다 오래됐습니다' : '')
                   : backupState === 'error'
                     ? '백업 상태를 읽지 못했습니다 — 저장소 접근을 확인하세요'
