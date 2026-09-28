@@ -40,6 +40,11 @@ GHCR 이미지를 받아 구동한다.
 | `ADMIN_EMAIL` / `ADMIN_PASSWORD` | 초기 관리자 |
 | `ALLOWED_GOOGLE_DOMAIN` | 회사 도메인 |
 
+**백업은 따로 설정할 게 없다.** `APP_ENV=prod` 면 앱이 알아서 주 1회·월 1회
+공간별 tar.gz + DB 스냅샷을 버킷의 `backup/` 프리픽스에 쌓는다(운영 키와 분리).
+보관 기간만 바꾸고 싶으면 `BACKUP_KEEP_WEEKLY` / `BACKUP_KEEP_MONTHLY`.
+돌고 있는지 확인: `backend/.venv/bin/python backend/scripts/backup_list.py` (읽기 전용)
+
 ## 3. 배포
 
 ```bash

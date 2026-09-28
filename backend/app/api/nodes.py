@@ -35,6 +35,7 @@ from ..services.storage import (
     StorageBackend,
     build_storage,
 )
+from ..services.tar_stream import collect_entries as collect_tar_entries
 from ..services.tar_stream import stream_tar_gz
 from ..services.trash import purge_subtree
 
@@ -923,27 +924,6 @@ def video_preview(
         passthrough.write_text(codec or "none", encoding="utf-8")
         return serve_original()
     return serve_transcoded()
-
-
-def collect_tar_entries(db: Session, root: Node):
-    """폴더 서브트리를 (파일 노드|None(=디렉토리), 아카이브명)으로 평탄화 — 삭제 항목 제외."""
-    def walk(node: Node, prefix: str):
-        children = db.scalars(
-            select(Node).where(
-                Node.parent_id == node.id, Node.deleted_at.is_(None)
-            )
-        ).all()
-        children.sort(key=lambda n: (0 if n.type == "folder" else 1, n.name))
-        for child in children:
-            arcname = f"{prefix}/{child.name}"
-            if child.type == "folder":
-                yield (None, arcname)
-                yield from walk(child, arcname)
-            else:
-                yield (child, arcname)
-
-    yield (None, root.name)
-    yield from walk(root, root.name)
 
 
 @router.get("/nodes/{node_id}/tar")
