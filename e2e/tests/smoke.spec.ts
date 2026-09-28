@@ -26,5 +26,7 @@ test('상단 버전 배지는 서버가 보고하는 값을 쓴다', async ({ pa
   await page.getByRole('button', { name: '로컬 계정으로 로그인' }).click()
   await expect(page).toHaveURL(/\/files/)
 
-  await expect(page.locator('.logo .app-version')).toHaveText(health.version)
+  // 제품 버전 + (있으면) 빌드 번호를 함께 보여준다
+  const expected = health.build ? `${health.version} · ${health.build}` : health.version
+  await expect(page.locator('.logo .app-version')).toHaveText(expected)
 })

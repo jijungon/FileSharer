@@ -42,7 +42,8 @@ COPY --from=web /web/dist ./static
 # 배포(백엔드만 변경)에서 CDN이 옛 바이트를 계속 내주며 거짓말을 한다 — 실제로 겪었다.
 # 이 ENV 는 마지막 레이어들 근처라 캐시 무효화 비용이 거의 없다.
 ARG APP_VERSION=""
-ENV APP_VERSION=${APP_VERSION}
+ARG APP_BUILD=""
+ENV APP_VERSION=${APP_VERSION} APP_BUILD=${APP_BUILD}
 USER app
 VOLUME /data
 EXPOSE 8000

@@ -115,7 +115,9 @@ export default function Files() {
   // 마지막 백업 — "정말 돌고 있나"를 상단에서 한눈에(관리자만).
   const [backup, setBackup] = useState<BackupSummary | null>(null)
   // 버전은 **서버가 말한다**. 번들에 박으면 CDN이 옛 바이트를 내줄 때 거짓말이 된다.
+  // 제품 버전(v1.0.0)과 빌드 번호(#151)를 함께 — 전자는 '어디까지 왔나', 후자는 '지금 뭐가 떠 있나'.
   const [version, setVersion] = useState('')
+  const [build, setBuild] = useState('')
   // 화면 테마(다크 기본 ↔ 라이트). data-theme로 토큰을 뒤집고 localStorage에 기억한다.
   const [theme, setTheme] = useState<'dark' | 'light'>(() =>
     document.documentElement.dataset.theme === 'light' ? 'light' : 'dark',
@@ -233,8 +235,11 @@ export default function Files() {
 
   // 초기 로드: me + spaces (+ 딥링크 복원)
   useEffect(() => {
-    api<{ version?: string }>('/api/health')
-      .then((res) => setVersion(res.version || ''))
+    api<{ version?: string; build?: string }>('/api/health')
+      .then((res) => {
+        setVersion(res.version || '')
+        setBuild(res.build || '')
+      })
       .catch(() => setVersion(''))
   }, [])
 
@@ -1034,8 +1039,9 @@ export default function Files() {
         {/* 로고 영역 폭을 사이드바에 맞춰, 검색창 왼쪽이 탭 바 시작선과 정렬되게 한다 */}
         <h2 className="logo" style={{ width: sidebarWidth - 12, flexShrink: 0 }}>
           FileSharer{' '}
-          <span className="app-version" title="서버가 보고하는 버전">
+          <span className="app-version" title="서버가 보고하는 버전(제품 버전 · 빌드)">
             {version || '…'}
+            {build && <span className="app-build"> · {build}</span>}
           </span>
         </h2>
         {/* 상단 검색 = 주소창(오미니박스). 파일을 열면 그 파일의 경로를 보여주고(주소 모드),
