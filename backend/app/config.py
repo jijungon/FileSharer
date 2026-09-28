@@ -19,7 +19,11 @@ class Settings(BaseSettings):
     # 이미지 빌드 때 주입된다. 제품 버전은 VERSION 파일(사람이 올림),
     # 빌드 번호는 머지 PR 번호(#151, 자동). 비면 'dev' — 로컬·미배포.
     app_version: str = ""
+    # 빌드 번호 = main 커밋 수. **큰 쪽이 무조건 최신**이다.
+    # (예전엔 PR 번호를 썼는데 머지 순서와 달라 #159 다음에 #158 이 배포된 적이 있다.)
     app_build: str = ""
+    app_pr: str = ""  # 어느 작업이 들어갔는지
+    app_built_at: str = ""  # 언제 만든 이미지인지
     # 에러 추적(Sentry). 비면 꺼진다 — 로컬·CI 기본값. 서버 .env 에 넣으면 켜진다.
     # 프런트도 이 DSN을 /api/health 로 받아 쓴다(번들에 박으면 환경마다 다시 빌드해야 한다).
     sentry_dsn: str = ""

@@ -122,6 +122,8 @@ export default function Files() {
   // 제품 버전(v1.0.0)과 빌드 번호(#151)를 함께 — 전자는 '어디까지 왔나', 후자는 '지금 뭐가 떠 있나'.
   const [version, setVersion] = useState('')
   const [build, setBuild] = useState('')
+  const [pr, setPr] = useState('')
+  const [builtAt, setBuiltAt] = useState('')
   // 화면 테마(다크 기본 ↔ 라이트). data-theme로 토큰을 뒤집고 localStorage에 기억한다.
   const [theme, setTheme] = useState<'dark' | 'light'>(() =>
     document.documentElement.dataset.theme === 'light' ? 'light' : 'dark',
@@ -239,10 +241,12 @@ export default function Files() {
 
   // 초기 로드: me + spaces (+ 딥링크 복원)
   useEffect(() => {
-    api<{ version?: string; build?: string }>('/api/health')
+    api<{ version?: string; build?: string; pr?: string; built_at?: string }>('/api/health')
       .then((res) => {
         setVersion(res.version || '')
         setBuild(res.build || '')
+        setPr(res.pr || '')
+        setBuiltAt(res.built_at || '')
       })
       .catch(() => setVersion(''))
   }, [])
@@ -1051,7 +1055,15 @@ export default function Files() {
         {/* 로고 영역 폭을 사이드바에 맞춰, 검색창 왼쪽이 탭 바 시작선과 정렬되게 한다 */}
         <h2 className="logo" style={{ minWidth: sidebarWidth - 12, flexShrink: 0 }}>
           FileSharer{' '}
-          <span className="app-version" title={build ? `${version} (빌드 ${build})` : '서버가 보고하는 버전'}>
+          <span
+            className="app-version"
+            title={
+              build
+                ? `${version} · 빌드 ${build}${pr ? ` (${pr})` : ''}` +
+                  (builtAt ? ` · ${formatDateTime(builtAt)} 배포` : '')
+                : '서버가 보고하는 버전'
+            }
+          >
             {version || '…'}
           </span>
           {backupState !== 'loading' && (

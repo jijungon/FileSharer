@@ -74,6 +74,22 @@ docker exec filesharer-app-1 python scripts/user_admin.py list
 
 ## 3. 배포
 
+**main 에 머지해도 배포되지 않는다.** 이미지는 `:b<빌드>` 로만 쌓인다.
+`:latest` 를 움직이는 것이 곧 배포이고, 그건 **태그를 밀 때만** 일어난다.
+
+```bash
+# 내보낼 때 (로컬에서)
+gh release create v1.0.1 --generate-notes
+
+# 되돌릴 때 — 옛 태그를 다시 밀면 그 이미지가 :latest 가 된다
+git tag -f v1.0.0 && git push -f origin v1.0.0
+```
+
+서버에서는 아무것도 할 게 없다. watchtower 가 약 60초 안에 가져간다.
+확인: `curl -s https://file.rgrg.im/api/health` → `version` 이 태그와 같으면 반영된 것.
+
+### 3-1. 수동으로 당길 때
+
 ```bash
 # 서버에서 (compose.yml + deploy/ 를 올려둔 디렉터리)
 docker compose pull        # GHCR에서 최신 멀티아치 이미지

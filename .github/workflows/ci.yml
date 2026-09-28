@@ -14,16 +14,23 @@ on:
     types: [opened, synchronize, reopened]
   push:
     branches: [main]
+    tags: ["v*"] # 태그를 미는 것이 곧 배포다(아래 image 잡 참고)
 
 permissions:
   contents: read
   packages: write
 
-# PR 에 다시 푸시하면 **옛 실행을 취소**한다(고치고 또 밀 때마다 두 벌씩 도는 걸 막는다).
-# main push 는 취소하지 않는다 — 머지마다 결과를 남겨야 나중에 "그때 초록이었나"를 볼 수 있다.
+# **최신 것만 돌린다.** PR 이면 다시 푸시할 때 옛 실행을, main 이면 연달아 머지할 때
+# 앞선 실행을 취소한다.
+#
+# main 도 취소하는 이유: PR 을 3개쯤 모아 연달아 머지하면, 중간 상태는 어차피 배포되지 않는다.
+# 검증해야 할 것은 **최종 합쳐진 상태**이고 마지막 실행이 바로 그걸 본다. 중간 실행을 끝까지
+# 돌리면 제일 느린 e2e(약 3분)를 머지 횟수만큼 반복하고 배포도 그만큼 나간다.
+# (처음엔 "머지마다 기록을 남겨야 한다"며 main 을 취소하지 않았는데, 그 기록은 각 PR 의
+#  CI 에 이미 있다. 과한 판단이었다.)
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  cancel-in-progress: true
 
 jobs:
   secrets-scan:
@@ -150,15 +157,11 @@ jobs:
   # 대가: image 가 e2e 를 기다리므로 배포가 1~2분 느려진다. e2e 가 깨진 코드가 나가는 것보다 낫다.
   image:
     needs: [secrets-scan, backend, frontend, e2e]
-    # PR 을 3개쯤 연달아 머지하면 **배포는 한 번만** 한다 — 앞선 이미지 빌드를 취소하고
-    # 마지막 것만 GHCR 로 올린다. 머지마다 배포·확인을 반복하던 정체가 사라진다.
-    # (main push 의 다른 잡들은 그대로 돌아 기록이 남는다. 취소되는 건 배포뿐이다.)
-    concurrency:
-      group: deploy-${{ github.ref }}
-      cancel-in-progress: true
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0 # 빌드 번호를 main 커밋 수로 뽑으므로 전체 히스토리가 필요하다
       # arm64(오라클 Ampere 등)용 크로스 빌드를 위해 QEMU + buildx
       - uses: docker/setup-qemu-action@v4
       - uses: docker/setup-buildx-action@v4
@@ -169,23 +172,44 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      # 버전은 두 가지다.
-      #   제품 버전(VERSION 파일) — 사람이 올린다. 그 파일을 바꾸는 PR이 곧 릴리스.
-      #   빌드 번호(머지 PR #NN) — 자동. "지금 라이브가 어느 머지인지"를 1초에 확인한다.
-      # 매 머지가 곧 배포라 semver 만으로는 라이브를 특정할 수 없고, PR 번호만으로는
-      # 제품이 어디까지 왔는지 알 수 없다. 그래서 둘 다 들고 간다(화면엔 "v1.0.0 · #151").
-      - name: 버전 산출 (VERSION 파일 + 머지 커밋 (#NN))
+      # 버전은 **두 갈래**다. 앞자리만 봐도 구분된다.
+      #   0.0.<빌드>  main 머지 — 아직 안 나간 것. 빌드 = main 커밋 수라 **항상 1씩 증가**.
+      #   v1.x.y      태그 푸시 — 내보낸 것. 사람이 정한다.
+      # PR 번호를 버전으로 쓰다가 #159 다음에 #158 이 배포되는 일이 있었다(머지 순서와
+      # PR 번호 순서는 다르다). 숫자만 보고 최신을 판단할 수 있어야 해서 커밋 수를 쓴다.
+      # PR 번호는 '어느 작업인지'로만 따로 들고 간다.
+      - name: 버전·이미지 태그 산출
         id: appver
         env:
           HEAD_MSG: ${{ github.event.head_commit.message }}
+          IMAGE: ghcr.io/jijungon/filesharer
         run: |
-          VERSION="v$(tr -d ' \t\n\r' < VERSION)"
+          BUILD=$(git rev-list --count HEAD)   # 스쿼시 머지마다 정확히 1씩 는다
           SUBJECT=$(printf '%s' "$HEAD_MSG" | head -1)
           # 제목 줄만 보고 마지막 #숫자 채택 → 본문의 다른 이슈참조에 안 휘둘린다
-          NUM=$(printf '%s' "$SUBJECT" | grep -oE '#[0-9]+' | tail -1 | tr -d '#')
+          PR=$(printf '%s' "$SUBJECT" | grep -oE '#[0-9]+' | tail -1 | tr -d '#')
+
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            # 배포다. :latest 를 움직이면 서버의 watchtower 가 가져간다.
+            TAG="${GITHUB_REF#refs/tags/}"
+            VERSION="$TAG"
+            TAGS="$IMAGE:latest
+          $IMAGE:$TAG
+          $IMAGE:$GITHUB_SHA"
+            echo "배포 빌드 — $VERSION"
+          else
+            # main 머지다. **:latest 를 건드리지 않는다** → 아무데도 안 나간다.
+            VERSION="v0.0.$BUILD"
+            TAGS="$IMAGE:b$BUILD
+          $IMAGE:$GITHUB_SHA"
+            echo "개발 빌드 — $VERSION (배포되지 않음)"
+          fi
+
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "build=${NUM:+#$NUM}" >> "$GITHUB_OUTPUT"
-          echo "제품 버전 = $VERSION · 빌드 = ${NUM:+#$NUM}"
+          echo "build=$BUILD" >> "$GITHUB_OUTPUT"
+          echo "pr=${PR:+#$PR}" >> "$GITHUB_OUTPUT"
+          echo "built_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+          { echo "tags<<EOF"; echo "$TAGS"; echo "EOF"; } >> "$GITHUB_OUTPUT"
       # PR은 amd64만 빌드해 빠르게 검증, main push면 amd64+arm64 멀티아치로 GHCR에 push
       - name: 빌드 (main push면 GHCR push까지)
         uses: docker/build-push-action@v7
@@ -196,9 +220,9 @@ jobs:
           build-args: |
             APP_VERSION=${{ steps.appver.outputs.version }}
             APP_BUILD=${{ steps.appver.outputs.build }}
-          tags: |
-            ghcr.io/jijungon/filesharer:latest
-            ghcr.io/jijungon/filesharer:${{ github.sha }}
+            APP_PR=${{ steps.appver.outputs.pr }}
+            APP_BUILT_AT=${{ steps.appver.outputs.built_at }}
+          tags: ${{ steps.appver.outputs.tags }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
