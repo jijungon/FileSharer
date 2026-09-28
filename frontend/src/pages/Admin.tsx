@@ -374,6 +374,15 @@ function AddMember({
 }
 
 
+interface StorageUsage {
+  backend: 'r2' | 'local' | 'unknown'
+  bucket?: string
+  prefixes: { prefix: string; objects: number; bytes: number }[]
+  objects: number
+  bytes: number
+  truncated: boolean
+}
+
 interface DiskInfo {
   total: number
   used: number
@@ -382,6 +391,16 @@ interface DiskInfo {
   blob_bytes: number
   warn: boolean
   warn_ratio: number
+  // R2를 쓰면 파일 본체가 서버에 없다 — 저장소 쪽 숫자를 따로 받는다
+  storage: StorageUsage | null
+}
+
+// 프리픽스는 환경 이름이다. 사람이 읽는 이름을 붙여 준다.
+const PREFIX_LABEL: Record<string, string> = {
+  'prod/': '운영',
+  'backup/': '백업',
+  'dev/': '개발',
+  'blobs/': '파일',
 }
 
 interface AuditRow {
@@ -428,7 +447,40 @@ function SystemTab({ onError }: { onError: (msg: string) => void }) {
   return (
     <>
       <Card>
-        <h3 style={{ fontSize: 21, marginBottom: 'var(--sp-sm)' }}>디스크</h3>
+        <h3 style={{ fontSize: 21, marginBottom: 'var(--sp-sm)' }}>저장소</h3>
+        {disk?.storage ? (
+          <div className="disk-card">
+            <div className="storage-head muted">
+              {disk.storage.backend === 'r2' ? `R2 · ${disk.storage.bucket}` : '서버 로컬 폴더'}
+            </div>
+            <table className="storage-table">
+              <tbody>
+                {disk.storage.prefixes.map((row) => (
+                  <tr key={row.prefix}>
+                    <td>{PREFIX_LABEL[row.prefix] ?? row.prefix}</td>
+                    <td className="muted mono">{row.prefix}</td>
+                    <td className="storage-num">{formatBytes(row.bytes)}</td>
+                    <td className="storage-num muted">{row.objects}개</td>
+                  </tr>
+                ))}
+                <tr className="storage-total">
+                  <td colSpan={2}>합계</td>
+                  <td className="storage-num">{formatBytes(disk.storage.bytes)}</td>
+                  <td className="storage-num muted">{disk.storage.objects}개</td>
+                </tr>
+              </tbody>
+            </table>
+            {disk.storage.truncated && (
+              <span className="muted">객체가 많아 일부만 집계했습니다(대략치).</span>
+            )}
+          </div>
+        ) : (
+          <span className="muted">저장소 사용량을 읽지 못했습니다.</span>
+        )}
+      </Card>
+
+      <Card>
+        <h3 style={{ fontSize: 21, marginBottom: 'var(--sp-sm)' }}>서버 디스크</h3>
         {disk && (
           <div className="disk-card">
             <div className="disk-bar">
@@ -439,8 +491,13 @@ function SystemTab({ onError }: { onError: (msg: string) => void }) {
             </div>
             <span className="muted">
               사용 {formatBytes(disk.used)} / 전체 {formatBytes(disk.total)} (
-              {Math.round(disk.used_ratio * 100)}%) · 파일 본체 {formatBytes(disk.blob_bytes)}
+              {Math.round(disk.used_ratio * 100)}%)
               {disk.warn && <strong style={{ color: '#d70015' }}> · 임계치 초과!</strong>}
+            </span>
+            <span className="muted">
+              {disk.storage?.backend === 'r2'
+                ? 'DB · 도커 이미지 · 로그가 차지합니다 (파일 본체는 위의 R2에 있습니다)'
+                : `DB · 로그 · 파일 본체 ${formatBytes(disk.blob_bytes)}`}
             </span>
           </div>
         )}

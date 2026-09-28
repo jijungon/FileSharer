@@ -14,7 +14,7 @@ from ..models import AuditLog, User
 from ..services import audit
 from ..services import backup as backup_svc
 from ..services.permissions import get_node_checked
-from ..services.storage import build_storage
+from ..services.storage import build_storage, storage_usage
 from ..services.trash import purge_subtree
 
 router = APIRouter(prefix="/api/system", tags=["system"])
@@ -43,12 +43,22 @@ def backup_status(user: User = Depends(current_user)) -> dict:
 
 @router.get("/disk")
 def disk_usage(_: User = Depends(require_admin)) -> dict:
+    """서버 디스크 + **저장소** 사용량.
+
+    R2를 쓰면 파일 본체가 서버에 없어서 디스크만 보여주면 "파일 본체 0 B"로 뜬다 —
+    파일이 없다는 뜻으로 읽히지만 실제로는 다른 곳에 있다는 뜻이다. 그래서 둘을 나눠서 준다.
+    """
     settings = get_settings()
     data_dir = Path(settings.data_dir)
     usage = shutil.disk_usage(data_dir)
     blobs = data_dir / "blobs"
     blob_bytes = sum(f.stat().st_size for f in blobs.glob("*") if f.is_file())
     used_ratio = usage.used / usage.total if usage.total else 0.0
+    try:
+        storage = storage_usage(build_storage(settings))
+    except Exception:  # 저장소가 잠깐 말썽이어도 관리 화면이 깨지면 안 된다
+        logger.exception("저장소 사용량 조회 실패")
+        storage = None
     return {
         "total": usage.total,
         "used": usage.used,
@@ -57,6 +67,7 @@ def disk_usage(_: User = Depends(require_admin)) -> dict:
         "blob_bytes": blob_bytes,
         "warn": used_ratio >= settings.disk_warn_ratio,
         "warn_ratio": settings.disk_warn_ratio,
+        "storage": storage,
     }
 
 
