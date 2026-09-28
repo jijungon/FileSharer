@@ -411,6 +411,16 @@ export default function Files() {
     }
   }
 
+  // 외부/동시 삭제(다른 세션·API·e2e reset)로 노드가 사라진 걸 편집기가 감지하면 호출된다.
+  // 미저장이 아니면 탭을 조용히 닫아(삭제된 노드로 하트비트가 계속 404를 쏘지 않게) 목록·트리도 갱신.
+  // 미저장이면 사용자가 내용을 지킬 수 있게 탭은 남긴다(편집기가 '삭제됨' 배너 + 하트비트 중단 처리).
+  function handleTabDeleted(id: string) {
+    if (dirtyTabs.has(id)) return
+    closeTab(id, true) // force=true: 미저장 확인창 없이(어차피 미저장 아님)
+    reload()
+    setTreeVersion((v) => v + 1) // 사이드바 트리에서도 사라졌을 수 있음
+  }
+
   // 탭별 미저장 표시(●) — TextEditor가 dirty 여부를 올려준다.
   function setTabDirty(id: string, dirty: boolean) {
     setDirtyTabs((d) => {
@@ -1608,6 +1618,7 @@ export default function Files() {
               onLocalUpload={() => fileInput.current?.click()}
               onDelete={() => deleteTab(tab)}
               onDirtyChange={(d) => setTabDirty(tab.id, d)}
+              onDeleted={handleTabDeleted}
               onNodeUpdated={(fresh) => {
                 setOpenTabs((tabs) => tabs.map((t) => (t.id === tab.id ? fresh : t)))
                 if (selected?.id === tab.id) setSelected(fresh)

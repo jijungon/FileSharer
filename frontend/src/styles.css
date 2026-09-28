@@ -1494,6 +1494,13 @@ button:focus-visible {
   color: var(--ed-accent);
   font-weight: 700;
 }
+/* 파일이 외부/동시 삭제로 사라졌을 때의 배너(잠금 배너의 위험색 변형) */
+.lock-banner.deleted {
+  background: color-mix(in srgb, var(--danger) 12%, var(--ed-surface));
+  border-bottom-color: color-mix(in srgb, var(--danger) 42%, transparent);
+  color: var(--danger);
+  font-weight: 600;
+}
 
 .editor-split {
   display: flex;

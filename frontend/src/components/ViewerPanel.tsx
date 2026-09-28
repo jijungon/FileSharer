@@ -76,6 +76,7 @@ interface Props {
   onDirtyChange?: (dirty: boolean) => void // 미저장(dirty) 변화 — 다중 탭 ● 뱃지/닫기 확인용
   active?: boolean // 지금 활성 탭인지 — 활성일 때만 저장/자동저장을 탭 줄 슬롯으로 portal(Stage B)
   actionSlot?: HTMLElement | null // 탭 줄의 저장/자동저장 slot(Files.tsx가 제공)
+  onDeleted?: (id: string) => void // 외부/동시 삭제로 노드가 사라진 걸 편집기가 감지 — 부모가 탭 정리
 }
 
 export default function ViewerPanel(props: Props) {
@@ -242,7 +243,7 @@ function DownloadCard({ node, onClose }: Props) {
   )
 }
 
-function TextEditor({ node, onNodeUpdated, onDirtyChange, active, actionSlot }: Props) {
+function TextEditor({ node, onNodeUpdated, onDirtyChange, active, actionSlot, onDeleted }: Props) {
   const appTheme = useAppTheme() // 라이트/다크 토글에 따라 에디터 테마도 전환
   const [text, setText] = useState<string | null>(null)
   const [loadError, setLoadError] = useState('')
@@ -250,6 +251,8 @@ function TextEditor({ node, onNodeUpdated, onDirtyChange, active, actionSlot }: 
   const [saving, setSaving] = useState(false)
   const [savedFlash, setSavedFlash] = useState(false)
   const [conflict, setConflict] = useState(false)
+  // 외부/동시 삭제로 노드가 사라지면(하트비트 404) 편집기를 '삭제됨'으로 굳혀 하트비트를 멈춘다.
+  const [deleted, setDeleted] = useState(false)
   // 편집 잠금 상태(null=확인 전). held_by_me면 내가 편집 중, 아니면 holder가 편집 중 → 읽기 전용.
   const [lock, setLock] = useState<LockState | null>(null)
   const [autosave, setAutosave] = useState(() => {
@@ -283,15 +286,27 @@ function TextEditor({ node, onNodeUpdated, onDirtyChange, active, actionSlot }: 
       .catch((e) => setLoadError(e instanceof Error ? e.message : '불러오기 실패'))
   }, [node.id, node.size])
 
-  // 남이 편집 중이면 읽기 전용. (잠금 확인 전 null은 편집 가능으로 두되 아래 획득이 곧 확정)
-  const readOnly = lock !== null && !lock.held_by_me
+  // 남이 편집 중이거나 파일이 삭제됐으면 읽기 전용. (삭제됨은 저장/자동저장도 canEditRef로 막힌다)
+  // (잠금 확인 전 null은 편집 가능으로 두되 아래 획득이 곧 확정)
+  const readOnly = deleted || (lock !== null && !lock.held_by_me)
   useEffect(() => {
     canEditRef.current = !readOnly
   }, [readOnly])
 
+  // onDeleted 콜백을 ref로 들고 있어 아래 잠금 effect의 의존성([node.id])을 늘리지 않는다.
+  const onDeletedRef = useRef(onDeleted)
+  useEffect(() => {
+    onDeletedRef.current = onDeleted
+  }, [onDeleted])
+
   // 편집 잠금: 열면 획득, 10초마다 하트비트(겸 남의 잠금 만료 시 인수), 닫으면 해제.
+  // 노드가 외부/동시 삭제로 사라지면(404) 하트비트를 '영구 중단'하고 삭제됨으로 표시한다.
+  // 다중 탭은 비활성 편집기도 계속 마운트해 두므로, 404를 무시하고 재시도하면 /lock 요청이
+  // 폭주(타이트 루프)할 수 있다 → 404는 재시도 불가한 종료 상태로 다뤄 한 번만 처리한다.
   useEffect(() => {
     let alive = true
+    let stopped = false // 삭제 감지 후 재비팅 금지(interval 콜백 가드)
+    let timer = 0
     let prevHeld: boolean | null = null
     async function beat() {
       try {
@@ -311,16 +326,27 @@ function TextEditor({ node, onNodeUpdated, onDirtyChange, active, actionSlot }: 
         }
         prevHeld = s.held_by_me
         setLock(s)
-      } catch {
-        /* 네트워크 순단 — 다음 주기에 재시도. 잠금 상태는 유지 */
+      } catch (err) {
+        if (!alive) return
+        // 404 = 노드가 사라짐(외부/동시 삭제). 하트비트를 멈추고 삭제됨 표시 + 부모에 통지한다.
+        if (err instanceof ApiError && err.status === 404) {
+          stopped = true
+          window.clearInterval(timer)
+          setDeleted(true)
+          onDeletedRef.current?.(node.id)
+          return
+        }
+        /* 그 외(네트워크 순단 등) — 다음 주기에 재시도. 잠금 상태는 유지 */
       }
     }
     beat()
-    const timer = window.setInterval(beat, 10000)
+    timer = window.setInterval(() => {
+      if (!stopped) beat()
+    }, 10000)
     return () => {
       alive = false
       window.clearInterval(timer)
-      releaseLock(node.id) // 닫기/전환 시 해제(그래도 못 가면 서버 TTL이 정리)
+      if (!stopped) releaseLock(node.id) // 삭제된 노드엔 release 불필요(어차피 404) — 그 외엔 해제
     }
   }, [node.id])
 
@@ -512,7 +538,14 @@ function TextEditor({ node, onNodeUpdated, onDirtyChange, active, actionSlot }: 
           actionSlot,
         )}
 
-      {readOnly && (
+      {deleted && (
+        <div className="lock-banner deleted">
+          🗑 이 파일은 삭제되었습니다 — 편집할 수 없습니다.
+          {dirty && ' 저장하지 않은 변경은 복사해 두세요.'}
+        </div>
+      )}
+
+      {readOnly && !deleted && (
         <div className="lock-banner">
           🔒 <strong>{lock?.holder}</strong>님이 편집 중입니다 — 읽기 전용입니다. 편집이 끝나면 자동으로
           이어받습니다.
