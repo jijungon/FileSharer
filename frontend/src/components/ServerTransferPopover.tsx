@@ -119,34 +119,44 @@ export default function ServerTransferPopover({
         </>
       )}
 
-      <label className="share-label">⬆ 업로드 — 엔드포인트 (POST · multipart)</label>
-      <div className="share-copyrow">
-        <code>{endpoint}</code>
-        <button className="btn-utility" onClick={() => copy(endpoint, 'ep')}>
-          {copied === 'ep' ? '복사됨 ✓' : '복사'}
-        </button>
-      </div>
+      {/* 올리기와 내리기는 '방향이 반대인 별개 작업'이다 — 줄로 갈라 한눈에 구분되게 둔다. */}
+      <section className="transfer-group">
+        <div className="transfer-group-head">
+          ⬆ 업로드 <span className="muted">원격지 → {label}</span>
+        </div>
 
-      <label className="share-label">curl 한 줄 (파일 · 여러 개 가능)</label>
-      <div className="share-copyrow">
-        <code data-testid="server-upload-curl">{curl}</code>
-        <button className="btn-primary" onClick={() => copy(curl, 'curl')}>
-          {copied === 'curl' ? '복사됨 ✓' : '복사'}
-        </button>
-      </div>
+        <label className="share-label">파일 — 이 한 줄을 원격지에서 실행 (여러 개 가능)</label>
+        <div className="share-copyrow">
+          <code data-testid="server-upload-curl">{curl}</code>
+          <button className="btn-primary" onClick={() => copy(curl, 'curl')}>
+            {copied === 'curl' ? '복사됨 ✓' : '복사'}
+          </button>
+        </div>
 
-      <label className="share-label">폴더째 (tar로 묶어 보내면 서버가 해제 · 구조 유지)</label>
-      <div className="share-copyrow">
-        <code data-testid="server-upload-tar">{tarCurl}</code>
-        <button className="btn-utility" onClick={() => copy(tarCurl, 'tar')}>
-          {copied === 'tar' ? '복사됨 ✓' : '복사'}
-        </button>
-      </div>
+        <label className="share-label">폴더 — tar로 묶어 보내면 서버가 풀어서 구조까지 그대로</label>
+        <div className="share-copyrow">
+          <code data-testid="server-upload-tar">{tarCurl}</code>
+          <button className="btn-utility" onClick={() => copy(tarCurl, 'tar')}>
+            {copied === 'tar' ? '복사됨 ✓' : '복사'}
+          </button>
+        </div>
+
+        <label className="share-label">엔드포인트 — curl 말고 직접 스크립트를 짤 때 (POST · multipart)</label>
+        <div className="share-copyrow">
+          <code>{endpoint}</code>
+          <button className="btn-utility" onClick={() => copy(endpoint, 'ep')}>
+            {copied === 'ep' ? '복사됨 ✓' : '복사'}
+          </button>
+        </div>
+      </section>
 
       {downloadTarget && (
-        <>
+        <section className="transfer-group">
+          <div className="transfer-group-head">
+            ⬇ 다운로드 <span className="muted">{label} → 원격지</span>
+          </div>
           <label className="share-label">
-            ⬇ 다운로드 — {downloadTarget.type === 'folder' ? '폴더(tar 해제까지)' : '파일'}:{' '}
+            {downloadTarget.type === 'folder' ? '폴더 (받으면서 tar 해제까지)' : '파일'}:{' '}
             {downloadTarget.name}
           </label>
           <div className="share-copyrow">
@@ -155,7 +165,14 @@ export default function ServerTransferPopover({
               {copied === 'dl' ? '복사됨 ✓' : '복사'}
             </button>
           </div>
-        </>
+          {/* 다운로드는 '실재하는 대상의 id'가 필요해 업로드처럼 파일·폴더 두 줄을 항상 띄울 수 없다.
+              그래서 지금 안 보이는 쪽이 존재한다는 사실만이라도 알려 준다. */}
+          <p className="muted" style={{ fontSize: 12, margin: '2px 0 0' }} data-testid="server-download-hint">
+            {downloadTarget.type === 'folder'
+              ? '파일을 고르면 그 파일 하나만 받는 명령으로 바뀝니다.'
+              : '폴더를 고르거나 폴더 안에서 열면 폴더째(받으면서 tar 해제) 받는 명령으로 바뀝니다.'}
+          </p>
+        </section>
       )}
 
       <p className="muted" style={{ margin: '4px 0 0' }}>

@@ -71,6 +71,8 @@ test('임시 토큰 발급(버튼) → 한 토큰으로 여러 파일 Bearer 업
 
   // 같은 토큰으로 '내려받기' 명령도 제공된다(filesharer → 원격지). 공개 링크 없이 헤더 인증.
   await openServerUpload(page)
+  // 다운로드는 대상에 따라 파일/폴더로 바뀐다 — 지금 안 보이는 쪽이 있다는 안내가 있어야 한다
+  await expect(page.getByTestId('server-download-hint')).toContainText('폴더를 고르거나')
   const dl = page.getByTestId('server-download-curl')
   await expect(dl).toContainText('Authorization: Bearer')
   await expect(dl).toContainText('/api/files/')
