@@ -1,5 +1,6 @@
-"""관리자 시스템 API — 감사 로그, 디스크 사용률, 휴지통 영구 삭제."""
+"""관리자 시스템 API — 감사 로그, 디스크 사용률, 휴지통 영구 삭제, 백업 상태."""
 
+import logging
 import shutil
 from pathlib import Path
 
@@ -11,11 +12,27 @@ from ..config import get_settings
 from ..deps import get_db, require_admin
 from ..models import AuditLog, User
 from ..services import audit
+from ..services import backup as backup_svc
 from ..services.permissions import get_node_checked
 from ..services.storage import build_storage
 from ..services.trash import purge_subtree
 
 router = APIRouter(prefix="/api/system", tags=["system"])
+logger = logging.getLogger("filesharer")
+
+
+@router.get("/backup")
+def backup_status(_: User = Depends(require_admin)) -> dict:
+    """마지막 백업 회차 — 화면 상단 배지가 "정말 돌고 있나"를 보여주는 데 쓴다."""
+    settings = get_settings()
+    if not settings.backup_enabled:
+        return {"enabled": False, "last": None}
+    try:
+        last = backup_svc.latest_summary(backup_svc.build_backup_store(settings))
+    except Exception:  # 저장소가 잠깐 말썽이어도 화면이 깨지면 안 된다
+        logger.exception("백업 상태 조회 실패")
+        return {"enabled": True, "last": None, "unavailable": True}
+    return {"enabled": True, "last": last}
 
 
 @router.get("/disk")

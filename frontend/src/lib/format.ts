@@ -56,3 +56,23 @@ export function formatTrashRemaining(
   const mins = Math.floor((ms % HOUR) / MIN)
   return `${Math.max(1, mins)}분 남음`
 }
+
+/** 서버의 naive-UTC ISO 이후 흐른 밀리초. 못 읽으면 null. */
+export function agoMs(iso: string | null | undefined, now: number = Date.now()): number | null {
+  const at = parseUtc(iso)
+  return at ? now - at.getTime() : null
+}
+
+/** "3시간 전"처럼 지난 시간을 짧게. 상단 배지처럼 자리가 좁은 곳용. */
+export function formatAgo(iso: string | null | undefined, now: number = Date.now()): string {
+  const ms = agoMs(iso, now)
+  if (ms === null) return ''
+  if (ms < 0) return '방금'
+  const MIN = 60_000
+  const HOUR = 3_600_000
+  const DAY = 86_400_000
+  if (ms < MIN) return '방금'
+  if (ms < HOUR) return `${Math.floor(ms / MIN)}분 전`
+  if (ms < DAY) return `${Math.floor(ms / HOUR)}시간 전`
+  return `${Math.floor(ms / DAY)}일 전`
+}

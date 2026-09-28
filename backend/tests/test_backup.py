@@ -193,3 +193,39 @@ def test_migrations_do_not_disable_loggers(tmp_path):
     assert (tmp_path / "mig.db").exists()
     assert not logger.disabled
     assert not logging.getLogger("uvicorn.error").disabled
+
+
+def test_backup_status_requires_admin(client, app_factory):
+    """운영 정보라 관리자만 본다."""
+    from app.bootstrap import create_user
+
+    SessionLocal = client.app.state.sessionmaker
+    with SessionLocal() as db:
+        create_user(db, email="member@test.local", password="pw-123456")
+        db.commit()
+    assert login(client, "member@test.local", "pw-123456").status_code == 200
+    assert client.get("/api/system/backup").status_code == 403
+
+
+def test_backup_status_reports_latest(admin_client, tmp_path, monkeypatch):
+    """배지가 읽는 값 — 백업 전엔 None, 만들고 나면 그 회차가 보인다."""
+    from app.services import backup as backup_svc
+
+    store = LocalBackupStore(tmp_path / "status")
+    monkeypatch.setattr(backup_svc, "build_backup_store", lambda _settings: store)
+    monkeypatch.setattr(backup_svc, "_summary", (0.0, None))  # 캐시 비우기
+
+    before = admin_client.get("/api/system/backup").json()
+    assert before["enabled"] is True
+    assert before["last"] is None
+
+    settings = get_settings()
+    SessionLocal = admin_client.app.state.sessionmaker
+    with SessionLocal() as db:
+        made = run_backup(db, build_storage(settings), store, "weekly", settings=settings)
+
+    after = admin_client.get("/api/system/backup").json()["last"]
+    assert after["stamp"] == made["stamp"]
+    assert after["kind"] == "weekly"
+    assert after["spaces"] == len(made["spaces"])
+    assert after["files"] == made["total_files"]

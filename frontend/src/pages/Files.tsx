@@ -9,7 +9,7 @@ import ViewerPanel from '../components/ViewerPanel'
 import { api, ApiError, Me, SpaceInfo } from '../lib/api'
 import { copyText } from '../lib/clipboard'
 import { toggleTheme as applyToggle } from '../lib/theme'
-import { formatBytes, formatDateTime, formatTrashRemaining } from '../lib/format'
+import { agoMs, formatAgo, formatBytes, formatDateTime, formatTrashRemaining } from '../lib/format'
 import {
   dropUploads,
   markUploadDone,
@@ -99,10 +99,23 @@ function compareNodes(a: NodeInfo, b: NodeInfo, key: SortKey, dir: SortDir): num
   return dir === 'asc' ? cmp : -cmp
 }
 
+interface BackupSummary {
+  kind: string
+  stamp: string
+  created_at: string
+  spaces: number
+  files: number
+  bytes: number
+}
+
 export default function Files() {
   const navigate = useNavigate()
   const { nodeId } = useParams()
   const [me, setMe] = useState<Me | null>(null)
+  // 마지막 백업 — "정말 돌고 있나"를 상단에서 한눈에(관리자만).
+  const [backup, setBackup] = useState<BackupSummary | null>(null)
+  // 버전은 **서버가 말한다**. 번들에 박으면 CDN이 옛 바이트를 내줄 때 거짓말이 된다.
+  const [version, setVersion] = useState('')
   // 화면 테마(다크 기본 ↔ 라이트). data-theme로 토큰을 뒤집고 localStorage에 기억한다.
   const [theme, setTheme] = useState<'dark' | 'light'>(() =>
     document.documentElement.dataset.theme === 'light' ? 'light' : 'dark',
@@ -219,6 +232,20 @@ export default function Files() {
   }
 
   // 초기 로드: me + spaces (+ 딥링크 복원)
+  useEffect(() => {
+    api<{ version?: string }>('/api/health')
+      .then((res) => setVersion(res.version || ''))
+      .catch(() => setVersion(''))
+  }, [])
+
+  // 관리자에게만 마지막 백업 시각을 띄운다(일반 사용자에겐 운영 정보라 의미가 없다).
+  useEffect(() => {
+    if (me?.role !== 'admin') return
+    api<{ enabled: boolean; last: BackupSummary | null }>('/api/system/backup')
+      .then((res) => setBackup(res.last))
+      .catch(() => setBackup(null)) // 권한·저장소 문제면 배지를 숨기면 그만
+  }, [me?.role])
+
   useEffect(() => {
     async function boot() {
       try {
@@ -998,12 +1025,18 @@ export default function Files() {
       : ''
   const addressMode = viewerOpen && !searchTyping // true=경로 표시(드롭다운 숨김), false=검색 모드
 
+  // 기본이 주 1회라 8일이 넘으면 어딘가 멈춘 것이다(배포 실패·권한 만료 등) → 눈에 띄게.
+  const backupStale = (agoMs(backup?.created_at) ?? 0) > 8 * 86_400_000
+
   return (
     <div className="shell">
       <header className="topbar">
         {/* 로고 영역 폭을 사이드바에 맞춰, 검색창 왼쪽이 탭 바 시작선과 정렬되게 한다 */}
         <h2 className="logo" style={{ width: sidebarWidth - 12, flexShrink: 0 }}>
-          FileSharer <span className="app-version">{__APP_VERSION__}</span>
+          FileSharer{' '}
+          <span className="app-version" title="서버가 보고하는 버전">
+            {version || '…'}
+          </span>
         </h2>
         {/* 상단 검색 = 주소창(오미니박스). 파일을 열면 그 파일의 경로를 보여주고(주소 모드),
             타이핑하면 이름+내용 검색(검색 모드). 📋는 지금 파일의 사내 공유 링크를 복사한다. */}
@@ -1128,6 +1161,20 @@ export default function Files() {
           </div>
         )}
         <div className="topbar-right">
+          {/* 마지막 백업 — 로고 영역은 사이드바 폭에 고정돼 있어 자리가 없다(검색창 정렬 때문). */}
+          {backup && (
+            <span
+              className={`app-version backup-badge${backupStale ? ' is-stale' : ''}`}
+              title={
+                `마지막 백업 ${formatDateTime(backup.created_at)}` +
+                ` · ${backup.kind === 'weekly' ? '주간' : '월간'} ${backup.stamp}` +
+                ` · 공간 ${backup.spaces}개 · 파일 ${backup.files}개 · ${formatBytes(backup.bytes)}` +
+                (backupStale ? ' — 주기(주 1회)보다 오래됐습니다' : '')
+              }
+            >
+              ⛁ {formatAgo(backup.created_at)}
+            </span>
+          )}
           <span className="muted">{me.email}</span>
           {me.role === 'admin' && (
             <Link to="/admin">
