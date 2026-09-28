@@ -26,6 +26,7 @@ from ..services.permissions import (
     can_access_space,
     get_node_checked,
     get_space_checked,
+    has_deleted_ancestor,
     is_descendant,
 )
 from ..services.serving import content_disposition as _content_disposition
@@ -165,7 +166,12 @@ def space_folders(
         .where(Node.space_id == space.id, Node.type == "folder", Node.deleted_at.is_(None))
         .order_by(Node.name)
     ).all()
-    return [{"id": n.id, "name": n.name, "parent_id": n.parent_id} for n in rows]
+    # 휴지통 폴더의 하위 폴더는 자신엔 deleted_at이 없어도 조상이 휴지통이면 제외(orphan 노출 차단)
+    return [
+        {"id": n.id, "name": n.name, "parent_id": n.parent_id}
+        for n in rows
+        if not has_deleted_ancestor(db, n)
+    ]
 
 
 @router.get("/spaces/{space_id}/tree")
@@ -180,6 +186,9 @@ def space_tree(
         .where(Node.space_id == space.id, Node.deleted_at.is_(None))
         .order_by(Node.name)
     ).all()
+    # 휴지통에 든 폴더의 자식은 자신엔 deleted_at이 없다(soft_delete는 루트만 스탬프).
+    # 이들을 목록에 그대로 내리면 프런트 buildTree가 부모 없는 노드를 사이드바 루트에
+    # 붙여 '휴지통 폴더의 자식 이름'이 노출된다 → 조상 사슬로 걸러낸다.
     return [
         {
             "id": n.id,
@@ -190,6 +199,7 @@ def space_tree(
             "size": n.size,
         }
         for n in rows
+        if not has_deleted_ancestor(db, n)
     ]
 
 
@@ -242,7 +252,10 @@ def search_nodes(
         .limit(200)
     ).all()
     # id → (node, match종류). 이름 매치를 우선 채운다.
-    matched: dict[str, tuple[Node, str]] = {n.id: (n, "name") for n in name_rows}
+    # 휴지통 폴더의 자식(자신엔 deleted_at 없음)은 조상이 휴지통이면 검색 결과에서 제외.
+    matched: dict[str, tuple[Node, str]] = {
+        n.id: (n, "name") for n in name_rows if not has_deleted_ancestor(db, n)
+    }
 
     # 2) 내용 매치 — FTS 트라이그램 인덱스에서 찾는다(이름서 잡힌 건 제외).
     # 더는 검색 때 스토리지에서 blob을 읽지 않는다 — 인덱스만 훑는다.
@@ -250,7 +263,8 @@ def search_nodes(
         if nid in matched:
             continue
         node = db.get(Node, nid)
-        if node is not None:
+        # 휴지통 폴더의 자식(자신엔 deleted_at 없음)은 조상이 휴지통이면 내용 매치에서 제외
+        if node is not None and not has_deleted_ancestor(db, node):
             matched[nid] = (node, "content")
 
     # 상위 경로 표시용으로 공간의 폴더를 한 번에 로드해 메모리에서 경로를 해석
@@ -303,7 +317,8 @@ def list_favorites(
             ok_space[space_id] = sp is not None and can_access_space(db, user, sp)
         return ok_space[space_id]
 
-    nodes = [n for n in nodes if accessible(n.space_id)]
+    # 접근 가능 공간 + 휴지통 폴더의 자식이 아닌 것만(조상이 휴지통이면 제외)
+    nodes = [n for n in nodes if accessible(n.space_id) and not has_deleted_ancestor(db, n)]
     # 경로 표시용 폴더맵(관련 공간들)
     space_ids = {n.space_id for n in nodes}
     fmap: dict[str, Node] = {}
@@ -454,7 +469,8 @@ def list_recent(
             ok_space[space_id] = sp is not None and can_access_space(db, user, sp)
         return ok_space[space_id]
 
-    nodes = [n for n in nodes if accessible(n.space_id)]
+    # 접근 가능 공간 + 휴지통 폴더의 자식이 아닌 것만(조상이 휴지통이면 제외)
+    nodes = [n for n in nodes if accessible(n.space_id) and not has_deleted_ancestor(db, n)]
     space_ids = {n.space_id for n in nodes}
     fmap: dict[str, Node] = {}
     if space_ids:

@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from ..config import get_settings
 from ..models import Node, ShareLink, User, as_utc, email_nickname, utcnow
 from ..security import hash_password, verify_password
+from .permissions import has_deleted_ancestor
 
 
 def _hash_token(token: str) -> str:
@@ -76,7 +77,8 @@ def resolve_share(db: Session, token: str) -> tuple[ShareLink, Node]:
     if as_utc(share.expires_at) < utcnow():
         raise HTTPException(status_code=410, detail="만료된 링크입니다")
     node = db.get(Node, share.node_id)
-    if node is None or node.deleted_at is not None:
+    # 공유 대상 자신 또는 그 조상 폴더가 휴지통이면 링크를 막는다(자식 딥링크 유출 차단).
+    if node is None or node.deleted_at is not None or has_deleted_ancestor(db, node):
         raise HTTPException(status_code=410, detail="공유된 항목이 삭제되었습니다")
     return share, node
 
