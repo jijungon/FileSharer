@@ -45,6 +45,26 @@ GHCR 이미지를 받아 구동한다.
 보관 기간만 바꾸고 싶으면 `BACKUP_KEEP_WEEKLY` / `BACKUP_KEEP_MONTHLY`.
 돌고 있는지 확인: `backend/.venv/bin/python backend/scripts/backup_list.py` (읽기 전용)
 
+## 2-1. 계정 잠김 복구 (관리자가 없거나 비밀번호를 잃었을 때)
+
+지금 구조에는 막다른 길이 있다. 부트스트랩 관리자는 `users` 테이블이 **비어 있을 때만**
+만들어지고, 구글 로그인은 **최초 1인만** admin이며, 역할 변경은 **관리자만** 할 수 있다.
+즉 **관리자 비밀번호를 잃으면 관리자 기능에 영영 못 들어간다.**
+
+서버 셸에서 (컨테이너 안):
+
+```bash
+docker compose exec app python scripts/user_admin.py list
+docker compose exec app python scripts/user_admin.py promote joji@parametacorp.com
+docker compose exec -it app python scripts/user_admin.py create test@parametacorp.com --role member
+docker compose exec -it app python scripts/user_admin.py reset-password admin@parametacorp.com
+```
+
+- 비밀번호를 받는 명령(`create`, `reset-password`)은 **`-it`** 로 실행한다(입력을 물어본다).
+  인자로 받지 않는 이유: 셸 히스토리와 `ps` 에 남기지 않기 위해서다.
+- **마지막 관리자는 강등되지 않는다** — 그러면 아무도 되돌릴 수 없기 때문.
+- 새로 뚫는 구멍이 아니다. 서버 셸 + DB 접근이 있어야 실행되는데, 그 권한이면 이미 최고 권한이다.
+
 ## 3. 배포
 
 ```bash
