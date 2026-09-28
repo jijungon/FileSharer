@@ -20,6 +20,10 @@ class Settings(BaseSettings):
     # 빌드 번호는 머지 PR 번호(#151, 자동). 비면 'dev' — 로컬·미배포.
     app_version: str = ""
     app_build: str = ""
+    # 에러 추적(Sentry). 비면 꺼진다 — 로컬·CI 기본값. 서버 .env 에 넣으면 켜진다.
+    # 프런트도 이 DSN을 /api/health 로 받아 쓴다(번들에 박으면 환경마다 다시 빌드해야 한다).
+    sentry_dsn: str = ""
+    sentry_traces_sample_rate: float = 0.0  # 성능 추적은 끔(무료 한도 보호)
     # True일 때만 /api/test/reset 라우트 마운트(테스트 격리 전용). 프로덕션 금지.
     enable_test_reset: bool = False
     secret_key: str = "dev-only-not-for-prod"
