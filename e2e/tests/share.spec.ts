@@ -110,5 +110,22 @@ test('공유 문서: 목차 이동 · 고정 헤더 · 발급자/발급시각', 
   // 스크롤을 내려도 헤더(테마·다운로드)는 계속 보인다
   await expect(anonPage.locator('.share-page-head')).toBeInViewport()
   await expect(anonPage.getByRole('button', { name: '다운로드' })).toBeInViewport()
+
+  // 스크롤만 해도 '지금 보고 있는 문단'이 목차에 표시된다(클릭 없이)
+  await anonPage.waitForTimeout(900) // 클릭 직후 잠시 멈춘 추적이 다시 켜지도록
+  await anonPage.evaluate(() => window.scrollTo(0, 0))
+  await expect(anonPage.locator('.share-toc-item.active')).toHaveText('문서 제목')
+
+  await anonPage.evaluate(() => {
+    const h = document.querySelector('.share-page-head')!.getBoundingClientRect().height
+    const el = [...document.querySelectorAll('.md-preview h2')].find((x) =>
+      x.textContent!.includes('둘째 장'),
+    )!
+    window.scrollBy(0, el.getBoundingClientRect().top - h - 8)
+  })
+  await expect(anonPage.locator('.share-toc-item.active')).toHaveText('둘째 장')
+
+  await anonPage.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight))
+  await expect(anonPage.locator('.share-toc-item.active')).toHaveText('셋째 항목')
   await anon.close()
 })

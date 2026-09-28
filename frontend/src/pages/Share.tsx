@@ -32,6 +32,8 @@ export default function Share() {
   const [showAdvanced, setShowAdvanced] = useState(false)
   const [activeHeading, setActiveHeading] = useState('')
   const headRef = useRef<HTMLElement>(null)
+  const tocRef = useRef<HTMLElement>(null)
+  const spyPausedUntil = useRef(0)
   const [headH, setHeadH] = useState(96)
 
   const base = `/s/${token}`
@@ -42,8 +44,57 @@ export default function Share() {
     const el = document.getElementById(id)
     if (!el) return
     setActiveHeading(id)
+    // 부드럽게 스크롤하는 동안 중간 문단들이 스쳐 지나가며 목차가 깜빡이지 않게 잠시 멈춘다
+    spyPausedUntil.current = Date.now() + 800
     el.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
+
+  // 지금 보고 있는 문단을 목차에 표시한다 — 고정 헤더 바로 아래를 기준선으로 삼아,
+  // 그 선을 지나간 제목 중 마지막 것이 '현재 문단'이다.
+  useEffect(() => {
+    if (toc.length === 0) return
+    let raf = 0
+    const update = () => {
+      raf = 0
+      if (Date.now() < spyPausedUntil.current) return
+      const line = headH + 24
+      let current = toc[0].id
+      for (const item of toc) {
+        const el = document.getElementById(item.id)
+        if (!el) continue
+        if (el.getBoundingClientRect().top > line) break // 제목은 문서 순서대로다
+        current = item.id
+      }
+      // 맨 아래에 닿으면 마지막 항목 — 마지막 문단이 짧으면 기준선을 못 넘어 영영 표시가 안 된다
+      if (window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 2) {
+        current = toc[toc.length - 1].id
+      }
+      setActiveHeading((prev) => (prev === current ? prev : current))
+    }
+    const onScroll = () => {
+      if (!raf) raf = requestAnimationFrame(update)
+    }
+    update()
+    window.addEventListener('scroll', onScroll, { passive: true })
+    window.addEventListener('resize', onScroll)
+    return () => {
+      window.removeEventListener('scroll', onScroll)
+      window.removeEventListener('resize', onScroll)
+      if (raf) cancelAnimationFrame(raf)
+    }
+  }, [toc, headH])
+
+  // 목차가 길면 현재 항목이 목차 안에서 스크롤 밖으로 나간다 — 목차만 따라 움직인다
+  useEffect(() => {
+    const nav = tocRef.current
+    if (!nav || !activeHeading) return
+    const el = nav.querySelector<HTMLElement>(`[data-toc-id="${activeHeading}"]`)
+    if (!el) return
+    const top = el.offsetTop
+    const bottom = top + el.offsetHeight
+    if (top < nav.scrollTop) nav.scrollTop = top - 8
+    else if (bottom > nav.scrollTop + nav.clientHeight) nav.scrollTop = bottom - nav.clientHeight + 8
+  }, [activeHeading])
 
   // 고정 헤더 높이를 재서 CSS에 넘긴다 — 파일명이 길면 헤더가 두 줄이 되므로 상수로 박으면
   // 목차가 헤더 밑에 깔리거나(가림), 문단으로 건너뛸 때 제목이 헤더에 가려진다.
@@ -178,14 +229,16 @@ export default function Share() {
 
       <div className="share-main">
         {toc.length > 0 && (
-          <nav className="share-toc" aria-label="목차">
+          <nav className="share-toc" aria-label="목차" ref={tocRef}>
             <div className="share-toc-title">목차</div>
             {toc.map((item) => (
               <button
                 key={item.id}
+                data-toc-id={item.id}
                 className={`share-toc-item lv${item.level}${activeHeading === item.id ? ' active' : ''}`}
                 onClick={() => jumpTo(item.id)}
                 title={item.text}
+                aria-current={activeHeading === item.id ? 'true' : undefined}
               >
                 {item.text}
               </button>

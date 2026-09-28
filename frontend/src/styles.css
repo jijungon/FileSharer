@@ -1909,6 +1909,30 @@ button:focus-visible {
   color: var(--ink-muted-48);
 }
 
+/* 서버 전송: 업로드/다운로드를 선으로 갈라 둔다(방향이 반대인 별개 작업이라 섞이면 헷갈린다) */
+.transfer-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.transfer-group + .transfer-group {
+  margin-top: var(--sp-xxs);
+  padding-top: var(--sp-sm);
+  border-top: 1px solid var(--hairline);
+}
+
+.transfer-group-head {
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+
+.transfer-group-head .muted {
+  font-size: 12px;
+  font-weight: 400;
+}
+
 .share-copyrow {
   display: flex;
   align-items: center;
@@ -2063,9 +2087,12 @@ button:focus-visible {
   color: var(--ink);
 }
 
+/* 클릭한 항목이 아니라 '지금 보고 있는 문단'을 가리키므로 눈에 바로 띄어야 한다 */
 .share-toc-item.active {
   color: var(--primary);
   border-left-color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 10%, transparent);
+  font-weight: 600;
 }
 
 .share-toc-item.lv2 {
