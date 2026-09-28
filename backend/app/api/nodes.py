@@ -1201,7 +1201,8 @@ def save_content(
     node.updated_by = user.id  # 수정자 = 방금 저장한 사람
     db.flush()
     db.expire(node, ["editor"])  # updated_by가 바뀌었으니 editor 관계 캐시 갱신
-    search_index.index_node(db, storage, node)  # 새 내용으로 검색 인덱스 갱신
+    # 방금 저장한 바이트를 그대로 넘겨 인덱싱한다 — 다시 스토리지(R2)에서 받아오는 왕복을 없앤다.
+    search_index.index_node(db, storage, node, blob=data)
     storage.delete(old_key)
     audit.log(db, "edit", user_id=user.id, node_id=node.id, detail=node.name)
     return node_out(node)
