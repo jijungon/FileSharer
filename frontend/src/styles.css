@@ -2153,6 +2153,35 @@ button:focus-visible {
   overflow-x: auto;
 }
 
+/* 저장소 사용량 표 — 어디가 자리를 차지하는지 한눈에 */
+.storage-head {
+  font-size: 13px;
+  margin-bottom: var(--sp-xs);
+}
+
+.storage-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.storage-table td {
+  padding: 3px 0;
+}
+
+.storage-num {
+  text-align: right;
+  font-family: var(--mono);
+  font-size: 13px;
+  padding-left: var(--sp-md) !important;
+}
+
+.storage-total td {
+  border-top: 1px solid var(--hairline);
+  padding-top: var(--sp-xs) !important;
+  font-weight: 600;
+}
+
 /* --- 시스템 탭: 디스크 바 --- */
 .disk-card {
   display: flex;

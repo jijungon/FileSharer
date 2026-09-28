@@ -10,6 +10,7 @@ import hashlib
 import io
 import shutil
 import tempfile
+import time
 import uuid
 from abc import ABC, abstractmethod
 from collections.abc import Iterator
@@ -257,3 +258,82 @@ def build_storage(settings) -> StorageBackend:  # noqa: ANN001
             prefix=getattr(settings, "r2_prefix", ""),
         )
     return LocalStorage(settings.data_dir)
+
+
+# ── 저장소 사용량 ──────────────────────────────────────────────────────────
+# 관리 화면이 "지금 얼마나 쓰고 있나"를 묻는다. R2를 쓰면 **서버 디스크에는 파일이 없어서**
+# 디스크 사용량만 보여주면 "파일 본체 0 B"로 뜬다 — 파일이 없다는 뜻으로 읽히지만 실제로는
+# 다른 곳에 있다는 뜻이다. 그래서 저장소 쪽 숫자를 따로 낸다.
+_USAGE_TTL = 300.0
+_usage_cache: tuple[float, dict | None] = (0.0, None)
+_USAGE_SCAN_CAP = 50_000  # 객체가 아주 많아지면 관리 화면 때문에 목록을 끝없이 돌 이유는 없다
+
+
+def _r2_usage(storage: "R2Storage") -> dict:
+    """버킷을 **최상위 프리픽스별로** 집계한다(prod/ · backup/ · dev/ …).
+
+    자기 프리픽스만 보면 백업이 얼마나 쌓였는지, 옛 환경 찌꺼기가 남았는지 안 보인다.
+    실제로 dev 찌꺼기가 992개 쌓인 적이 있다.
+    """
+    groups: dict[str, dict] = {}
+    scanned = 0
+    truncated = False
+    token = None
+    while True:
+        kwargs = {"Bucket": storage.bucket, "MaxKeys": 1000}
+        if token:
+            kwargs["ContinuationToken"] = token
+        res = storage._client.list_objects_v2(**kwargs)
+        for obj in res.get("Contents", []):
+            head = obj["Key"].split("/", 1)[0] + "/" if "/" in obj["Key"] else "(루트)"
+            row = groups.setdefault(head, {"prefix": head, "objects": 0, "bytes": 0})
+            row["objects"] += 1
+            row["bytes"] += int(obj.get("Size", 0))
+            scanned += 1
+        if scanned >= _USAGE_SCAN_CAP:
+            truncated = True
+            break
+        if not res.get("IsTruncated"):
+            break
+        token = res.get("NextContinuationToken")
+    rows = sorted(groups.values(), key=lambda r: r["bytes"], reverse=True)
+    return {
+        "backend": "r2",
+        "bucket": storage.bucket,
+        "prefixes": rows,
+        "objects": sum(r["objects"] for r in rows),
+        "bytes": sum(r["bytes"] for r in rows),
+        "truncated": truncated,
+    }
+
+
+def _local_usage(storage: "LocalStorage") -> dict:
+    files = [f for f in storage.blob_dir.glob("*") if f.is_file()]
+    total = sum(f.stat().st_size for f in files)
+    return {
+        "backend": "local",
+        "bucket": str(storage.blob_dir),
+        "prefixes": [{"prefix": "blobs/", "objects": len(files), "bytes": total}],
+        "objects": len(files),
+        "bytes": total,
+        "truncated": False,
+    }
+
+
+def storage_usage(storage: StorageBackend, *, ttl: float = _USAGE_TTL) -> dict:
+    """저장소 사용량.
+
+    목록 조회가 원격 왕복이라 잠깐 캐시한다(관리 탭을 여러 번 열어도 부담 없게).
+    """
+    global _usage_cache
+    at, cached = _usage_cache
+    if cached is not None and time.monotonic() - at < ttl:
+        return cached
+    if isinstance(storage, R2Storage):
+        usage = _r2_usage(storage)
+    elif isinstance(storage, LocalStorage):
+        usage = _local_usage(storage)
+    else:  # 알 수 없는 백엔드 — 숫자를 지어내지 않는다
+        usage = {"backend": "unknown", "prefixes": [], "objects": 0, "bytes": 0, "truncated": False}
+    _usage_cache = (time.monotonic(), usage)
+    return usage
