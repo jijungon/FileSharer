@@ -10,6 +10,8 @@ interface ShareInfo {
   protected: boolean
   max_downloads: number | null
   download_count: number
+  created_at?: string | null // 언제 발급했는지
+  created_by_name?: string // 누가 발급했는지(여러 사람이 쓰는 공간에서 필요)
 }
 
 interface CreatedShare extends ShareInfo {
@@ -160,9 +162,17 @@ export default function SharePopover({ node, onClose }: { node: NodeInfo; onClos
           {existing.map((s) => (
             <div key={s.id} className="share-row">
               <span className="muted">
-                ~{s.expires_at.slice(0, 10)}
-                {s.protected && ' · 🔒'}
-                {s.max_downloads != null && ` · ${s.download_count}/${s.max_downloads}회`}
+                {/* 여러 사람이 쓰는 공간이라 "이 링크 누가 언제 만든 건지"가 먼저 보여야 한다 */}
+                {s.created_by_name && <strong>{s.created_by_name}</strong>}
+                {(s.created_by_name ? ' · ' : '') +
+                  [
+                    s.created_at ? `${s.created_at.slice(0, 10)} 발급` : null,
+                    `~${s.expires_at.slice(0, 10)} 만료`,
+                    s.protected ? '🔒' : null,
+                    s.max_downloads != null ? `${s.download_count}/${s.max_downloads}회` : null,
+                  ]
+                    .filter(Boolean)
+                    .join(' · ')}
               </span>
               <button
                 className="row-action"

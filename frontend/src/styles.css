@@ -1938,7 +1938,12 @@ button:focus-visible {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: var(--sp-xs);
   font-size: 13px;
+}
+/* 발급자·발급시각까지 들어가면서 한 줄이 길어졌다 — 버튼을 밀어내지 말고 글자가 줄바꿈되게 */
+.share-row > span {
+  min-width: 0;
 }
 
 .share-result {
@@ -1961,12 +1966,19 @@ button:focus-visible {
   padding: var(--sp-xl) var(--sp-lg);
 }
 
+/* 스크롤을 한참 내려도 테마 전환·다운로드가 손 닿는 곳에 있어야 한다 → 헤더 고정.
+   음수 margin-top은 .share-page의 위쪽 패딩과 겹쳐 처음 보이는 위치를 그대로 두기 위한 것. */
 .share-page-head {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: var(--canvas-parchment);
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: var(--sp-md);
-  padding-bottom: var(--sp-md);
+  padding-block: var(--sp-md);
+  margin-top: calc(var(--sp-md) * -1);
   border-bottom: 1px solid var(--hairline);
   margin-bottom: var(--sp-md);
 }
@@ -1984,6 +1996,99 @@ button:focus-visible {
   border-radius: var(--radius-lg);
   padding: var(--sp-md);
   min-height: 200px;
+}
+
+/* --- 공유 문서 목차(공유 페이지 전용) ---------------------------------
+   마크다운 #/##/### 를 좌측에 세워 두고 누르면 그 문단으로 스크롤한다.
+   목차가 없는 공유(이미지·PDF·폴더)에서는 .has-toc가 안 붙어 기존 한 칸 배치 그대로. */
+.share-page.has-toc {
+  max-width: 1180px;
+}
+
+.share-main {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--sp-lg);
+  align-items: start;
+}
+
+.share-page.has-toc .share-main {
+  grid-template-columns: 220px minmax(0, 1fr);
+}
+
+.share-toc {
+  position: sticky;
+  top: calc(var(--share-head-h, 96px) + 12px); /* 고정된 .share-page-head 아래 */
+  max-height: calc(100vh - var(--share-head-h, 96px) - 40px);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding-right: var(--sp-xs);
+  border-right: 1px solid var(--hairline);
+}
+
+.share-toc-title {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-muted-48);
+  padding: 0 6px var(--sp-xs);
+}
+
+.share-toc-item {
+  background: none;
+  border: none;
+  border-left: 2px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--ink-muted-80);
+  font-size: 14px;
+  text-align: left;
+  padding: 4px 6px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition:
+    background 0.12s,
+    color 0.12s;
+}
+
+.share-toc-item:active {
+  transform: none; /* 전역 button:active 축소는 긴 텍스트 줄에선 어색하다 */
+}
+
+.share-toc-item:hover {
+  background: var(--surface-pearl);
+  color: var(--ink);
+}
+
+.share-toc-item.active {
+  color: var(--primary);
+  border-left-color: var(--primary);
+}
+
+.share-toc-item.lv2 {
+  padding-left: 16px;
+}
+
+.share-toc-item.lv3 {
+  padding-left: 28px;
+  font-size: 13px;
+}
+
+/* 목차로 건너뛴 제목이 고정 헤더 뒤에 숨지 않게 */
+.share-page .md-preview :is(h1, h2, h3) {
+  scroll-margin-top: calc(var(--share-head-h, 96px) + 16px);
+}
+
+@media (max-width: 860px) {
+  .share-page.has-toc .share-main {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .share-toc {
+    display: none;
+  }
 }
 
 .share-pdf {
@@ -2302,7 +2407,6 @@ button:focus-visible {
 .tree-row:has(.tree-name:focus-visible) {
   background: color-mix(in srgb, var(--primary) 12%, var(--canvas));
 }
-
 
 /* 트리 파일/폴더 아이콘 */
 .tree-icon {

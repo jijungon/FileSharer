@@ -42,3 +42,73 @@ test('share link: create in UI, open without login, download', async ({ page, br
   expect((await dl.body()).toString()).toContain('외부 공유 문서')
   await anon.close()
 })
+
+test('공유 문서: 목차 이동 · 고정 헤더 · 발급자/발급시각', async ({ page, browser }) => {
+  await page.goto('/login')
+  await page.getByRole('button', { name: /로컬 계정으로 로그인/ }).click()
+  await page.getByPlaceholder('이메일').fill(EMAIL)
+  await page.getByPlaceholder('비밀번호').fill(PASSWORD)
+  await page.getByRole('button', { name: '로컬 계정으로 로그인' }).click()
+  await expect(page).toHaveURL(/\/files/)
+
+  // 스크롤이 생길 만큼 긴 문서(목차·고정 헤더를 실제로 확인하려면 길어야 한다)
+  const filler = Array.from({ length: 25 }, (_, i) => `문단 ${i}`).join('\n\n')
+  const doc = [
+    '# 문서 제목',
+    '',
+    filler,
+    '',
+    '## 둘째 장',
+    '',
+    '```sh',
+    '# 코드블록 주석은 목차에 없어야 한다',
+    '```',
+    '',
+    filler,
+    '',
+    '### 셋째 항목',
+    '',
+    filler,
+  ].join('\n')
+
+  await page.locator('input[type="file"]:not([webkitdirectory])').setInputFiles({
+    name: '목차문서.md',
+    mimeType: 'text/markdown',
+    buffer: Buffer.from(doc),
+  })
+  await fileCell(page, /목차문서\.md/).click()
+  await page.getByRole('button', { name: '공유 링크' }).click()
+  await page.getByRole('button', { name: '링크 만들기' }).click()
+
+  // 발급된 링크 목록: 누가(닉네임) · 언제 발급했는지
+  const row = page.locator('.share-existing .share-row').first()
+  await expect(row).toContainText('e2e') // email_nickname('e2e@test.local')
+  await expect(row).toContainText('발급')
+  await expect(row).toContainText('만료')
+
+  const urlCode = page.locator('.share-copyrow code', {
+    hasText: /^https?:\/\/\S+\/s\/[A-Za-z0-9_-]+$/,
+  })
+  const shareUrl = (await urlCode.textContent())!.trim()
+
+  const anon = await browser.newContext()
+  const anonPage = await anon.newPage()
+  await anonPage.goto(shareUrl)
+
+  // 목차는 #/##/### 셋만 (코드블록 안 주석 제외)
+  const items = anonPage.locator('.share-toc-item')
+  await expect(items).toHaveCount(3)
+  await expect(items.nth(0)).toHaveText('문서 제목')
+  await expect(items.nth(2)).toHaveText('셋째 항목')
+
+  // 클릭하면 그 문단으로 이동
+  const target = anonPage.getByRole('heading', { name: '셋째 항목' })
+  await expect(target).not.toBeInViewport()
+  await items.nth(2).click()
+  await expect(target).toBeInViewport()
+
+  // 스크롤을 내려도 헤더(테마·다운로드)는 계속 보인다
+  await expect(anonPage.locator('.share-page-head')).toBeInViewport()
+  await expect(anonPage.getByRole('button', { name: '다운로드' })).toBeInViewport()
+  await anon.close()
+})
