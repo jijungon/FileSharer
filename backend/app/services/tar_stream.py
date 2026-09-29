@@ -34,11 +34,16 @@ QUEUE_CHUNKS = 64
 # 9는 이미 압축된 파일(pptx·png·zip)에 CPU만 태우고 크기는 그대로다. 6이면 결과가
 # 사실상 같으면서 더 빠르다(측정: 같은 크기, 1.3배).
 COMPRESS_LEVEL = 6
-# 미리 열어 둘 파일 수. 원격 저장소는 '여는 것' 자체가 왕복 한 번이라, 앞 파일을 보내는
-# 동안 다음 것을 열어두면 그 왕복이 통째로 숨는다. 작은 파일이 많을수록 효과가 크다
-# (측정: 300KB 20개에서 여는 지연 2.40초 → 0.12초).
-# 크게 잡을 이유는 없다 — 그만큼 R2 연결을 동시에 붙들고 있게 된다.
-PREFETCH = 3
+# 얼마나 앞서서 열어 둘지. 원격 저장소는 '여는 것' 자체가 왕복 한 번이라, 앞 파일을
+# 보내는 동안 다음 것을 열어두면 그 왕복이 통째로 숨는다.
+#
+# **개수가 아니라 총 바이트로 잰다.** 개수로 잡으면 파일 크기에 따라 정반대가 된다 —
+# 실측(실제 R2): 200KB 20개는 앞서 8개를 열면 2.08초→1.23초로 빨라지는데,
+# 2MB 6개는 같은 설정에서 2.85초→3.12초로 **느려졌다.** 큰 응답을 여러 개 동시에
+# 열면 같은 회선을 나눠 쓰느라 지금 보내는 파일이 밀리기 때문이다.
+# 바이트로 재면 작은 파일은 많이, 큰 파일은 한둘만 앞서게 되어 양쪽 다 이득이다.
+PREFETCH_BYTES = 4 * 1024 * 1024
+PREFETCH_MAX = 8  # 아주 작은 파일이 수백 개여도 연결을 이 이상 동시에 붙들지 않는다
 _DONE = object()
 
 
@@ -99,24 +104,29 @@ def _open_ahead(
     files = [i for i, (key, _, _) in enumerate(plan) if key is not None]
     futures: dict[int, Future] = {}
     submitted = 0
+    ahead_bytes = 0
 
-    def fill(done: int) -> None:
-        nonlocal submitted
-        while submitted < len(files) and submitted < done + PREFETCH:
+    def fill() -> None:
+        """총 PREFETCH_BYTES 어치(또는 PREFETCH_MAX 개)까지 앞서 연다."""
+        nonlocal submitted, ahead_bytes
+        while submitted < len(files) and len(futures) < PREFETCH_MAX:
             idx = files[submitted]
+            # 첫 하나는 크기와 상관없이 연다 — 안 그러면 큰 파일에서 아예 못 앞선다.
+            if futures and ahead_bytes >= PREFETCH_BYTES:
+                break
             futures[idx] = pool.submit(storage.open_stream, plan[idx][0])
+            ahead_bytes += plan[idx][2]
             submitted += 1
 
-    consumed = 0
-    fill(consumed)
+    fill()
     for i, (key, arcname, size) in enumerate(plan):
         if key is None:
             yield arcname, size, None
             continue
         fut = futures.pop(i)
+        ahead_bytes -= size
         yield arcname, size, fut
-        consumed += 1
-        fill(consumed)  # 하나 쓸 때마다 하나 더 앞서 연다
+        fill()  # 하나 썼으니 그만큼 더 앞서 연다
 
 
 def stream_tar_gz(
@@ -132,7 +142,7 @@ def stream_tar_gz(
     stop = threading.Event()
 
     def produce() -> None:
-        pool = ThreadPoolExecutor(max_workers=PREFETCH, thread_name_prefix="tar-open")
+        pool = ThreadPoolExecutor(max_workers=PREFETCH_MAX, thread_name_prefix="tar-open")
         try:
             sink = _QueueSink(q, stop)
             now = int(time.time())
