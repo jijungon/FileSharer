@@ -25,8 +25,13 @@ class Settings(BaseSettings):
     app_pr: str = ""  # 어느 작업이 들어갔는지
     app_built_at: str = ""  # 언제 만든 이미지인지
     # 에러 추적(Sentry). 비면 꺼진다 — 로컬·CI 기본값. 서버 .env 에 넣으면 켜진다.
-    # 프런트도 이 DSN을 /api/health 로 받아 쓴다(번들에 박으면 환경마다 다시 빌드해야 한다).
+    # 서버용. **바깥으로 내보내지 않는다** — /api/health 에도 싣지 않는다.
     sentry_dsn: str = ""
+    # 브라우저용은 따로 둔다. 이 값은 번들·네트워크 탭에 그대로 드러나는 성격이라
+    # /api/health 로 내려보내도 되지만(그래야 환경마다 다시 빌드하지 않는다), 서버 DSN을
+    # 같이 쓰면 **인증 없는 그 응답으로 서버 DSN이 공개된다.** 그러면 아무나 그 프로젝트에
+    # 가짜 이벤트를 밀어넣어 무료 한도를 태울 수 있고, 그때부터 진짜 에러가 버려진다.
+    sentry_dsn_frontend: str = ""
     sentry_traces_sample_rate: float = 0.0  # 성능 추적은 끔(무료 한도 보호)
     # True일 때만 /api/test/reset 라우트 마운트(테스트 격리 전용). 프로덕션 금지.
     enable_test_reset: bool = False
