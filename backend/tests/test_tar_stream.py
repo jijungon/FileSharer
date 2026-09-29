@@ -10,6 +10,7 @@ import os
 import tarfile
 import threading
 import time
+from concurrent.futures import Future
 
 from app.services import tar_stream as ts
 from app.services.tar_stream import QUEUE_CHUNKS, stream_tar_gz
@@ -204,18 +205,59 @@ def test_prefetch_is_budgeted_by_bytes_not_by_count(monkeypatch):
     실측(실제 R2): 2MB 6개에서 앞서 8개를 열면 2.85초 → 3.12초로 오히려 느려졌다.
     그래서 앞서 여는 양은 개수가 아니라 총 바이트로 잡는다.
 
-    예산을 작게 낮춰 로직만 본다 — 메가바이트를 옮기지 않고도 같은 규칙이다.
+    `_open_ahead` 를 직접 본다 — 스레드도 시간도 끼지 않는다. 처음엔 '동시에 열려 있는
+    수'를 쟀는데, 그건 여는 속도와 닫는 속도의 경합이라 CI에서 흔들렸다(실제로 한 번
+    깨졌다). **타이밍에 기대는 테스트는 테스트가 아니다.**
     """
     monkeypatch.setattr(ts, "PREFETCH_BYTES", 1000)
 
-    big = {f"k{i}": b"x" * 2000 for i in range(4)}  # 하나로 예산을 넘긴다
-    st = Stub(big, open_delay=0.02)
-    entries = [(N(k, len(v)), f"큰것{i}.bin") for i, (k, v) in enumerate(big.items())]
-    b"".join(stream_tar_gz(st, entries))
-    assert st.peak_live <= 2, f"큰 파일을 동시에 {st.peak_live}개나 열었다"
+    class FakePool:
+        """submit 을 기록만 하고 즉시 끝난 future 를 준다."""
 
-    small = {f"s{i}": b"y" * 100 for i in range(6)}  # 여러 개 합쳐도 예산 안
-    st2 = Stub(small, open_delay=0.02)
-    entries2 = [(N(k, len(v)), f"작은것{i}.bin") for i, (k, v) in enumerate(small.items())]
-    b"".join(stream_tar_gz(st2, entries2))
-    assert st2.peak_live >= 3, f"작은 파일인데 동시에 {st2.peak_live}개만 열었다"
+        def __init__(self) -> None:
+            self.submitted: list[str] = []
+
+        def submit(self, _fn, key):  # noqa: ANN001
+            self.submitted.append(key)
+            fut: Future = Future()
+            fut.set_result(io.BytesIO(b""))
+            return fut
+
+    st = Stub({})
+
+    # 하나로 예산을 넘기는 크기 → 첫 것만 열려 있어야 한다
+    big = [(f"k{i}", f"큰것{i}.bin", 2000) for i in range(4)]
+    pool = FakePool()
+    gen = ts._open_ahead(st, big, pool)
+    next(gen)
+    assert pool.submitted == ["k0"], f"큰 파일인데 앞서 열었다: {pool.submitted}"
+
+    # 여러 개를 합쳐도 예산 안 → 여러 개가 앞서 열려 있어야 한다
+    small = [(f"s{i}", f"작은것{i}.bin", 100) for i in range(6)]
+    pool2 = FakePool()
+    gen2 = ts._open_ahead(st, small, pool2)
+    next(gen2)
+    assert len(pool2.submitted) >= 3, f"작은 파일인데 앞서 안 열었다: {pool2.submitted}"
+
+
+def test_prefetch_stops_at_the_hard_cap(monkeypatch):
+    """아주 작은 파일이 수백 개여도 연결을 무한정 붙들지 않는다."""
+    monkeypatch.setattr(ts, "PREFETCH_BYTES", 10**9)  # 바이트로는 안 막히게
+
+    class FakePool:
+        def __init__(self) -> None:
+            self.submitted: list[str] = []
+
+        def submit(self, _fn, key):  # noqa: ANN001
+            self.submitted.append(key)
+            fut: Future = Future()
+            fut.set_result(io.BytesIO(b""))
+            return fut
+
+    pool = FakePool()
+    plan = [(f"k{i}", f"f{i}", 1) for i in range(200)]
+    gen = ts._open_ahead(Stub({}), plan, pool)
+    next(gen)
+    assert len(pool.submitted) <= ts.PREFETCH_MAX, (
+        f"동시에 {len(pool.submitted)}개나 열었다 — 상한({ts.PREFETCH_MAX})이 없다"
+    )
