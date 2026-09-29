@@ -74,7 +74,11 @@ def test_first_bytes_arrive_before_the_file_is_fully_read():
 
 
 def test_storage_is_asked_once_per_file():
-    """파일당 왕복 한 번. exists() 를 부르면 Stub 이 실패시킨다."""
+    """파일당 왕복 한 번. exists() 를 부르면 Stub 이 실패시킨다.
+
+    **여는 순서**는 보지 않는다 — 앞서 열어두느라(PREFETCH) 병렬이다.
+    중요한 건 '파일당 한 번'과 '아카이브 안의 순서'다.
+    """
     blobs = {f"k{i}": os.urandom(1000) for i in range(4)}
     st = Stub(blobs)
     entries = [(None, "공간")] + [
@@ -82,7 +86,7 @@ def test_storage_is_asked_once_per_file():
     ]
     body = b"".join(stream_tar_gz(st, entries))
 
-    assert st.opened == list(blobs)  # 정확히 파일 수만큼, 순서대로
+    assert sorted(st.opened) == sorted(blobs)  # 정확히 파일 수만큼, 하나씩
     with tarfile.open(fileobj=io.BytesIO(body), mode="r:gz") as tar:
         assert sorted(tar.getnames()) == ["공간", "공간/f0", "공간/f1", "공간/f2", "공간/f3"]
 
@@ -141,3 +145,24 @@ def test_generator_close_releases_the_worker_thread():
 def test_queue_bound_is_a_real_number():
     """상한이 '무제한'으로 슬쩍 바뀌면 위 테스트들이 무의미해진다."""
     assert 1 <= QUEUE_CHUNKS <= 1024
+
+
+def test_next_files_are_opened_while_the_first_is_still_sending():
+    """원격 저장소는 '여는 것' 자체가 왕복 한 번이다 — 앞 파일을 보내는 동안 미리 연다.
+
+    첫 파일이 커서 큐가 그 안에서 차버리게 만든다. 순차로 열면 그 시점에 열린 건
+    딱 하나뿐이다. 미리 열어두면 여러 개다. 이 차이가 작은 파일이 많을 때
+    2.8배로 벌어진다(측정: 300KB 20개, 왕복 120ms 가정 3.09초 → 1.11초).
+    """
+    blobs = {f"k{i}": os.urandom(5_000_000) for i in range(4)}
+    st = Stub(blobs)
+    entries = [(N(k, len(v)), f"f{i}.bin") for i, (k, v) in enumerate(blobs.items())]
+    gen = stream_tar_gz(st, entries)
+    try:
+        next(gen)  # 첫 덩어리만 받고 멈춘다 → 큐가 차서 만드는 쪽이 막힌다
+        time.sleep(0.3)
+        assert len(st.opened) >= 2, (
+            f"첫 파일을 보내는 동안 {len(st.opened)}개만 열렸다 — 미리 열지 않는다"
+        )
+    finally:
+        gen.close()
