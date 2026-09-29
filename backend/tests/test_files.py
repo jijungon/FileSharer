@@ -443,6 +443,54 @@ def test_rename_to_its_own_name_keeps_it(admin_client):
     assert res.json()["name"] == "같은이름.txt"
 
 
+def test_cannot_move_a_folder_into_its_own_subfolder(admin_client):
+    """트리에 고리를 만들 수 없다.
+
+    고리가 생기면 그 아래 전체가 어느 공간에도 속하지 않게 되고(_move_subtree_space가
+    자기를 다시 밟는다), 화면의 buildTree도 부모를 못 찾아 항목이 사라진다.
+    가드는 처음부터 있었지만 지켜보는 테스트가 없었다.
+    """
+    pid = spaces_of(admin_client)["personal"]["id"]
+    parent = admin_client.post("/api/nodes", json={"space_id": pid, "name": "부모"}).json()
+    child = admin_client.post(
+        "/api/nodes", json={"space_id": pid, "parent_id": parent["id"], "name": "자식"}
+    ).json()
+    grand = admin_client.post(
+        "/api/nodes", json={"space_id": pid, "parent_id": child["id"], "name": "손자"}
+    ).json()
+
+    res = admin_client.patch(
+        f"/api/nodes/{parent['id']}", json={"move": True, "parent_id": grand["id"]}
+    )
+    assert res.status_code == 400
+
+    # 거절만으로는 부족하다 — 정말 안 움직였는지 본다
+    assert admin_client.get(f"/api/nodes/{parent['id']}/path").json()["node"]["parent_id"] is None
+
+
+def test_cannot_move_a_folder_into_itself(admin_client):
+    """자기 자신도 '자기 하위'다 — is_descendant(x, x)가 참이어야 막힌다."""
+    pid = spaces_of(admin_client)["personal"]["id"]
+    folder = admin_client.post("/api/nodes", json={"space_id": pid, "name": "자기자신"}).json()
+
+    res = admin_client.patch(
+        f"/api/nodes/{folder['id']}", json={"move": True, "parent_id": folder["id"]}
+    )
+    assert res.status_code == 400
+
+
+def test_can_still_move_a_folder_into_an_unrelated_folder(admin_client):
+    """위 두 개가 '폴더 이동을 통째로 막아서' 통과하는 게 아님을 못 박는다."""
+    pid = spaces_of(admin_client)["personal"]["id"]
+    a = admin_client.post("/api/nodes", json={"space_id": pid, "name": "가폴더"}).json()
+    b = admin_client.post("/api/nodes", json={"space_id": pid, "name": "나폴더"}).json()
+
+    res = admin_client.patch(f"/api/nodes/{a['id']}", json={"move": True, "parent_id": b["id"]})
+    assert res.status_code == 200
+    assert res.json()["parent_id"] == b["id"]
+    assert res.json()["name"] == "가폴더"
+
+
 # ---------- 고른 항목 묶어받기(다중선택) ----------
 
 

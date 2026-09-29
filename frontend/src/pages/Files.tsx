@@ -22,7 +22,7 @@ import {
 } from '../lib/upload'
 import {
   addFavorite,
-  bundleUrl,
+  bundleRequest,
   createFolder,
   deleteNode,
   getNodePath,
@@ -941,9 +941,25 @@ export default function Files() {
     await trashMany(ids)
   }
   function bulkDownload(ids: string[]) {
-    if (ids.length === 0) return
-    // 링크로 받는다 — 세션 쿠키가 그대로 실리고, 서버가 tar.gz를 흘려보내 메모리에 안 쌓인다.
-    window.location.href = bundleUrl(ids)
+    const req = bundleRequest(ids)
+    if ('error' in req) {
+      flash(req.error)
+      return
+    }
+    // 숨은 iframe 으로 받는다. location.href 로 보내면 서버가 에러를 줄 때 브라우저가 그
+    // JSON 페이지로 화면을 통째로 옮겨 버려 하던 일을 잃는다.
+    // 성공하면(Content-Disposition: attachment) iframe 은 load 되지 않고 받기만 시작된다 —
+    // load 가 떴다는 건 '문서가 그려졌다', 곧 뭔가 잘못됐다는 뜻이다.
+    const frame = document.createElement('iframe')
+    frame.hidden = true
+    frame.src = req.url
+    frame.onload = () => {
+      flash('내려받지 못했습니다')
+      frame.remove()
+    }
+    document.body.appendChild(frame)
+    // 성공했을 땐 load 가 안 뜨므로 시간을 두고 치운다(큰 묶음은 만드는 데 오래 걸린다)
+    window.setTimeout(() => frame.remove(), 10 * 60_000)
   }
 
   // Esc=선택 해제, Delete/Backspace=고른 것 삭제. 글자를 치는 중에는 가로채지 않는다.

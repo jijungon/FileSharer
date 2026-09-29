@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { uploadFile } from './files'
+import { BUNDLE_MAX, bundleRequest, uploadFile } from './files'
 
 // XMLHttpRequest 대역. open/send를 기록하고, 테스트가 onload/onerror/progress를 직접 구동한다.
 class FakeXHR {
@@ -103,5 +103,39 @@ describe('uploadFile', () => {
     xhr.upload.onprogress?.({ lengthComputable: false, loaded: 0, total: 0 } as ProgressEvent)
     expect(onProgress).toHaveBeenCalledTimes(1)
     expect(onProgress).toHaveBeenCalledWith(40, 100)
+  })
+})
+
+describe('bundleRequest', () => {
+  // 링크로 받는 방식이라 서버가 에러를 주면 브라우저가 그 JSON 페이지로 화면을 통째로
+  // 옮겨 버린다. 그래서 '보낼 수 있는지'를 보내기 전에 여기서 판단한다.
+  it('고른 것들을 id 질의문자열로 엮는다', () => {
+    const r = bundleRequest(['a', 'b'])
+    expect(r).toEqual({ url: '/api/nodes/bundle?id=a&id=b' })
+  })
+
+  it('id를 인코딩한다', () => {
+    const r = bundleRequest(['a b&c'])
+    expect(r).toEqual({ url: '/api/nodes/bundle?id=a%20b%26c' })
+  })
+
+  it('상한을 넘으면 주소 대신 이유를 준다', () => {
+    const r = bundleRequest(Array.from({ length: BUNDLE_MAX + 1 }, (_, i) => `n${i}`))
+    expect(r).toHaveProperty('error')
+    expect('error' in r && r.error).toContain(String(BUNDLE_MAX))
+  })
+
+  it('상한 딱 맞으면 받아준다 (경계에서 한 칸 어긋나지 않게)', () => {
+    const r = bundleRequest(Array.from({ length: BUNDLE_MAX }, (_, i) => `n${i}`))
+    expect(r).toHaveProperty('url')
+  })
+
+  it('빈 선택은 이유를 준다', () => {
+    expect(bundleRequest([])).toHaveProperty('error')
+  })
+
+  it('상한은 서버(BUNDLE_MAX)와 같아야 한다', () => {
+    // backend/app/api/nodes.py 의 BUNDLE_MAX. 갈라지면 화면이 통과시킨 요청을 서버가 거절한다.
+    expect(BUNDLE_MAX).toBe(200)
   })
 })
