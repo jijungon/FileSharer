@@ -268,7 +268,13 @@ export default function FolderTree({
           }
           // 소스 공간을 함께 넘겨, 드롭 지점에서 같은 공간이면 이동·다른 공간이면 복사로 판단하게 한다.
           const srcSpace = e.dataTransfer.getData('application/x-node-space')
-          onDropToFolder?.(ids, targetId, { srcSpaceId: srcSpace, targetSpaceId: spaceId })
+          // 같은 공간 안에서 **이미 그 폴더에 있는** 항목은 빼고 넘긴다. 파일 위에 놓으면
+          // 대상이 그 파일의 부모 폴더라, 형제 위에 놓는 건 제자리 이동이다 — 보내봐야
+          // 달라지는 것 없이 수정시각·수정자만 갱신된다.
+          const moving = srcSpace === spaceId
+          const actual = moving ? ids.filter((n) => parentOf.get(n) !== targetId) : ids
+          if (actual.length === 0) return
+          onDropToFolder?.(actual, targetId, { srcSpaceId: srcSpace, targetSpaceId: spaceId })
         } else if (e.dataTransfer.types.includes('Files')) {
           e.preventDefault()
           onUploadFiles?.(targetId, e) // 로컬 파일/폴더 → 이 폴더(targetId=null이면 공간 루트) 안으로 업로드

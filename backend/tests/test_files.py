@@ -388,6 +388,61 @@ def test_folder_tar_download(admin_client):
         assert member is not None and member.read() == b"key: v"
 
 
+# ---------- 이동·이름변경은 '자기 자신'과 부딪히지 않는다 ----------
+
+
+def test_move_into_the_folder_it_is_already_in_keeps_the_name(admin_client):
+    """제자리 이동은 아무것도 바꾸지 않아야 한다.
+
+    사용자가 발견한 버그: 트리에서 파일 위에 놓으면 대상은 '그 파일의 부모 폴더'다.
+    여러 개를 골라 형제 파일 위에 놓으면 전부 제자리 이동이 되는데, 빈 이름 찾기가
+    **자기 자신**까지 남으로 세어 전부 '이름 (2)'가 됐다.
+    """
+    pid = spaces_of(admin_client)["personal"]["id"]
+    folder = admin_client.post("/api/nodes", json={"space_id": pid, "name": "제자리"}).json()
+    node = upload(admin_client, f"/api/nodes/{folder['id']}/files", "그대로.txt").json()
+
+    res = admin_client.patch(
+        f"/api/nodes/{node['id']}", json={"move": True, "parent_id": folder["id"]}
+    )
+    assert res.status_code == 200
+    assert res.json()["name"] == "그대로.txt"
+
+
+def test_move_to_the_space_root_it_is_already_at_keeps_the_name(admin_client):
+    """루트에서 루트로도 마찬가지 — parent_id가 None인 쪽 경로."""
+    pid = spaces_of(admin_client)["personal"]["id"]
+    node = upload(admin_client, f"/api/spaces/{pid}/files", "루트그대로.txt").json()
+
+    res = admin_client.patch(f"/api/nodes/{node['id']}", json={"move": True, "space_id": pid})
+    assert res.status_code == 200
+    assert res.json()["name"] == "루트그대로.txt"
+
+
+def test_move_still_renames_on_a_real_collision(admin_client):
+    """자기 자신만 빼는 것이다 — **남**과 부딪히면 여전히 '(2)'가 붙어야 한다."""
+    pid = spaces_of(admin_client)["personal"]["id"]
+    folder = admin_client.post("/api/nodes", json={"space_id": pid, "name": "대상폴더"}).json()
+    upload(admin_client, f"/api/nodes/{folder['id']}/files", "겹침.txt", b"first")
+    mine = upload(admin_client, f"/api/spaces/{pid}/files", "겹침.txt", b"second").json()
+
+    res = admin_client.patch(
+        f"/api/nodes/{mine['id']}", json={"move": True, "parent_id": folder["id"]}
+    )
+    assert res.status_code == 200
+    assert res.json()["name"] == "겹침 (2).txt"
+
+
+def test_rename_to_its_own_name_keeps_it(admin_client):
+    """같은 이름으로 이름변경 → 그대로. (화면은 걸러내지만 API가 맞아야 한다)"""
+    pid = spaces_of(admin_client)["personal"]["id"]
+    node = upload(admin_client, f"/api/spaces/{pid}/files", "같은이름.txt").json()
+
+    res = admin_client.patch(f"/api/nodes/{node['id']}", json={"name": "같은이름.txt"})
+    assert res.status_code == 200
+    assert res.json()["name"] == "같은이름.txt"
+
+
 # ---------- 고른 항목 묶어받기(다중선택) ----------
 
 
