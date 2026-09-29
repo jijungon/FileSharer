@@ -40,7 +40,7 @@ from ..services.storage import (
 )
 from ..services.tar_stream import collect_entries as collect_tar_entries
 from ..services.tar_stream import collect_space_entries, stream_tar_gz
-from ..services.trash import purge_subtree
+from ..services.trash import delete_blobs, purge_subtree
 
 router = APIRouter(prefix="/api", tags=["files"])
 
@@ -1224,8 +1224,13 @@ def purge_own_node(
     node = get_node_checked(db, user, node_id, include_deleted=True)
     if node.deleted_at is None:
         raise HTTPException(status_code=400, detail="휴지통에 있는 항목만 영구 삭제할 수 있습니다")
-    removed = purge_subtree(db, storage, node)
-    audit.log(db, "purge", user_id=user.id, node_id=node_id, detail=f"{node.name} ({removed})")
+    name = node.name  # 아래에서 행을 지우고 나면 못 읽는다
+    removed, keys = purge_subtree(db, node)
+    audit.log(db, "purge", user_id=user.id, node_id=node_id, detail=f"{name} ({removed})")
+    # DB를 **먼저 확정**하고 본체를 지운다. 반대로 하면 중간에 실패했을 때 휴지통에는
+    # 그대로 보이는데 알맹이만 사라진다(services/trash.purge_subtree 주석 참고).
+    db.commit()
+    delete_blobs(storage, keys)
     return {"ok": True, "removed": removed}
 
 

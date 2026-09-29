@@ -15,7 +15,7 @@ from ..services import audit
 from ..services import backup as backup_svc
 from ..services.permissions import get_node_checked
 from ..services.storage import build_storage, storage_usage
-from ..services.trash import purge_subtree
+from ..services.trash import delete_blobs, purge_subtree
 
 router = APIRouter(prefix="/api/system", tags=["system"])
 logger = logging.getLogger("filesharer")
@@ -112,6 +112,9 @@ def purge_node(
     if node.deleted_at is None:
         raise HTTPException(status_code=400, detail="휴지통에 있는 항목만 영구 삭제할 수 있습니다")
     storage = build_storage(get_settings())
-    removed = purge_subtree(db, storage, node)
-    audit.log(db, "purge", user_id=admin.id, node_id=node_id, detail=f"{node.name} ({removed})")
+    name = node.name  # 행을 지우고 나면 못 읽는다
+    removed, keys = purge_subtree(db, node)
+    audit.log(db, "purge", user_id=admin.id, node_id=node_id, detail=f"{name} ({removed})")
+    db.commit()  # DB를 먼저 확정하고 본체를 지운다
+    delete_blobs(storage, keys)
     return {"ok": True, "removed": removed}

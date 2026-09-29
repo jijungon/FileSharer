@@ -343,3 +343,69 @@ def test_sweeper_purges_a_file_that_was_opened(admin_client):
     assert _sweep(admin_client, days=2) >= 1
     with SessionLocal() as db:
         assert db.get(Node, node["id"]) is None
+
+
+def test_purge_subtree_does_not_touch_the_blob(admin_client):
+    """purge_subtree 는 DB만 건드리고 본체는 **건드리지 않는다**.
+
+    왜 이걸 고정하나: 예전엔 blob 을 먼저 지웠다. 그 뒤 DB 쪽이 실패하면 트랜잭션은
+    롤백되는데 **파일 본체는 이미 사라진 뒤**였다 — 휴지통에 그대로 보이는데 복원하면
+    알맹이가 없다. 실제로 그런 시기가 있었다(FK 오류로 매번 실패하던 때).
+    지금 순서면 최악이 '참조 없는 오브젝트'이고, 그건 찾아서 치울 수 있다.
+    """
+    from app.config import get_settings
+    from app.models import Node
+    from app.services.storage import build_storage
+    from app.services.trash import delete_blobs, purge_subtree
+
+    sp = personal_space(admin_client)
+    node = upload(admin_client, f"/api/spaces/{sp['id']}/files", "본체.txt", b"data").json()
+    admin_client.delete(f"/api/nodes/{node['id']}")
+
+    storage = build_storage(get_settings())
+    SessionLocal = admin_client.app.state.sessionmaker
+    with SessionLocal() as db:
+        key = db.get(Node, node["id"]).storage_key
+        rows, keys = purge_subtree(db, db.get(Node, node["id"]))
+
+        assert rows == 1
+        assert keys == [key]  # '나중에 지울 것'으로 돌려줄 뿐
+        assert storage.exists(key), "커밋 전에 본체가 사라지면 안 된다"
+
+        db.commit()
+        assert storage.exists(key), "커밋만으로 본체가 사라지면 안 된다"
+
+        delete_blobs(storage, keys)
+        assert not storage.exists(key)
+
+
+def test_delete_blobs_keeps_going_when_one_fails(admin_client):
+    """하나가 실패해도 나머지는 지운다 — 여기서 멈추면 남은 것들이 고아로 남는다."""
+    from app.config import get_settings
+    from app.services.storage import build_storage
+    from app.services.trash import delete_blobs
+
+    sp = personal_space(admin_client)
+    a = upload(admin_client, f"/api/spaces/{sp['id']}/files", "가.txt", b"a").json()
+    b = upload(admin_client, f"/api/spaces/{sp['id']}/files", "나.txt", b"b").json()
+
+    storage = build_storage(get_settings())
+    SessionLocal = admin_client.app.state.sessionmaker
+    from app.models import Node
+
+    with SessionLocal() as db:
+        ka, kb = db.get(Node, a["id"]).storage_key, db.get(Node, b["id"]).storage_key
+
+    real_delete = storage.delete
+
+    def flaky(key: str) -> None:
+        if key == ka:
+            raise RuntimeError("저장소 장애")
+        real_delete(key)
+
+    storage.delete = flaky  # type: ignore[method-assign]
+    assert delete_blobs(storage, [ka, kb]) == 1  # 실패한 하나만 빠진다
+    storage.delete = real_delete  # type: ignore[method-assign]
+
+    assert storage.exists(ka)  # 못 지운 건 고아로 남는다(r2_orphans.py 가 찾는다)
+    assert not storage.exists(kb)  # 나머지는 지워졌다
