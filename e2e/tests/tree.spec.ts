@@ -1,8 +1,8 @@
-import { expect, test } from './fixtures'
+import { ACCOUNT, expect, loginAs, test } from './fixtures'
 import { newFolder } from './helpers'
 
-const EMAIL = 'e2e@test.local'
-const PASSWORD = 'e2e-password-123'
+const EMAIL = ACCOUNT.email
+const PASSWORD = ACCOUNT.password
 
 test('sidebar folder tree navigates into folders and back to root', async ({ page }) => {
   await page.goto('/login')
@@ -116,4 +116,46 @@ test('열린 파일을 리네임하면 탭·주소창 이름도 함께 갱신된
   await expect(box).toHaveValue(new RegExp(newName))
   // 옛 이름은 탭에서 사라진다
   await expect(page.locator('.tab-name').filter({ hasText: fname })).toHaveCount(0)
+})
+
+test('항목 하나를 우클릭해도 메뉴가 뜨지 않는다 (행에서 바로 하면 되니까)', async ({ page }) => {
+  // 단건 메뉴(이름 변경·즐겨찾기·삭제)를 없앴다 — 같은 일을 행에서 바로 할 수 있다.
+  // 없앴다는 걸 고정해 두지 않으면 나중에 슬그머니 돌아온다.
+  await loginAs(page, ACCOUNT)
+  const name = `우클릭없음_${Date.now()}.txt`
+  await page.locator('input[type="file"]:not([webkitdirectory])').setInputFiles({
+    name,
+    mimeType: 'text/plain',
+    buffer: Buffer.from('x'),
+  })
+  const item = page.locator('.tree-name').filter({ hasText: name })
+  await expect(item).toBeVisible()
+
+  await item.click({ button: 'right' })
+  await expect(page.locator('.tree-menu')).toHaveCount(0)
+
+  // 대신 행에서 바로 되는 것들은 살아 있어야 한다
+  const row = page.locator('.tree-row').filter({ has: item })
+  await expect(row.getByRole('button', { name: '즐겨찾기', exact: true })).toBeAttached()
+  await expect(row.getByRole('button', { name: '휴지통으로 이동' })).toBeAttached()
+})
+
+test('여러 개를 고르고 우클릭하면 대량 메뉴는 뜬다', async ({ page }) => {
+  // 단건 메뉴만 없앤 것이지, 고른 것들에 대한 메뉴까지 없앤 건 아니다.
+  await loginAs(page, ACCOUNT)
+  const tag = Date.now()
+  const names = [1, 2].map((i) => `대량우클릭${i}_${tag}.txt`)
+  await page.locator('input[type="file"]:not([webkitdirectory])').setInputFiles(
+    names.map((n) => ({ name: n, mimeType: 'text/plain', buffer: Buffer.from('x') })),
+  )
+  const first = page.locator('.tree-name').filter({ hasText: names[0] })
+  await expect(page.locator('.tree-name').filter({ hasText: names[1] })).toBeVisible()
+
+  await first.click({ modifiers: ['ControlOrMeta'] })
+  await page.locator('.tree-name').filter({ hasText: names[1] }).click({ modifiers: ['ControlOrMeta'] })
+  await expect(page.locator('.bulk-bar')).toContainText('2개 선택됨')
+
+  await first.click({ button: 'right' })
+  await expect(page.locator('.tree-menu')).toBeVisible()
+  await expect(page.getByRole('menuitem', { name: /2개 내려받기/ })).toBeVisible()
 })

@@ -1,9 +1,9 @@
-import { expect, test } from './fixtures'
+import { ACCOUNT, RUN_TAG, expect, test } from './fixtures'
 
 import { fileCell } from './helpers'
 
-const EMAIL = 'e2e@test.local'
-const PASSWORD = 'e2e-password-123'
+const EMAIL = ACCOUNT.email
+const PASSWORD = ACCOUNT.password
 
 async function loginAsAdmin(page) {
   await page.goto('/login')
@@ -22,11 +22,11 @@ test('마크다운 코드블록 글자가 배경과 충분한 대비로 보인�
 
   const md = '# 코드\n\n```js\nconst secret = 42\nconsole.log(secret)\n```\n'
   await page.locator('input[type="file"]:not([webkitdirectory])').setInputFiles({
-    name: '코드블록.md',
+    name: `코드블록_${RUN_TAG}.md`,
     mimeType: 'text/markdown',
     buffer: Buffer.from(md),
   })
-  await fileCell(page, /코드블록\.md/).click()
+  await fileCell(page, `코드블록_${RUN_TAG}.md`).click()
 
   const code = page.locator('.md-preview pre code')
   await expect(code).toBeVisible()

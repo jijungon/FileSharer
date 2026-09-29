@@ -1,7 +1,36 @@
-import { expect, test } from './fixtures'
+import { ACCOUNT, RUN_TAG, expect, test } from './fixtures'
 
-const EMAIL = 'e2e@test.local'
-const PASSWORD = 'e2e-password-123'
+/**
+ * 트리에서 항목을 휴지통으로 보낸다.
+ *
+ * 예전엔 우클릭 메뉴(이름 변경·즐겨찾기·삭제)를 썼는데 그 메뉴를 없앴다 — 같은 일을
+ * 행에서 바로 할 수 있어서다(★ 즐겨찾기 · 🗑 삭제 · 선택 후 Enter 로 이름 변경).
+ * 🗑 은 `opacity: 0` 이라 눈에 잘 안 띌 뿐 **숨겨진 건 아니라서** hover 없이 눌린다.
+ */
+async function trashFromTree(page: import('@playwright/test').Page, item: import('@playwright/test').Locator) {
+  const row = page.locator('.tree-row').filter({ has: item })
+  await row.getByRole('button', { name: '휴지통으로 이동' }).click()
+}
+
+
+/**
+ * 휴지통 행의 '완전 삭제'를 누른다.
+ *
+ * 그 버튼은 `.row-action { visibility: hidden }` 이라 **행에 마우스를 올려야만** 보인다.
+ * hover 와 click 사이에 목록이 다시 그려지면 hover 가 풀려 버튼이 숨고, click 은 보이기를
+ * 기다리다 30초를 넘긴다(병렬로 돌리자 10회 중 2회 그랬다).
+ * 둘을 한 덩어리로 묶어 재시도하면 그 틈이 사라진다.
+ */
+async function purge(row: import('@playwright/test').Locator) {
+  await expect(async () => {
+    await row.hover()
+    await row.getByRole('button', { name: '완전 삭제' }).click({ timeout: 2000 })
+  }).toPass({ timeout: 15_000 })
+}
+
+
+const EMAIL = ACCOUNT.email
+const PASSWORD = ACCOUNT.password
 
 async function login(page) {
   await page.goto('/login')
@@ -28,7 +57,7 @@ test('트리 행의 🗑 버튼으로 파일을 휴지통으로 보낸다', asyn
   // 행 오른쪽 끝의 🗑(휴지통으로 이동) → confirm → 트리에서 사라지고 휴지통에 들어간다
   await row.getByRole('button', { name: '휴지통으로 이동' }).click()
   await expect(page.locator('.tree-name').filter({ hasText: fname })).toHaveCount(0)
-  await page.getByRole('button', { name: '휴지통' }).click()
+  await page.locator('.sidebar-trash').click()
   await expect(page.getByRole('row', { name: new RegExp(fname.replace('.', '\\.')) })).toBeVisible()
 })
 
@@ -52,7 +81,7 @@ test('휴지통 항목을 공간으로 끌어다 놓으면 원래 위치로 복�
   await expect(page.locator('.tree-name').filter({ hasText: fname })).toHaveCount(0)
 
   // 휴지통 열기 → 항목이 보인다
-  await page.getByRole('button', { name: '휴지통' }).click()
+  await page.locator('.sidebar-trash').click()
   const rx = new RegExp(fname.replace('.', '\\.'))
   await expect(page.getByRole('row', { name: rx })).toBeVisible()
 
@@ -81,28 +110,25 @@ test('휴지통에서 완전 삭제하면 파일이 영구히 사라진다', asy
   await login(page)
 
   await page.locator('input[type="file"]:not([webkitdirectory])').setInputFiles({
-    name: '영구삭제.txt',
+    name: `영구삭제_${RUN_TAG}.txt`,
     mimeType: 'text/plain',
     buffer: Buffer.from('bye'),
   })
   await expect(page.locator('.upload-row')).toHaveCount(0)
-  const item = page.locator('.tree-name').filter({ hasText: /영구삭제\.txt/ })
+  const item = page.locator('.tree-name').filter({ hasText: `영구삭제_${RUN_TAG}.txt` })
   await expect(item).toBeVisible()
 
-  // 트리 우클릭 → 🗑 삭제 → 휴지통으로 (confirm 자동 수락)
-  await item.click({ button: 'right' })
-  await page.getByRole('menuitem', { name: /삭제/ }).click()
-  await expect(page.locator('.tree-name').filter({ hasText: /영구삭제\.txt/ })).toHaveCount(0)
+  await trashFromTree(page, item)
+  await expect(page.locator('.tree-name').filter({ hasText: `영구삭제_${RUN_TAG}.txt` })).toHaveCount(0)
 
   // 휴지통 열기 → 항목이 보인다
-  await page.getByRole('button', { name: '휴지통' }).click()
-  const trashRow = page.getByRole('row', { name: /영구삭제\.txt/ })
+  await page.locator('.sidebar-trash').click()
+  const trashRow = page.getByRole('row', { name: `영구삭제_${RUN_TAG}.txt` })
   await expect(trashRow).toBeVisible()
 
   // 완전 삭제 → 휴지통에서도 사라진다
-  await trashRow.hover()
-  await trashRow.getByRole('button', { name: '완전 삭제' }).click()
-  await expect(page.getByRole('cell', { name: /영구삭제\.txt/ })).toHaveCount(0)
+  await purge(trashRow)
+  await expect(page.getByRole('cell', { name: `영구삭제_${RUN_TAG}.txt` })).toHaveCount(0)
 })
 
 test('파일을 열고 뷰어의 🗑 삭제를 누르면 휴지통으로 가고 뷰어가 닫힌다', async ({ page }) => {
@@ -110,24 +136,24 @@ test('파일을 열고 뷰어의 🗑 삭제를 누르면 휴지통으로 가고
   await login(page)
 
   await page.locator('input[type="file"]:not([webkitdirectory])').setInputFiles({
-    name: '뷰어삭제.txt',
+    name: `뷰어삭제_${RUN_TAG}.txt`,
     mimeType: 'text/plain',
     buffer: Buffer.from('open then delete'),
   })
   await expect(page.locator('.upload-row')).toHaveCount(0)
 
   // 트리에서 파일 열기 → 에디터 뷰어가 뜬다
-  await page.locator('.tree-name').filter({ hasText: /뷰어삭제\.txt/ }).click()
+  await page.locator('.tree-name').filter({ hasText: `뷰어삭제_${RUN_TAG}.txt` }).click()
   await expect(page.locator('.editor-shell')).toBeVisible()
 
   // 뷰어 액션 바의 🗑 삭제 → confirm 수락 → 뷰어 닫힘 + 트리에서 사라짐
   await page.locator('.tab-actions').getByRole('button', { name: /삭제/ }).click()
-  await expect(page.locator('.tree-name').filter({ hasText: /뷰어삭제\.txt/ })).toHaveCount(0)
+  await expect(page.locator('.tree-name').filter({ hasText: `뷰어삭제_${RUN_TAG}.txt` })).toHaveCount(0)
   await expect(page.locator('.browser-welcome')).toBeVisible()
 
   // 휴지통에서 확인된다(복원 가능한 이동)
-  await page.getByRole('button', { name: '휴지통' }).click()
-  await expect(page.getByRole('row', { name: /뷰어삭제\.txt/ })).toBeVisible()
+  await page.locator('.sidebar-trash').click()
+  await expect(page.getByRole('row', { name: `뷰어삭제_${RUN_TAG}.txt` })).toBeVisible()
 })
 
 test('휴지통 항목에 자동 완전삭제까지 남은 시간이 표시된다', async ({ page }) => {
@@ -135,24 +161,23 @@ test('휴지통 항목에 자동 완전삭제까지 남은 시간이 표시된�
   await login(page)
 
   await page.locator('input[type="file"]:not([webkitdirectory])').setInputFiles({
-    name: '카운트다운.txt',
+    name: `카운트다운_${RUN_TAG}.txt`,
     mimeType: 'text/plain',
     buffer: Buffer.from('x'),
   })
   await expect(page.locator('.upload-row')).toHaveCount(0)
-  const item = page.locator('.tree-name').filter({ hasText: /카운트다운\.txt/ })
+  const item = page.locator('.tree-name').filter({ hasText: `카운트다운_${RUN_TAG}.txt` })
   await expect(item).toBeVisible()
   // 트리 우클릭 → 🗑 삭제
-  await item.click({ button: 'right' })
-  await page.getByRole('menuitem', { name: /삭제/ }).click()
+  await trashFromTree(page, item)
   // 삭제가 커밋되어 트리에서 빠질 때까지 기다린다 — 이 대기 없이 바로 휴지통을 열면
   // (느린 CI에서) 삭제 커밋 전에 휴지통 목록을 읽어 항목이 안 보일 수 있다.
-  await expect(page.locator('.tree-name').filter({ hasText: /카운트다운\.txt/ })).toHaveCount(0)
+  await expect(page.locator('.tree-name').filter({ hasText: `카운트다운_${RUN_TAG}.txt` })).toHaveCount(0)
 
   // 휴지통엔 전용 '삭제 예정' 열이 있고, 그 칸에 "N일 … 남음" 칩이 보인다
-  await page.getByRole('button', { name: '휴지통' }).click()
+  await page.locator('.sidebar-trash').click()
   await expect(page.getByRole('columnheader', { name: '삭제 예정' })).toBeVisible()
-  const trashRow = page.getByRole('row', { name: /카운트다운\.txt/ }).first()
+  const trashRow = page.getByRole('row', { name: `카운트다운_${RUN_TAG}.txt` }).first()
   await expect(trashRow.locator('.col-remaining .trash-remaining')).toBeVisible()
   await expect(trashRow.locator('.col-remaining .trash-remaining')).toContainText('남음')
 })
@@ -245,16 +270,14 @@ test('열어보고 별표까지 단 파일도 완전 삭제된다', async ({ pag
   await row.getByRole('button', { name: '즐겨찾기', exact: true }).click() // → favorites 행
   await expect(row.locator('.tree-fav.on')).toBeVisible()
 
-  await item.click({ button: 'right' })
-  await page.getByRole('menuitem', { name: /삭제/ }).click()
+  await trashFromTree(page, item)
   await expect(page.locator('.tree-name').filter({ hasText: name })).toHaveCount(0)
 
-  await page.getByRole('button', { name: '휴지통' }).click()
+  await page.locator('.sidebar-trash').click()
   const trashRow = page.getByRole('row', { name: new RegExp(name.replace('.', '\\.')) })
   await expect(trashRow).toBeVisible()
 
-  await trashRow.hover()
-  await trashRow.getByRole('button', { name: '완전 삭제' }).click()
+  await purge(trashRow)
   // 실패하면 행이 그대로 남는다(guard가 에러를 띄우고 목록을 다시 읽으므로)
   await expect(page.getByRole('cell', { name: new RegExp(name.replace('.', '\\.')) })).toHaveCount(0)
 })

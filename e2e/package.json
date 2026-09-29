@@ -4,5 +4,10 @@
   "version": "0.1.0",
   "devDependencies": {
     "@playwright/test": "^1.46.0"
+  },
+  "scripts": {
+    "test": "playwright test --project=solo && playwright test --project=shared --workers=1",
+    "test:solo": "playwright test --project=solo",
+    "test:shared": "playwright test --project=shared --workers=1"
   }
 }

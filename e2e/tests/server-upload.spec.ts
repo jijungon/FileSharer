@@ -1,9 +1,9 @@
-import { expect, request, test } from './fixtures'
+import { ACCOUNT, expect, request, test } from './fixtures'
 
 import { fileCell } from './helpers'
 
-const EMAIL = 'e2e@test.local'
-const PASSWORD = 'e2e-password-123'
+const EMAIL = ACCOUNT.email
+const PASSWORD = ACCOUNT.password
 const BASE = process.env.BASE_URL ?? 'http://localhost:8484'
 
 async function loginAsAdmin(page) {

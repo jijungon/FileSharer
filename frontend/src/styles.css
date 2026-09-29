@@ -945,7 +945,8 @@ button:focus-visible {
 /* 올린/수정한 사람 닉네임 — 날짜 앞 작은 골드 라벨 */
 .by-name {
   display: inline-block;
-  margin-right: 7px;
+  /* 날짜 뒤에 붙으므로 여백도 왼쪽으로 옮긴다 */
+  margin-left: 7px;
   padding: 0 6px;
   border-radius: var(--radius-sm);
   background: color-mix(in srgb, var(--primary) 15%, transparent);

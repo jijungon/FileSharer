@@ -1,7 +1,11 @@
-import { expect, test } from './fixtures'
+import { ACCOUNT, RUN_TAG, expect, test } from './fixtures'
 
-const EMAIL = 'e2e@test.local'
-const PASSWORD = 'e2e-password-123'
+// 공유 자원(전체 공간·팀·사용자 목록·member 계정)을 건드리므로 파일 안에서는 직렬.
+// playwright.config.ts 의 'shared' 프로젝트가 solo 가 끝난 뒤에 이 파일들을 돌린다.
+test.describe.configure({ mode: 'serial' })
+
+const EMAIL = ACCOUNT.email
+const PASSWORD = ACCOUNT.password
 
 async function loginAdmin(page) {
   await page.goto('/login')
@@ -43,7 +47,7 @@ test('force-delete a team that still has files', async ({ page }) => {
   const spaces = await (await page.request.get('/api/spaces')).json()
   const teamSpace = spaces.find((s: { type: string }) => s.type === 'team')
   await page.request.post(`/api/spaces/${teamSpace.id}/files`, {
-    multipart: { file: { name: 'keep.txt', mimeType: 'text/plain', buffer: Buffer.from('data') } },
+    multipart: { file: { name: `keep_${RUN_TAG}.txt`, mimeType: 'text/plain', buffer: Buffer.from('data') } },
   })
 
   await page.getByRole('button', { name: '관리' }).click()

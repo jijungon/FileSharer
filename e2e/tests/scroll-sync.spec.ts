@@ -1,9 +1,9 @@
-import { expect, test } from './fixtures'
+import { ACCOUNT, RUN_TAG, expect, test } from './fixtures'
 
 import { fileCell, newMd } from './helpers'
 
-const EMAIL = 'e2e@test.local'
-const PASSWORD = 'e2e-password-123'
+const EMAIL = ACCOUNT.email
+const PASSWORD = ACCOUNT.password
 
 async function loginAsAdmin(page) {
   await page.goto('/login')
@@ -21,11 +21,11 @@ test('MD 에디터와 프리뷰가 함께 스크롤된다(양방향)', async ({ 
     '\n',
   )
   await page.locator('input[type="file"]:not([webkitdirectory])').setInputFiles({
-    name: '긴문서.md',
+    name: `긴문서_${RUN_TAG}.md`,
     mimeType: 'text/markdown',
     buffer: Buffer.from(long),
   })
-  await fileCell(page, /긴문서\.md/).click()
+  await fileCell(page, `긴문서_${RUN_TAG}.md`).click()
 
   const editor = page.locator('.editor-pane') // 실제 스크롤 컨테이너
   const preview = page.locator('.preview-pane')
