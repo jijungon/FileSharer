@@ -1,7 +1,7 @@
 """휴지통 보존 정책.
 
 soft delete(deleted_at 설정)된 노드를 일정 기간 뒤 자동으로 완전삭제(purge)한다.
-purge는 서브트리의 DB 행 + R2/로컬 blob + 공유 링크를 모두 제거한다.
+purge는 서브트리의 DB 행 + R2/로컬 blob + **그 노드를 가리키는 모든 행**을 제거한다.
 """
 
 from __future__ import annotations
@@ -12,13 +12,13 @@ from sqlalchemy import delete as sql_delete
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..models import Node, ShareLink, utcnow
+from ..models import ApiToken, EditLock, Favorite, Node, NodeView, ShareLink, utcnow
 from . import search_index
 from .storage import StorageBackend
 
 
 def purge_subtree(db: Session, storage: StorageBackend, node: Node) -> int:
-    """노드 서브트리를 영구 삭제 — blob·공유 링크·행 제거. 반환: 삭제 행 수."""
+    """노드 서브트리를 영구 삭제 — blob·참조 행·노드 행 제거. 반환: 삭제 행 수."""
     count = 0
     children = db.scalars(select(Node).where(Node.parent_id == node.id)).all()
     for child in children:
@@ -26,7 +26,19 @@ def purge_subtree(db: Session, storage: StorageBackend, node: Node) -> int:
     if node.type == "file" and node.storage_key:
         storage.delete(node.storage_key)
     search_index.remove_node(db, node.id)  # 내용 검색 인덱스에서도 제거(영구삭제)
-    db.execute(sql_delete(ShareLink).where(ShareLink.node_id == node.id))
+    # 이 노드를 가리키는 행을 **먼저 전부** 치운다. PRAGMA foreign_keys=ON 이라
+    # 하나라도 남으면 FOREIGN KEY constraint failed 로 삭제 전체가 엎어진다.
+    # 실제로 프로드에서 휴지통 자동삭제가 계속 실패했다 — 한 번이라도 열어본 파일이면
+    # node_views 행이 남아 있기 때문이었다(사람은 열어보고 나서 지운다).
+    # audit_log.node_id 는 일부러 FK가 아니다(기록은 노드가 사라져도 남아야 한다).
+    for table, column in (
+        (ShareLink, ShareLink.node_id),  # 공유 링크
+        (Favorite, Favorite.node_id),  # 별표
+        (NodeView, NodeView.node_id),  # 최근 열어본 항목
+        (EditLock, EditLock.node_id),  # 편집 잠금
+        (ApiToken, ApiToken.node_id),  # 이 노드로 범위를 좁힌 토큰
+    ):
+        db.execute(sql_delete(table).where(column == node.id))
     db.delete(node)
     return count + 1
 

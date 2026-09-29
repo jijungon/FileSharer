@@ -220,3 +220,41 @@ test('휴지통에 든 폴더의 자식 파일 딥링크는 404 (복원하면 �
   expect((await page.request.post(`/api/nodes/${folder.id}/restore`)).ok()).toBeTruthy()
   expect((await page.request.get(`/api/files/${child.id}`)).status()).toBe(200)
 })
+
+test('열어보고 별표까지 단 파일도 완전 삭제된다', async ({ page }) => {
+  // 프로드에서 휴지통 자동삭제가 계속 실패하던 경로. 노드를 지우기 전에 그 노드를
+  // 가리키는 행(최근 열어본 항목·별표 등)을 다 치우지 않아 FK에 걸렸다.
+  // 위 테스트가 못 잡은 이유는 '올리고 바로 지운' 파일만 다뤘기 때문이다 —
+  // 사람은 열어보고, 별표 달고, 그러고 나서 지운다.
+  page.on('dialog', (d) => d.accept())
+  await login(page)
+
+  const name = `쓰던파일_${Date.now()}.md`
+  await page.locator('input[type="file"]:not([webkitdirectory])').setInputFiles({
+    name,
+    mimeType: 'text/markdown',
+    buffer: Buffer.from('# 쓰던 문서\n\n본문\n'),
+  })
+  const item = page.locator('.tree-name').filter({ hasText: name })
+  await expect(item).toBeVisible()
+
+  await item.click() // 열어본다 → node_views 행이 생긴다
+  await expect(page.getByRole('heading', { name: '쓰던 문서' })).toBeVisible()
+
+  const row = page.locator('.tree-row').filter({ has: page.locator('.tree-name', { hasText: name }) })
+  await row.getByRole('button', { name: '즐겨찾기', exact: true }).click() // → favorites 행
+  await expect(row.locator('.tree-fav.on')).toBeVisible()
+
+  await item.click({ button: 'right' })
+  await page.getByRole('menuitem', { name: /삭제/ }).click()
+  await expect(page.locator('.tree-name').filter({ hasText: name })).toHaveCount(0)
+
+  await page.getByRole('button', { name: '휴지통' }).click()
+  const trashRow = page.getByRole('row', { name: new RegExp(name.replace('.', '\\.')) })
+  await expect(trashRow).toBeVisible()
+
+  await trashRow.hover()
+  await trashRow.getByRole('button', { name: '완전 삭제' }).click()
+  // 실패하면 행이 그대로 남는다(guard가 에러를 띄우고 목록을 다시 읽으므로)
+  await expect(page.getByRole('cell', { name: new RegExp(name.replace('.', '\\.')) })).toHaveCount(0)
+})
