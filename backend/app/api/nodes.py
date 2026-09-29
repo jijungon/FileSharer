@@ -2,8 +2,9 @@ import mimetypes
 import unicodedata
 from datetime import timedelta
 from pathlib import Path, PurePosixPath
+from typing import Annotated
 
-from fastapi import APIRouter, Depends, Form, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy import select
@@ -28,6 +29,7 @@ from ..services.permissions import (
     get_space_checked,
     has_deleted_ancestor,
     is_descendant,
+    space_display_name,
 )
 from ..services.serving import content_disposition as _content_disposition
 from ..services.serving import serve_blob
@@ -37,7 +39,7 @@ from ..services.storage import (
     build_storage,
 )
 from ..services.tar_stream import collect_entries as collect_tar_entries
-from ..services.tar_stream import stream_tar_gz
+from ..services.tar_stream import collect_space_entries, stream_tar_gz
 from ..services.trash import purge_subtree
 
 router = APIRouter(prefix="/api", tags=["files"])
@@ -940,6 +942,59 @@ def video_preview(
         passthrough.write_text(codec or "none", encoding="utf-8")
         return serve_original()
     return serve_transcoded()
+
+
+# 한 번에 묶어 받을 수 있는 항목 수. id를 링크의 질의 문자열로 나르므로 URL 길이에
+# 현실적인 상한이 있고, 무엇보다 한 요청이 공간 전체를 긁어가는 일을 막는다.
+BUNDLE_MAX = 200
+
+
+@router.get("/nodes/bundle")
+def download_bundle(
+    id: Annotated[list[str], Query()],
+    principal: Principal = Depends(current_principal),
+    db: Session = Depends(get_db),
+    storage: StorageBackend = Depends(get_storage),
+):
+    """고른 항목 여러 개를 tar.gz 하나로 스트리밍.
+
+    폴더 하나를 받는 /nodes/{id}/tar 와 같은 기계를 쓰되, 고른 것들을 디렉토리 하나에
+    담는다 — 풀었을 때 받는 쪽 현재 폴더가 파일 수십 개로 어질러지지 않게.
+    """
+    user = principal.user
+    ids = list(dict.fromkeys(id))  # 같은 걸 두 번 담으면 아카이브 안에서 이름이 겹친다
+    if not ids:
+        raise HTTPException(status_code=400, detail="받을 항목이 없습니다")
+    if len(ids) > BUNDLE_MAX:
+        raise HTTPException(status_code=400, detail=f"한 번에 {BUNDLE_MAX}개까지 받을 수 있습니다")
+
+    # 권한은 항목마다 따로 본다 — 하나라도 못 보는 것이 섞이면 통째로 거절한다.
+    nodes = [get_node_checked(db, user, n) for n in ids]
+    if principal.token is not None:
+        for n in nodes:
+            tokens_svc.enforce_read_scope(db, principal.token, n)
+
+    # 한 공간에서 고른 것이면 그 공간 이름으로 묶고, 섞여 있으면 중립적인 이름을 쓴다.
+    # 이름 규칙은 화면(사이드바)과 같은 space_display_name 을 쓴다 — 받아서 풀었을 때
+    # 디렉토리 이름이 골랐던 곳과 달라 보이면 안 된다.
+    root_name = "선택항목"
+    if len({n.space_id for n in nodes}) == 1:
+        space = db.get(Space, nodes[0].space_id)
+        if space:
+            root_name = space_display_name(db, space)
+
+    via = _via_label(principal)
+    detail = f"{len(nodes)}개" + (f" · 토큰:{via}" if via else "")
+    audit.log(db, "bundle_download", user_id=user.id, node_id=nodes[0].id, detail=detail)
+    # 목록을 **먼저 펼친다**. 제너레이터째 넘기면 본문을 흘려보낼 때가 되어서야 DB를 읽는데,
+    # 그때는 요청의 세션이 이미 닫혀 있다(/nodes/{id}/tar 가 list() 를 쓰는 이유도 같다).
+    entries = list(collect_space_entries(db, root_name, nodes))
+    filename = f"{root_name}-{len(nodes)}개.tar.gz"
+    return StreamingResponse(
+        stream_tar_gz(storage, entries),
+        media_type="application/gzip",
+        headers={"Content-Disposition": _content_disposition("attachment", filename)},
+    )
 
 
 @router.get("/nodes/{node_id}/tar")

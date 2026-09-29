@@ -22,6 +22,7 @@ import {
 } from '../lib/upload'
 import {
   addFavorite,
+  bundleUrl,
   createFolder,
   deleteNode,
   getNodePath,
@@ -165,6 +166,11 @@ export default function Files() {
   const [sortDir, setSortDir] = useState<SortDir>('asc')
   const [dragOverSpace, setDragOverSpace] = useState<string | null>(null)
   const [dragOverTrash, setDragOverTrash] = useState(false)
+  // 다중선택: 고른 노드 id + 그게 어느 공간 것인지. 공간마다 트리가 따로 있어서,
+  // 공간을 섞어 고르면 '이동이냐 복사냐'가 항목마다 갈린다 — 한 공간 안으로 묶어 둔다.
+  const [checked, setChecked] = useState<Set<string>>(new Set())
+  const [checkedSpace, setCheckedSpace] = useState<string | null>(null)
+  const checkedSpaceRef = useRef<string | null>(null) // 같은 배치 안에서도 최신인 사본
   const [treeVersion, setTreeVersion] = useState(0)
   const [refreshing, setRefreshing] = useState(false) // 새로고침 버튼 회전 표시
   // 사이드바 폭(드래그로 조절, localStorage 기억). 잘린 파일 이름을 넓혀 보기 위함.
@@ -897,8 +903,9 @@ export default function Files() {
     else if (files.length > 0) uploadAll(files, target)
   }
 
-  // 드래그로 휴지통에 놓아 삭제(복원 가능하므로 확인창 없음).
-  async function trashByDrag(ids: string[]) {
+  // 여러 항목을 휴지통으로(드래그 드롭·다중선택 둘 다 여기로 온다).
+  // 드래그로 놓은 경우엔 확인창이 없다 — 복원할 수 있으므로.
+  async function trashMany(ids: string[]) {
     if (ids.length === 0) return
     try {
       for (const id of ids) await deleteNode(id)
@@ -910,6 +917,62 @@ export default function Files() {
       setTreeVersion((v) => v + 1)
     }
   }
+
+  // ── 다중선택 ──
+  function clearChecked() {
+    checkedSpaceRef.current = null
+    setChecked((c) => (c.size > 0 ? new Set() : c))
+    setCheckedSpace(null)
+  }
+  // 트리가 준 갱신 함수를 **이전 값에 적용**한다 — 통째로 받으면 연달아 빠르게 누를 때
+  // 리렌더 전의 옛 선택을 덮어써 클릭 하나가 먹힌다.
+  // 다른 공간에서 고르기 시작하면 이전 선택은 버린다(이동/복사 판단이 항목마다 갈리므로).
+  // 그 판단은 ref로 한다 — 같은 배치 안의 두 번째 클릭에게는 state가 아직 옛 공간이다.
+  function applyChecked(ofSpace: string, update: (prev: Set<string>) => Set<string>) {
+    const fresh = checkedSpaceRef.current !== ofSpace
+    checkedSpaceRef.current = ofSpace
+    setCheckedSpace(ofSpace)
+    setChecked((prev) => update(fresh ? new Set() : prev))
+  }
+  async function bulkDelete(ids: string[]) {
+    if (ids.length === 0) return
+    if (!window.confirm(`${ids.length}개를 휴지통으로 이동할까요?`)) return
+    clearChecked()
+    await trashMany(ids)
+  }
+  function bulkDownload(ids: string[]) {
+    if (ids.length === 0) return
+    // 링크로 받는다 — 세션 쿠키가 그대로 실리고, 서버가 tar.gz를 흘려보내 메모리에 안 쌓인다.
+    window.location.href = bundleUrl(ids)
+  }
+
+  // Esc=선택 해제, Delete/Backspace=고른 것 삭제. 글자를 치는 중에는 가로채지 않는다.
+  useEffect(() => {
+    if (checked.size === 0) return
+    const onKey = (e: KeyboardEvent) => {
+      const el = e.target as HTMLElement | null
+      if (el?.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el?.tagName ?? '')) return
+      if (e.key === 'Escape') clearChecked()
+      else if (e.key === 'Delete' || e.key === 'Backspace') {
+        e.preventDefault()
+        void bulkDelete([...checked])
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+    // 의존성 배열이 없는 건 일부러다. 삭제는 열린 탭(openTabs)까지 정리하는데, 배열을
+    // [checked]로 좁히면 그 사이 탭이 바뀌어도 옛 목록을 들고 지우게 된다. 리스너 하나를
+    // 매 렌더 다시 다는 비용이 그 버그보다 싸다.
+  })
+
+  // 휴지통·즐겨찾기로 넘어가면 트리 선택은 의미를 잃는다 — 그 화면의 대상이 아니다.
+  useEffect(() => {
+    if (trashMode || favMode) {
+      checkedSpaceRef.current = null
+      setChecked((c) => (c.size > 0 ? new Set() : c))
+      setCheckedSpace(null)
+    }
+  }, [trashMode, favMode])
 
   // ── 사이드바 트리 우클릭 메뉴 동작(파일목록 표 대체) ──
   // 인라인 이름변경 커밋(빈/동일 이름 무시는 FolderTree 쪽에서 처리) — guard가 reload + treeVersion 갱신.
@@ -940,25 +1003,35 @@ export default function Files() {
   // 드래그 항목을 폴더/공간에 놓았을 때: 같은 공간이면 이동, 다른 공간이면 복사(원본 유지).
   // 판단 기준은 "드래그한 파일의 실제 공간(srcSpaceId) vs 놓은 대상의 공간" — 활성 공간이 아니다.
   // (두 공간 트리를 동시에 보여준 뒤로, 활성 공간 기준 판단은 크로스공간 드롭을 이동으로 오판했다.)
-  async function dropNode(
-    draggedId: string,
+  // 여러 개를 한 번에 놓을 수 있다(다중선택). 항목마다 guard()를 부르면 N번 새로 읽게 되므로
+  // 여기서 직접 돌리고 **끝나고 한 번만** 갱신한다.
+  async function dropNodes(
+    draggedIdList: string[],
     target: { spaceId: string; folderId?: string | null; spaceName?: string },
     srcSpaceId?: string,
   ) {
     const folderId = target.folderId ?? null
-    if (draggedId === folderId) return
-    if (srcSpaceId && srcSpaceId !== target.spaceId) {
-      // 다른 공간 → 복사
-      const ok = await guard(() =>
-        copyNode(draggedId, folderId ? { parentId: folderId } : { spaceId: target.spaceId }),
-      )
-      if (ok) flash(target.spaceName ? `${target.spaceName}(으)로 복사했습니다` : '복사했습니다')
-    } else {
-      // 같은 공간 → 이동
-      await guard(() =>
-        moveNode(draggedId, folderId ? { parentId: folderId } : { spaceId: target.spaceId }),
-      )
-      closeViewerIfAffected([draggedId]) // 열려 있던 파일을 옮겼으면 뷰어를 닫는다
+    const ids = draggedIdList.filter((id) => id !== folderId) // 자기 자신 위에 놓은 건 무시
+    if (ids.length === 0) return
+    const copying = !!srcSpaceId && srcSpaceId !== target.spaceId
+    const where = folderId ? { parentId: folderId } : { spaceId: target.spaceId }
+    let done = 0
+    try {
+      for (const id of ids) {
+        await (copying ? copyNode(id, where) : moveNode(id, where))
+        done += 1
+      }
+      if (copying && done > 0) {
+        const many = done > 1 ? `${done}개를 ` : ''
+        flash(target.spaceName ? `${many}${target.spaceName}(으)로 복사했습니다` : '복사했습니다')
+      }
+    } catch (err) {
+      flash(err instanceof Error ? err.message : '요청에 실패했습니다')
+    } finally {
+      if (!copying) closeViewerIfAffected(ids) // 열려 있던 파일을 옮겼으면 뷰어를 닫는다
+      clearChecked()
+      reload()
+      setTreeVersion((v) => v + 1) // 폴더 구조 변경 반영 → 사이드바 트리 갱신
     }
   }
 
@@ -1338,7 +1411,7 @@ export default function Files() {
                     e.preventDefault()
                     // 소스 공간과 이 공간이 같으면 이동(이 공간 최상위로), 다르면 복사 — 활성 공간이 아니라 드래그한 파일의 공간으로 판단
                     const srcSpace = e.dataTransfer.getData('application/x-node-space')
-                    dropNode(ids[0], { spaceId: s.id, spaceName: s.name }, srcSpace)
+                    dropNodes(ids, { spaceId: s.id, spaceName: s.name }, srcSpace)
                   } else if (e.dataTransfer.types.includes('Files')) {
                     e.preventDefault()
                     // 로컬 파일/폴더 → 이 공간 최상위로 업로드
@@ -1362,8 +1435,8 @@ export default function Files() {
                   version={treeVersion}
                   onOpenFolder={openFolderById}
                   onOpenFile={openFileFromTree}
-                  onDropToFolder={(id, target, ctx) =>
-                    dropNode(id, { spaceId: ctx.targetSpaceId, folderId: target }, ctx.srcSpaceId)
+                  onDropToFolder={(ids, target, ctx) =>
+                    dropNodes(ids, { spaceId: ctx.targetSpaceId, folderId: target }, ctx.srcSpaceId)
                   }
                   onUploadFiles={(folderId, e) =>
                     uploadToTarget({ spaceId: s.id, parentId: folderId }, e)
@@ -1371,6 +1444,11 @@ export default function Files() {
                   onRenameCommit={renameCommit}
                   onToggleFavorite={toggleFavFromTree}
                   onDelete={deleteFromTree}
+                  // 선택은 한 공간 안에서만 — 다른 공간 트리에는 넘기지 않는다
+                  checked={checkedSpace === s.id ? checked : undefined}
+                  onChecked={applyChecked}
+                  onBulkDelete={bulkDelete}
+                  onBulkDownload={bulkDownload}
                 />
             </div>
           ))}
@@ -1402,7 +1480,8 @@ export default function Files() {
                 setDragOverTrash(false)
                 if (ids.length === 0) return
                 e.preventDefault()
-                trashByDrag(ids)
+                clearChecked()
+                trashMany(ids)
               }}
               title="여기로 끌어다 놓으면 휴지통으로 이동합니다"
             >
@@ -1716,6 +1795,25 @@ export default function Files() {
         ))}
         </div>
       </div>
+      {checked.size > 0 && (
+        <div className="bulk-bar" role="status" aria-label="선택 항목">
+          <strong>{checked.size}개 선택됨</strong>
+          <span className="muted bulk-bar-hint">
+            Ctrl/⌘+클릭으로 더 고르기 · Shift+클릭으로 범위 · 폴더나 공간으로 끌면 이동·복사
+          </span>
+          <div className="bulk-bar-actions">
+            <button className="btn-utility" onClick={() => bulkDownload([...checked])}>
+              ⤓ 내려받기
+            </button>
+            <button className="btn-utility danger" onClick={() => void bulkDelete([...checked])}>
+              🗑 삭제
+            </button>
+            <button className="btn-utility" onClick={clearChecked}>
+              선택 해제
+            </button>
+          </div>
+        </div>
+      )}
       {uploads.length > 0 && (
         <div className="upload-panel" aria-label="업로드 진행">
           <div className="upload-panel-head muted">
