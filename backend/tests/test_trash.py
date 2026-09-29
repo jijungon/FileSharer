@@ -302,3 +302,44 @@ def test_user_cannot_purge_in_others_personal_space(admin_client, db):
     admin_client.post("/api/auth/logout")
     login(admin_client, ADMIN_EMAIL, ADMIN_PASSWORD)
     assert admin_client.delete(f"/api/nodes/{node['id']}/purge").status_code in (403, 404)
+
+
+def test_purge_works_for_a_file_that_was_opened_and_favorited(admin_client):
+    """사용자가 실제로 쓰던 파일을 완전삭제할 수 있어야 한다.
+
+    프로드에서 **휴지통 자동삭제가 계속 실패하고 있었다.** 이유: 노드를 지우기 전에
+    그 노드를 가리키는 행을 다 치우지 않아 FK(PRAGMA foreign_keys=ON)에 걸렸다.
+    기존 테스트는 '올리고 바로 지운' 파일만 다뤄서 참조가 하나도 없었다 — 사람은
+    파일을 열어보고, 별표를 달고, 편집하다가 지운다.
+    """
+    sp = personal_space(admin_client)
+    node = upload(admin_client, f"/api/spaces/{sp['id']}/files", "쓰던파일.txt").json()
+
+    admin_client.post(f"/api/nodes/{node['id']}/view")  # 열어봤다 → node_views
+    admin_client.post(f"/api/nodes/{node['id']}/favorite")  # 별표 → favorites
+    admin_client.post(f"/api/nodes/{node['id']}/lock")  # 편집했다 → edit_locks
+    admin_client.delete(f"/api/nodes/{node['id']}")  # 휴지통으로
+
+    res = admin_client.delete(f"/api/nodes/{node['id']}/purge")
+    assert res.status_code == 200, res.text
+    assert admin_client.get(f"/api/files/{node['id']}").status_code == 404
+
+
+def test_sweeper_purges_a_file_that_was_opened(admin_client):
+    """자동삭제(백그라운드 스위퍼)도 같아야 한다 — 프로드에서 터지던 바로 그 경로."""
+    from app.models import Node, utcnow
+
+    sp = personal_space(admin_client)
+    node = upload(admin_client, f"/api/spaces/{sp['id']}/files", "오래된것.txt").json()
+    admin_client.post(f"/api/nodes/{node['id']}/view")
+    admin_client.post(f"/api/nodes/{node['id']}/favorite")
+    admin_client.delete(f"/api/nodes/{node['id']}")
+
+    SessionLocal = admin_client.app.state.sessionmaker
+    with SessionLocal() as db:  # 보존기간을 넘긴 것으로 만든다
+        db.get(Node, node["id"]).deleted_at = utcnow() - timedelta(days=30)
+        db.commit()
+
+    assert _sweep(admin_client, days=2) >= 1
+    with SessionLocal() as db:
+        assert db.get(Node, node["id"]) is None
