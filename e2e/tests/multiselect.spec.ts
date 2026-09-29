@@ -159,6 +159,33 @@ test('고른 것들을 폴더로 끌면 전부 함께 옮겨진다', async ({ pa
   await expect(page.locator('.bulk-bar')).toHaveCount(0) // 옮기고 나면 선택은 풀린다
 })
 
+test('형제 파일 위에 놓아도(제자리 이동) 이름이 바뀌지 않는다', async ({ page }) => {
+  // 사용자가 발견한 버그. 파일 위에 놓으면 대상은 '그 파일의 부모 폴더'라, 형제 위에
+  // 놓는 건 제자리 이동이다. 빈 이름 찾기가 **자기 자신**까지 남으로 세는 바람에
+  // 고른 것이 전부 '이름 (2)'가 됐다.
+  await loginAs(page, ADMIN)
+  const tag = Date.now()
+  await inFreshFolder(page, '제자리')
+
+  const names = [1, 2, 3].map((i) => `제자리${i}_${tag}.txt`)
+  await page.locator('input[type="file"]:not([webkitdirectory])').setInputFiles(names.map(buf))
+  await expect(fileCell(page, names[2])).toBeVisible()
+
+  await fileCell(page, names[0]).click({ modifiers: ['ControlOrMeta'] })
+  await fileCell(page, names[1]).click({ modifiers: ['ControlOrMeta'] })
+  await expect(page.locator('.bulk-bar')).toContainText('2개 선택됨')
+
+  // 고른 것들을 '고르지 않은 형제' 위에 놓는다 → 셋 다 같은 폴더에 있으므로 제자리다
+  const dt = await page.evaluateHandle(() => new DataTransfer())
+  await row(page, names[0]).dispatchEvent('dragstart', { dataTransfer: dt })
+  await row(page, names[2]).dispatchEvent('dragover', { dataTransfer: dt })
+  await row(page, names[2]).dispatchEvent('drop', { dataTransfer: dt })
+
+  // 이름이 그대로여야 한다 — '(2)'가 하나라도 생기면 안 된다
+  for (const n of names) await expect(fileCell(page, n)).toHaveCount(1)
+  await expect(page.locator('.tree-name').filter({ hasText: ' (2)' })).toHaveCount(0)
+})
+
 test('연달아 빠르게 눌러도 클릭이 먹히지 않는다', async ({ page }) => {
   // 한 번에 세 번 — 리렌더 사이에 끼어드는 클릭. 선택을 '통째로 덮어쓰면' 마지막 하나만
   // 남는다(실제로 그랬다). 사람 손으로는 잘 안 나지만 트랙패드 연타로는 난다.

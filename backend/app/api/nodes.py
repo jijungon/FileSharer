@@ -82,20 +82,30 @@ def clean_name(raw: str) -> str:
     return name[:255]
 
 
-def unique_name(db: Session, space_id: str, parent_id: str | None, name: str) -> str:
-    """같은 폴더에 같은 이름이 있으면 '이름 (2)'식으로 회피."""
+def unique_name(
+    db: Session,
+    space_id: str,
+    parent_id: str | None,
+    name: str,
+    exclude_id: str | None = None,
+) -> str:
+    """같은 폴더에 같은 이름이 있으면 '이름 (2)'식으로 회피.
+
+    `exclude_id` 는 **'남'으로 세지 않을 노드**다. 이동·이름변경은 옮기는 당사자가 이미
+    그 자리에 있으므로, 빼지 않으면 제자리로 옮기기만 해도 자기 이름과 부딪혀 '이름 (2)'가
+    된다. 새로 만드는 쪽(업로드·폴더 생성·복사)은 당사자가 없으니 그대로 둔다.
+    """
+
     def taken(candidate: str) -> bool:
-        return (
-            db.scalar(
-                select(Node).where(
-                    Node.space_id == space_id,
-                    Node.parent_id == parent_id,
-                    Node.name == candidate,
-                    Node.deleted_at.is_(None),
-                )
-            )
-            is not None
+        q = select(Node).where(
+            Node.space_id == space_id,
+            Node.parent_id == parent_id,
+            Node.name == candidate,
+            Node.deleted_at.is_(None),
         )
+        if exclude_id is not None:
+            q = q.where(Node.id != exclude_id)
+        return db.scalar(q) is not None
 
     if not taken(name):
         return name
@@ -1040,7 +1050,9 @@ def patch_node(
     node = get_node_checked(db, user, node_id)
 
     if body.name is not None:
-        node.name = unique_name(db, node.space_id, node.parent_id, clean_name(body.name))
+        node.name = unique_name(
+            db, node.space_id, node.parent_id, clean_name(body.name), exclude_id=node.id
+        )
         audit.log(db, "rename", user_id=user.id, node_id=node.id, detail=node.name)
 
     if body.move:
@@ -1058,7 +1070,9 @@ def patch_node(
             new_parent_id = None
         # 출발·도착 공간 모두 쓰기 가능해야 (매트릭스의 이동 규칙)
         get_space_checked(db, user, node.space_id)
-        node.name = unique_name(db, target_space.id, new_parent_id, node.name)
+        node.name = unique_name(
+            db, target_space.id, new_parent_id, node.name, exclude_id=node.id
+        )
         _move_subtree_space(db, node, target_space.id)
         node.parent_id = new_parent_id
         audit.log(db, "move", user_id=user.id, node_id=node.id, detail=target_space.type)
@@ -1188,7 +1202,11 @@ def restore_node(
     parent = db.get(Node, node.parent_id) if node.parent_id else None
     if parent is not None and parent.deleted_at is not None:
         node.parent_id = None  # 부모가 아직 휴지통이면 루트로 복원
-    node.name = unique_name(db, node.space_id, node.parent_id, node.name)
+    # 아직 deleted_at 이 남아 있어 자기 자신은 어차피 안 걸리지만, 두 줄의 순서에
+    # 기대지 않도록 명시한다.
+    node.name = unique_name(
+        db, node.space_id, node.parent_id, node.name, exclude_id=node.id
+    )
     node.deleted_at = None
     audit.log(db, "restore", user_id=user.id, node_id=node.id, detail=node.name)
     return node_out(node)
