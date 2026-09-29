@@ -150,13 +150,18 @@ test('고른 것들을 폴더로 끌면 전부 함께 옮겨진다', async ({ pa
   await row(page, dest).dispatchEvent('dragover', { dataTransfer: dt })
   await row(page, dest).dispatchEvent('drop', { dataTransfer: dt })
 
-  // 둘 다 대상 폴더 **안에** 들어가 있어야 한다(트리에 보이는 것만으로는 증명이 안 된다)
-  const inside = page
-    .locator('li.tree-li')
-    .filter({ has: page.locator('.tree-name', { hasText: dest }) })
-  await expect(inside.locator('.tree-name').filter({ hasText: a })).toBeVisible()
-  await expect(inside.locator('.tree-name').filter({ hasText: b })).toBeVisible()
   await expect(page.locator('.bulk-bar')).toHaveCount(0) // 옮기고 나면 선택은 풀린다
+
+  // 둘 다 대상 폴더 **안에** 들어가 있어야 한다. 트리 어딘가에 보이는 것만으로는 증명이
+  // 안 된다 — 안 옮겨졌어도 원래 자리에 그대로 보이기 때문이다.
+  // 대상 폴더로 들어가 펼친 뒤(접혀 있으면 자식 ul 자체가 DOM에 없다), 그 행 바로 다음의
+  // ul = 그 폴더의 자식 목록만 본다. `li.tree-li` 를 'dest를 품은 것'으로 거르면
+  // **조상 li 까지** 걸려서 옮겨지지 않은 항목도 안에 있는 것처럼 통과한다.
+  await fileCell(page, dest).click()
+  await expect(page.locator('.tree-row.active', { hasText: dest })).toBeVisible()
+  const destChildren = row(page, dest).locator('xpath=following-sibling::ul[1]')
+  await expect(destChildren.locator('.tree-name').filter({ hasText: a })).toBeVisible()
+  await expect(destChildren.locator('.tree-name').filter({ hasText: b })).toBeVisible()
 })
 
 test('형제 파일 위에 놓아도(제자리 이동) 이름이 바뀌지 않는다', async ({ page }) => {
@@ -208,6 +213,79 @@ test('연달아 빠르게 눌러도 클릭이 먹히지 않는다', async ({ pag
 
   await expect(page.locator('.bulk-bar')).toContainText('3개 선택됨')
   await expect(page.locator('.tree-row.checked')).toHaveCount(3)
+})
+
+test('고른 것들을 다른 공간에 놓으면 전부 복사된다 (원본은 남는다)', async ({ page }) => {
+  // 드롭 매트릭스의 빈칸이었다 — 공간 드롭은 단건만, 다중선택은 폴더 드롭만 시험하고 있었다.
+  await loginAs(page, ADMIN)
+  const tag = Date.now()
+  await inFreshFolder(page, '공간복사')
+
+  const a = `복사가_${tag}.txt`
+  const b = `복사나_${tag}.txt`
+  await page.locator('input[type="file"]:not([webkitdirectory])').setInputFiles([buf(a), buf(b)])
+  await expect(fileCell(page, b)).toBeVisible()
+
+  await fileCell(page, a).click({ modifiers: ['ControlOrMeta'] })
+  await fileCell(page, b).click({ modifiers: ['ControlOrMeta'] })
+  await expect(page.locator('.bulk-bar')).toContainText('2개 선택됨')
+
+  // 다른 공간 헤더에 놓는다 → 이동이 아니라 복사여야 한다
+  await page.evaluate(
+    ({ src, names }) => {
+      const rows = [...document.querySelectorAll('.tree-row')]
+      const from = rows.find((r) =>
+        r.querySelector('.tree-name')?.textContent?.includes(src),
+      ) as HTMLElement
+      const other = [...document.querySelectorAll('.space-root')].find(
+        (h) => !h.classList.contains('active'),
+      ) as HTMLElement
+      if (!from || !other) throw new Error(`드래그 대상을 못 찾음 (${names})`)
+      const dt = new DataTransfer()
+      from.dispatchEvent(new DragEvent('dragstart', { dataTransfer: dt, bubbles: true }))
+      other.dispatchEvent(
+        new DragEvent('dragover', { dataTransfer: dt, bubbles: true, cancelable: true }),
+      )
+      other.dispatchEvent(
+        new DragEvent('drop', { dataTransfer: dt, bubbles: true, cancelable: true }),
+      )
+    },
+    { src: a, names: [a, b].join(', ') },
+  )
+
+  // 복사이므로 원본이 그대로 있고(이름도 그대로), 사본이 생겨 각 이름이 두 개가 된다
+  await expect(fileCell(page, a)).toHaveCount(2)
+  await expect(fileCell(page, b)).toHaveCount(2)
+})
+
+test('고른 것들을 휴지통에 놓으면 전부 삭제된다', async ({ page }) => {
+  // 이것도 빈칸이었다 — 휴지통 드롭은 단건만 시험하고 있었다.
+  await loginAs(page, ADMIN)
+  const tag = Date.now()
+  await inFreshFolder(page, '휴지통다중')
+
+  const a = `버릴가_${tag}.txt`
+  const b = `버릴나_${tag}.txt`
+  const keep = `남길것_${tag}.txt`
+  await page
+    .locator('input[type="file"]:not([webkitdirectory])')
+    .setInputFiles([buf(a), buf(b), buf(keep)])
+  await expect(fileCell(page, keep)).toBeVisible()
+
+  await fileCell(page, a).click({ modifiers: ['ControlOrMeta'] })
+  await fileCell(page, b).click({ modifiers: ['ControlOrMeta'] })
+  await expect(page.locator('.bulk-bar')).toContainText('2개 선택됨')
+
+  const dt = await page.evaluateHandle(() => new DataTransfer())
+  const trash = page.locator('.sidebar-trash')
+  await row(page, a).dispatchEvent('dragstart', { dataTransfer: dt })
+  await trash.dispatchEvent('dragover', { dataTransfer: dt })
+  await trash.dispatchEvent('drop', { dataTransfer: dt })
+
+  await expect(fileCell(page, a)).toHaveCount(0)
+  await expect(fileCell(page, b)).toHaveCount(0)
+  await expect(fileCell(page, keep)).toBeVisible() // 안 고른 건 그대로
+  await expect(page.locator('.bulk-bar')).toHaveCount(0)
 })
 
 test('Esc를 누르면 선택이 풀린다', async ({ page }) => {

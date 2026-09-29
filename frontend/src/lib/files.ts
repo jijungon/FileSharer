@@ -174,6 +174,17 @@ export const purgeNode = (id: string) =>
 export const downloadUrl = (node: NodeInfo) =>
   node.type === 'file' ? `/api/files/${node.id}` : `/api/nodes/${node.id}/tar`
 
-// 고른 항목 여러 개를 tar.gz 하나로. 링크(세션 쿠키)로 바로 받으므로 fetch가 아니다.
-export const bundleUrl = (ids: string[]) =>
-  `/api/nodes/bundle?${ids.map((id) => `id=${encodeURIComponent(id)}`).join('&')}`
+// 서버의 BUNDLE_MAX 와 **같아야 한다**(backend/app/api/nodes.py). 넘기면 서버가 400 JSON을
+// 주는데, 링크로 받는 방식이라 브라우저가 그 JSON 페이지로 화면을 통째로 옮겨 버린다.
+// Shift+클릭으로 큰 폴더를 훑으면 200은 쉽게 넘으므로 화면에서 먼저 막는다.
+export const BUNDLE_MAX = 200
+
+/** 고른 것들을 받을 주소, 또는 받을 수 없는 이유. 링크(세션 쿠키)로 받으므로 fetch가 아니다. */
+export function bundleRequest(ids: string[]): { url: string } | { error: string } {
+  if (ids.length === 0) return { error: '고른 항목이 없습니다' }
+  if (ids.length > BUNDLE_MAX) {
+    return { error: `한 번에 ${BUNDLE_MAX}개까지 받을 수 있습니다 (${ids.length}개 고름)` }
+  }
+  const q = ids.map((id) => `id=${encodeURIComponent(id)}`).join('&')
+  return { url: `/api/nodes/bundle?${q}` }
+}
