@@ -152,15 +152,24 @@ jobs:
             compose.log
             e2e/test-results/
 
-  # e2e 를 needs 에 넣는 이유: **이 잡이 곧 배포**이기 때문이다.
-  # 원래는 SSH로 배포하는 deploy 잡이 따로 있었고 그게 needs: [image, e2e] 였다(#71).
-  # watchtower(pull 방식)로 바꾸면서 deploy 잡을 지웠는데(#74), 그때 e2e 게이트도 같이
-  # 사라졌다. 지금은 GHCR 에 :latest 를 푸시하는 순간 watchtower 가 가져가 배포된다 —
-  # 즉 image 가 예전 deploy 의 자리를 물려받았으니 조건도 물려받아야 한다.
-  # 대가: image 가 e2e 를 기다리므로 배포가 1~2분 느려진다. e2e 가 깨진 코드가 나가는 것보다 낫다.
+  # **굽는 것과 내보내는 것을 가른다.**
+  #
+  # 배포의 정의는 '`:latest` 가 움직이는 것'이다 — 서버의 watchtower 가 그것만 본다.
+  # 그러니 게이트를 걸어야 할 곳은 **굽기**가 아니라 **태그 붙이기**다.
+  #
+  #   image   — e2e 와 **동시에** 굽는다. :<sha> 로만 올린다(아무도 안 본다).
+  #   promote — e2e 가 초록이어야 돈다. :latest / :<태그> / :b<빌드> 를 붙인다 = 배포.
+  #
+  # 예전엔 image 가 e2e 를 기다렸다. 게이트로서는 맞았지만 **굽는 3분 30초가 통째로
+  # 배포 시간에 얹혔다**(태그 배포 8분 31초 = e2e 4분 54초 + image 3분 31초, 직렬).
+  # 지금은 굽기가 e2e 뒤에 숨고, 남는 건 레지스트리에서 태그만 옮기는 몇 초다.
+  # 게이트는 그대로다 — e2e 가 깨지면 promote 가 안 돌고 :latest 는 제자리에 있다.
   image:
-    needs: [secrets-scan, backend, frontend, e2e]
+    needs: [secrets-scan]
     runs-on: ubuntu-24.04
+    outputs:
+      promote: ${{ steps.appver.outputs.promote }}
+      version: ${{ steps.appver.outputs.version }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -195,29 +204,30 @@ jobs:
           PR=$(printf '%s' "$SUBJECT" | grep -oE '#[0-9]+' | tail -1 | tr -d '#')
 
           if [[ "$GITHUB_REF" == refs/tags/* ]]; then
-            # 배포다. :latest 를 움직이면 서버의 watchtower 가 가져간다.
             TAG="${GITHUB_REF#refs/tags/}"
             VERSION="$TAG"
-            TAGS="$IMAGE:latest
-          $IMAGE:$TAG
-          $IMAGE:$GITHUB_SHA"
+            # 사람이 읽는 태그는 promote 가 붙인다(e2e 초록 뒤에). 여기선 굽기만 한다.
+            PROMOTE="$IMAGE:latest
+          $IMAGE:$TAG"
             case "$TAG" in
-              v0.*) echo "dev 배포 — $VERSION" ;;
-              *)    echo "prod 배포 — $VERSION" ;;
+              v0.*) echo "dev 배포 — $VERSION (e2e 통과 후 :latest 로 승격)" ;;
+              *)    echo "prod 배포 — $VERSION (e2e 통과 후 :latest 로 승격)" ;;
             esac
           else
-            # main 머지다. **:latest 를 건드리지 않는다** → 아무데도 안 나간다.
             VERSION="v0.0.$BUILD"
-            TAGS="$IMAGE:b$BUILD
-          $IMAGE:$GITHUB_SHA"
+            PROMOTE="$IMAGE:b$BUILD"   # :latest 는 건드리지 않는다 → 아무데도 안 나간다
             echo "개발 빌드 — $VERSION (배포되지 않음)"
           fi
+          # 굽는 쪽이 올리는 건 내용 주소 하나뿐이다 — 아무도 이걸 폴링하지 않으므로
+          # e2e 가 끝나기 전에 올라가도 배포되지 않는다.
+          TAGS="$IMAGE:$GITHUB_SHA"
 
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "build=$BUILD" >> "$GITHUB_OUTPUT"
           echo "pr=${PR:+#$PR}" >> "$GITHUB_OUTPUT"
           echo "built_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
           { echo "tags<<EOF"; echo "$TAGS"; echo "EOF"; } >> "$GITHUB_OUTPUT"
+          { echo "promote<<EOF"; echo "$PROMOTE"; echo "EOF"; } >> "$GITHUB_OUTPUT"
       # PR은 amd64만 빌드해 빠르게 검증, main push면 amd64+arm64 멀티아치로 GHCR에 push
       - name: 빌드 (main push면 GHCR push까지)
         uses: docker/build-push-action@v7
@@ -233,6 +243,33 @@ jobs:
           tags: ${{ steps.appver.outputs.tags }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  # **여기가 배포다.** 굽는 건 이미 끝나 있고, 레지스트리에서 태그만 옮긴다(몇 초).
+  # e2e·backend·frontend 가 초록이어야 돈다 — 하나라도 깨지면 :latest 는 제자리에 있다.
+  promote:
+    needs: [image, backend, frontend, e2e]
+    if: github.event_name == 'push'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: 태그를 붙인다 (:latest 가 움직이면 watchtower 가 가져간다)
+        env:
+          PROMOTE: ${{ needs.image.outputs.promote }}
+        run: |
+          # imagetools 는 **다시 굽지 않는다** — 레지스트리 안에서 매니페스트만 복사한다.
+          # 멀티아치 매니페스트도 그대로 따라간다.
+          ARGS=()
+          while IFS= read -r tag; do
+            [ -n "$tag" ] && ARGS+=(--tag "$tag")
+          done <<< "$PROMOTE"
+          echo "붙일 태그: ${ARGS[*]}"
+          docker buildx imagetools create "${ARGS[@]}" \
+            "ghcr.io/jijungon/filesharer:${{ github.sha }}"
+          echo "${{ needs.image.outputs.version }} 승격 완료"
 
   # ── 자동 배포(CD): 오리진의 watchtower가 pull 방식으로 처리 ──
   # 오리진(Oracle)이 인바운드 SSH를 소스 IP로 제한 → GitHub 러너에서의 SSH 배포는

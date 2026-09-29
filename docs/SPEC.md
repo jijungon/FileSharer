@@ -482,7 +482,8 @@ Playwright는 `overflow`로 **잘려 보이지 않는 요소도 클릭**하므�
 | `frontend` | Node 22, `npm ci`, lint, vitest, build |
 | `e2e` | `docker compose up -d --build` → 헬스 폴링 → Playwright(chromium). 실패 시 compose 로그·결과를 아티팩트로 업로드 |
 | `deps-audit` | pip-audit + npm audit. **자문용**이라 다른 잡의 `needs`에 넣지 않는다 |
-| `image` | `needs: [secrets-scan, backend, frontend]`. buildx 멀티아치, push일 때만 GHCR 푸시 |
+| `image` | `needs: [secrets-scan]`. **e2e 와 동시에 굽는다.** buildx 멀티아치, push면 `:<sha>` 로만 GHCR 푸시 |
+| `promote` | `needs: [image, backend, frontend, e2e]`. **여기가 배포다** — 레지스트리에서 태그만 옮긴다(몇 초) |
 
 ### 6.2 이미지 빌드
 
@@ -490,7 +491,24 @@ Playwright는 `overflow`로 **잘려 보이지 않는 요소도 클릭**하므�
 - 플랫폼: push=`linux/amd64,linux/arm64`, PR=`linux/amd64`만(검증용).
 - **함정**: 프런트 빌드를 arm64 에뮬레이션으로 돌리면 대형 의존성에서 멈춘다(6시간 타임아웃 경험). Dockerfile `web` 스테이지에 **`--platform=$BUILDPLATFORM`** 을 줘 네이티브로 한 번만 빌드하고 결과물만 복사한다.
 - 버전: `VERSION` 파일(제품 버전) + 커밋 메시지 첫 줄의 **마지막 `#<n>`**(빌드 번호)을 빌드 인자로 넘긴다. 서버가 `/api/health`로 보고한다(2.6).
-- **`needs`에 `e2e`가 들어 있다** — 이 잡이 곧 배포이기 때문이다(6.3).
+- **굽는 것과 내보내는 것을 가른다.** 배포의 정의는 '`:latest` 가 움직이는 것'이다(6.3).
+  그러니 게이트를 걸 곳은 **굽기가 아니라 태그 붙이기**다.
+
+  | 잡 | 언제 | 무엇을 올리나 |
+  |---|---|---|
+  | `image` | e2e 와 **동시에** | `:<sha>` 만 — 아무도 폴링하지 않으므로 배포가 아니다 |
+  | `promote` | e2e 초록 뒤 | `:latest` · `:<태그>` · `:b<빌드>` — **이게 배포다** |
+
+  `promote` 는 `docker buildx imagetools create` 로 **다시 굽지 않고** 레지스트리 안에서
+  매니페스트만 복사한다(멀티아치도 그대로 따라간다). 몇 초면 끝난다.
+
+  **왜 바꿨나**: 예전엔 `image` 가 `e2e` 를 기다렸다. 게이트로서는 맞았지만 **굽는 시간이
+  통째로 배포 시간에 얹혔다** — 태그 배포 8분 31초 = e2e 4분 54초 + image 3분 31초(직렬).
+  지금은 굽기가 e2e 뒤에 숨어 **약 5분 15초**가 된다. 게이트는 그대로다 — e2e 가 깨지면
+  `promote` 가 안 돌고 `:latest` 는 제자리에 있다.
+- arm64 빌드는 **남겨둔다.** 서버는 amd64(`uname -m` = `x86_64`)라 지금은 안 쓰이지만,
+  `image` 가 e2e 뒤에 숨은 뒤로는 빼도 **벽시계가 줄지 않는다**. 저장소가 public 이라
+  러너 시간도 무료다. 오라클 무료 ARM 티어로 옮길 선택지만 남는 셈이라 그대로 둔다.
 
 ### 6.3 배포(CD)
 
@@ -512,7 +530,7 @@ gh release create v1.0.1 --generate-notes
 갈라 놓으면 **자유롭게 머지하고 원할 때 한 번** 내보내면 된다. 롤백도 옛 태그를 다시 밀면 끝이다.
 (원본 서버는 인바운드 SSH가 IP 제한이라 push형 배포를 쓰지 않는다.)
 
-**그래서 `image` 잡이 곧 배포다.** 처음엔 SSH로 배포하는 `deploy` 잡이 따로 있었고 그게 `needs: [image, e2e]` 였다. watchtower로 바꾸면서 `deploy` 를 지웠는데, **그때 e2e 게이트도 같이 사라졌다.** 한동안 "e2e가 깨져도 배포는 나가는" 상태였다 — 구조를 바꿀 때 따라오지 않은 설정의 전형이다. 지금은 `image` 가 그 조건을 물려받았다.
+**그래서 `promote` 잡이 곧 배포다.** 처음엔 SSH로 배포하는 `deploy` 잡이 따로 있었고 그게 `needs: [image, e2e]` 였다. watchtower로 바꾸면서 `deploy` 를 지웠는데, **그때 e2e 게이트도 같이 사라졌다.** 한동안 "e2e가 깨져도 배포는 나가는" 상태였다 — 구조를 바꿀 때 따라오지 않은 설정의 전형이다. 그 조건은 `image` 가 물려받았다가, 지금은 `promote` 가 들고 있다(6.2).
 
 **배포 확인 방법**: `curl -s https://<도메인>/api/health` → `version`(제품)과 `build`(머지 PR)를 본다. 제품 버전이 그대로인 배포는 `build` 로 판별한다. 번들 문자열을 긁는 옛 방법은 쓰지 않는다(2.6).
 
