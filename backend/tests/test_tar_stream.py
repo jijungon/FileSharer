@@ -11,39 +11,68 @@ import tarfile
 import threading
 import time
 
+from app.services import tar_stream as ts
 from app.services.tar_stream import QUEUE_CHUNKS, stream_tar_gz
 
 
 class Counting(io.BytesIO):
-    """읽힌 만큼 기록하는 스트림."""
+    """읽힌 만큼 기록하고, 닫힐 때 알려주는 스트림."""
 
-    def __init__(self, data: bytes) -> None:
+    def __init__(self, data: bytes, on_close=None) -> None:  # noqa: ANN001
         super().__init__(data)
         self.read_bytes = 0
+        self._on_close = on_close
 
     def read(self, n: int = -1) -> bytes:  # type: ignore[override]
         out = super().read(n)
         self.read_bytes += len(out)
         return out
 
+    def close(self) -> None:
+        if self._on_close is not None:
+            self._on_close()
+            self._on_close = None
+        super().close()
+
 
 class Stub:
-    """저장소 대역. exists() 를 부르면 **실패시킨다** — 부를 이유가 없어야 한다."""
+    """저장소 대역. exists() 를 부르면 **실패시킨다** — 부를 이유가 없어야 한다.
 
-    def __init__(self, blobs: dict[str, bytes], fail: set[str] | None = None) -> None:
+    `open_delay` 로 원격의 왕복을 흉내 내고, '동시에 열려 있는 수'를 기록한다.
+    """
+
+    def __init__(
+        self,
+        blobs: dict[str, bytes],
+        fail: set[str] | None = None,
+        open_delay: float = 0.0,
+    ) -> None:
         self.blobs = blobs
         self.fail = fail or set()
+        self.open_delay = open_delay
         self.opened: list[str] = []
         self.streams: dict[str, Counting] = {}
+        self.live = 0
+        self.peak_live = 0
+        self._lock = threading.Lock()
 
     def exists(self, key: str) -> bool:
         raise AssertionError("exists() 는 부르지 않아야 한다 — 원격에선 왕복 한 번이다")
 
+    def _closed(self) -> None:
+        with self._lock:
+            self.live -= 1
+
     def open_stream(self, key: str) -> Counting:
         if key in self.fail:
             raise FileNotFoundError(key)
-        self.opened.append(key)
-        s = Counting(self.blobs[key])
+        if self.open_delay:
+            time.sleep(self.open_delay)
+        with self._lock:
+            self.opened.append(key)
+            self.live += 1
+            self.peak_live = max(self.peak_live, self.live)
+        s = Counting(self.blobs[key], self._closed)
         self.streams[key] = s
         return s
 
@@ -147,22 +176,46 @@ def test_queue_bound_is_a_real_number():
     assert 1 <= QUEUE_CHUNKS <= 1024
 
 
-def test_next_files_are_opened_while_the_first_is_still_sending():
-    """원격 저장소는 '여는 것' 자체가 왕복 한 번이다 — 앞 파일을 보내는 동안 미리 연다.
+def test_opening_files_does_not_cost_time_per_file():
+    """여는 시간이 파일 수에 비례하면 안 된다 — 앞서 열어 숨긴다.
 
-    첫 파일이 커서 큐가 그 안에서 차버리게 만든다. 순차로 열면 그 시점에 열린 건
-    딱 하나뿐이다. 미리 열어두면 여러 개다. 이 차이가 작은 파일이 많을 때
-    2.8배로 벌어진다(측정: 300KB 20개, 왕복 120ms 가정 3.09초 → 1.11초).
+    원격 저장소는 여는 것 자체가 왕복 한 번이다. 순차로 열면 파일 8개 = 왕복 8번을
+    고스란히 기다린다. 실측(실제 R2): 200KB 20개에서 11.29초 → 2.11초.
     """
-    blobs = {f"k{i}": os.urandom(5_000_000) for i in range(4)}
-    st = Stub(blobs)
+    delay = 0.05
+    blobs = {f"k{i}": b"x" * 1000 for i in range(8)}
+    st = Stub(blobs, open_delay=delay)
     entries = [(N(k, len(v)), f"f{i}.bin") for i, (k, v) in enumerate(blobs.items())]
-    gen = stream_tar_gz(st, entries)
-    try:
-        next(gen)  # 첫 덩어리만 받고 멈춘다 → 큐가 차서 만드는 쪽이 막힌다
-        time.sleep(0.3)
-        assert len(st.opened) >= 2, (
-            f"첫 파일을 보내는 동안 {len(st.opened)}개만 열렸다 — 미리 열지 않는다"
-        )
-    finally:
-        gen.close()
+
+    t0 = time.perf_counter()
+    b"".join(stream_tar_gz(st, entries))
+    took = time.perf_counter() - t0
+
+    serial = len(blobs) * delay
+    assert took < serial * 0.6, (
+        f"{took:.2f}초 걸렸다 — 하나씩 차례로 여는 것({serial:.2f}초)과 다를 바 없다"
+    )
+
+
+def test_prefetch_is_budgeted_by_bytes_not_by_count(monkeypatch):
+    """큰 파일은 앞서 열지 않는다.
+
+    큰 응답을 여럿 동시에 열면 같은 회선을 나눠 써 **지금 보내는 파일이 밀린다.**
+    실측(실제 R2): 2MB 6개에서 앞서 8개를 열면 2.85초 → 3.12초로 오히려 느려졌다.
+    그래서 앞서 여는 양은 개수가 아니라 총 바이트로 잡는다.
+
+    예산을 작게 낮춰 로직만 본다 — 메가바이트를 옮기지 않고도 같은 규칙이다.
+    """
+    monkeypatch.setattr(ts, "PREFETCH_BYTES", 1000)
+
+    big = {f"k{i}": b"x" * 2000 for i in range(4)}  # 하나로 예산을 넘긴다
+    st = Stub(big, open_delay=0.02)
+    entries = [(N(k, len(v)), f"큰것{i}.bin") for i, (k, v) in enumerate(big.items())]
+    b"".join(stream_tar_gz(st, entries))
+    assert st.peak_live <= 2, f"큰 파일을 동시에 {st.peak_live}개나 열었다"
+
+    small = {f"s{i}": b"y" * 100 for i in range(6)}  # 여러 개 합쳐도 예산 안
+    st2 = Stub(small, open_delay=0.02)
+    entries2 = [(N(k, len(v)), f"작은것{i}.bin") for i, (k, v) in enumerate(small.items())]
+    b"".join(stream_tar_gz(st2, entries2))
+    assert st2.peak_live >= 3, f"작은 파일인데 동시에 {st2.peak_live}개만 열었다"
