@@ -45,6 +45,26 @@ GHCR 이미지를 받아 구동한다.
 보관 기간만 바꾸고 싶으면 `BACKUP_KEEP_WEEKLY` / `BACKUP_KEEP_MONTHLY`.
 돌고 있는지 확인(서버에서, 읽기 전용): `docker compose exec app python scripts/backup_list.py`
 
+## 2-2. 저장소 정합성 점검 (읽기 전용)
+
+둘은 서로 반대 방향이다. 아무것도 지우지 않으니 언제 돌려도 된다.
+
+```bash
+# 기록은 있는데 본체가 없는 파일 — 사용자가 열면 실패한다 (더 나쁜 쪽)
+docker compose exec app python scripts/missing_blobs.py
+
+# 참조 없는 오브젝트 — 공간만 축낸다. 지우려면 --delete --yes 를 줘야 한다
+docker compose exec app python scripts/r2_orphans.py
+```
+
+`missing_blobs.py` 는 하나라도 찾으면 종료 코드 1을 낸다. **사용중**인 파일이 나오면
+다시 올려야 하고, **휴지통**에 있는 것이면 완전삭제하면 된다.
+
+> ⚠️ 서버에서 compose 를 부를 땐 **`-f compose.yml` 을 붙이지 않는다.** 붙이면
+> `compose.override.yml` 이 병합되지 않아 watchtower 라벨이 떨어지고, 그때부터 자동 배포가
+> 멈춘다(실제로 겪었다). 항상 `cd ~/filesharer && docker compose ...` 로 쓴다.
+> 배포는 `--force-recreate` 가 아니라 `docker compose pull app && docker compose up -d app`.
+
 ## 2-1. 계정 잠김 복구 (관리자가 없거나 비밀번호를 잃었을 때)
 
 지금 구조에는 막다른 길이 있다. 부트스트랩 관리자는 `users` 테이블이 **비어 있을 때만**

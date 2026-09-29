@@ -129,6 +129,9 @@ jobs:
           docker compose exec -T app python scripts/user_admin.py list
           docker compose exec -T app python scripts/backup_list.py
           docker compose exec -T app python scripts/user_admin.py --help
+          # 정합성 점검(읽기 전용). 깨끗하면 0, 본체 없는 파일이 있으면 1을 낸다 —
+          # 방금 만든 e2e 데이터는 깨끗해야 하므로 0이 아니면 진짜 문제다.
+          docker compose exec -T app python scripts/missing_blobs.py
       - uses: actions/setup-node@v5
         with:
           node-version: 22
