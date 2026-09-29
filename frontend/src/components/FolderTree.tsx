@@ -9,6 +9,9 @@ interface TreeNode extends TreeRow {
 // 겹치지 않게 depth마다 top을 ROW_H씩 내리므로, .tree-row 높이와 반드시 일치시킨다.
 const ROW_H = 24
 
+// 선택이 꺼져 있을 때 쓰는 고정 빈 집합 — 렌더마다 new Set()을 만들지 않게.
+const NO_SELECTION: ReadonlySet<string> = new Set()
+
 function buildTree(rows: TreeRow[]): TreeNode[] {
   const byId = new Map<string, TreeNode>()
   rows.forEach((r) => byId.set(r.id, { ...r, children: [] }))
@@ -39,7 +42,7 @@ interface Props {
   onOpenFolder: (folderId: string) => void
   onOpenFile: (row: TreeRow) => void
   onDropToFolder?: (
-    draggedId: string,
+    draggedIds: string[], // 다중선택을 끌면 여러 개가 한 번에 온다
     targetFolderId: string | null,
     ctx: { srcSpaceId: string; targetSpaceId: string },
   ) => void
@@ -49,6 +52,15 @@ interface Props {
   onRenameCommit?: (row: TreeRow, newName: string) => void
   onToggleFavorite?: (row: TreeRow) => void
   onDelete?: (row: TreeRow) => void
+  // ── 다중선택 ──
+  // 선택 집합은 부모(Files)가 들고 있다. 대량작업과 하단 바가 거기 있고, 공간이 여러 개라
+  // 트리도 여러 개인데 선택은 한 공간 안에서만 성립하기 때문이다.
+  checked?: Set<string>
+  // 다음 선택을 **이전 값으로부터** 계산해 넘긴다. 연달아 빠르게 누르면 props의 checked 는
+  // 아직 직전 클릭의 결과를 담고 있지 않아(리렌더 전), 통째로 덮어쓰면 클릭 하나가 먹힌다.
+  onChecked?: (ofSpace: string, update: (prev: Set<string>) => Set<string>) => void
+  onBulkDelete?: (ids: string[]) => void
+  onBulkDownload?: (ids: string[]) => void
 }
 
 export default function FolderTree({
@@ -64,6 +76,10 @@ export default function FolderTree({
   onRenameCommit,
   onToggleFavorite,
   onDelete,
+  checked,
+  onChecked,
+  onBulkDelete,
+  onBulkDownload,
 }: Props) {
   const [rows, setRows] = useState<TreeRow[]>([])
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
@@ -152,6 +168,57 @@ export default function FolderTree({
     })
   }
 
+  // ── 다중선택 ──
+  // 범위 선택은 **지금 화면에 보이는 순서** 위에서 일어난다. 접힌 폴더 안까지 집어가면
+  // "화면에서 두 줄을 골랐는데 서른 개가 지워지는" 일이 생긴다.
+  const sel = checked ?? NO_SELECTION
+  const anchorRef = useRef<string | null>(null) // Shift 범위의 기준점
+
+  const visibleOrder = useMemo(() => {
+    const out: string[] = []
+    const walk = (nodes: TreeNode[]) => {
+      for (const n of nodes) {
+        out.push(n.id)
+        if (n.type === 'folder' && expanded.has(n.id)) walk(n.children)
+      }
+    }
+    walk(tree)
+    return out
+  }, [tree, expanded])
+
+  // 행을 눌렀을 때. Ctrl/Cmd=하나 집기·놓기, Shift=기준점부터 여기까지, 그냥 클릭=선택 풀고 열기.
+  function activateRow(e: React.MouseEvent, node: TreeNode) {
+    const multi = e.metaKey || e.ctrlKey
+    const anchor = anchorRef.current
+    if (onChecked && (multi || (e.shiftKey && anchor))) {
+      e.preventDefault()
+      onChecked(spaceId, (prev) => {
+        const next = new Set(prev)
+        if (multi) {
+          if (next.has(node.id)) next.delete(node.id)
+          else next.add(node.id)
+        } else if (anchor) {
+          const a = visibleOrder.indexOf(anchor)
+          const b = visibleOrder.indexOf(node.id)
+          if (a !== -1 && b !== -1) {
+            for (const id of visibleOrder.slice(Math.min(a, b), Math.max(a, b) + 1)) next.add(id)
+          }
+        }
+        return next
+      })
+      if (multi) anchorRef.current = node.id
+      return
+    }
+    if (sel.size > 0) onChecked?.(spaceId, () => new Set())
+    anchorRef.current = node.id
+    if (node.type === 'folder') {
+      onOpenFolder(node.id)
+      toggle(node.id)
+    } else {
+      onOpenFile(node)
+    }
+  }
+
   // 인라인 이름변경: 시작(메뉴 닫고 그 자리에 입력창) / 커밋(빈·동일 이름이면 무시)
   function beginRename(node: TreeRow) {
     setMenu(null)
@@ -188,9 +255,20 @@ export default function FolderTree({
         const id = e.dataTransfer.getData('application/x-node-id')
         if (id) {
           e.preventDefault()
+          // 다중선택을 끌었으면 x-node-ids 에 전부 들어 있다(없거나 깨졌으면 끌던 한 개로).
+          let ids = [id]
+          const many = e.dataTransfer.getData('application/x-node-ids')
+          if (many) {
+            try {
+              const parsed = JSON.parse(many) as string[]
+              if (Array.isArray(parsed) && parsed.length > 0) ids = parsed
+            } catch {
+              /* 단일로 폴백 */
+            }
+          }
           // 소스 공간을 함께 넘겨, 드롭 지점에서 같은 공간이면 이동·다른 공간이면 복사로 판단하게 한다.
           const srcSpace = e.dataTransfer.getData('application/x-node-space')
-          onDropToFolder?.(id, targetId, { srcSpaceId: srcSpace, targetSpaceId: spaceId })
+          onDropToFolder?.(ids, targetId, { srcSpaceId: srcSpace, targetSpaceId: spaceId })
         } else if (e.dataTransfer.types.includes('Files')) {
           e.preventDefault()
           onUploadFiles?.(targetId, e) // 로컬 파일/폴더 → 이 폴더(targetId=null이면 공간 루트) 안으로 업로드
@@ -202,8 +280,10 @@ export default function FolderTree({
   // 트리 항목을 잡아 폴더(이동)·다른 공간(복사)·휴지통(삭제)으로 끌어다 놓을 수 있게 한다.
   // 표를 없앤 뒤 유일한 이동 수단 — 사이드바/공간/휴지통 드롭 핸들러가 읽는 payload를 심는다.
   function rowDragStart(e: React.DragEvent, node: TreeNode) {
+    // 고른 것 중 하나를 끌면 고른 것 전부가 따라간다(Finder식). 그 외에는 이 행 하나만.
+    const ids = sel.has(node.id) && sel.size > 1 ? [...sel] : [node.id]
     e.dataTransfer.setData('application/x-node-id', node.id)
-    e.dataTransfer.setData('application/x-node-ids', JSON.stringify([node.id]))
+    e.dataTransfer.setData('application/x-node-ids', JSON.stringify(ids))
     e.dataTransfer.setData('application/x-node-space', spaceId) // 소스 공간 — 드롭 시 이동/복사 판단 기준
 
     e.dataTransfer.effectAllowed = 'copyMove'
@@ -213,10 +293,10 @@ export default function FolderTree({
       chip.className = 'drag-chip'
       const icon = document.createElement('span')
       icon.className = 'drag-chip__icon'
-      icon.textContent = node.type === 'folder' ? '📁' : '📄'
+      icon.textContent = ids.length > 1 ? '🗂' : node.type === 'folder' ? '📁' : '📄'
       const name = document.createElement('span')
       name.className = 'drag-chip__name'
-      name.textContent = node.name
+      name.textContent = ids.length > 1 ? `${ids.length}개 항목` : node.name
       chip.append(icon, name)
       chip.style.position = 'absolute'
       chip.style.top = '-1000px'
@@ -246,7 +326,7 @@ export default function FolderTree({
             hoverRowId === node.id && dragOverId !== node.id ? ' drag-hover' : ''
           }${draggingId === node.id ? ' dragging' : ''}${
             isFolder ? ' tree-row--sticky' : ''
-          }`}
+          }${sel.has(node.id) ? ' checked' : ''}`}
           style={isFolder ? { top: depth * ROW_H, zIndex: 60 - depth } : undefined}
           draggable={renaming !== node.id}
           onDragStart={(e) => {
@@ -303,9 +383,10 @@ export default function FolderTree({
           ) : (
             <button
               className="tree-name"
-              onClick={() =>
-                isFolder ? (onOpenFolder(node.id), toggle(node.id)) : onOpenFile(node)
-              }
+              onClick={(e) => activateRow(e, node)}
+              // Shift+클릭은 브라우저 기본 동작이 '텍스트 범위 선택'이라, 막지 않으면
+              // 범위를 고를 때마다 파일 이름들이 파랗게 드래그된 것처럼 보인다.
+              onMouseDown={(e) => e.shiftKey && e.preventDefault()}
               onKeyDown={(e) => {
                 // 선택 후 Enter → 인라인 이름변경(Finder식). 기본 Enter=열기를 막는다.
                 if (e.key === 'Enter' && onRenameCommit) {
@@ -355,28 +436,65 @@ export default function FolderTree({
           onClick={(e) => e.stopPropagation()}
           onContextMenu={(e) => e.preventDefault()}
         >
-          <button role="menuitem" onClick={() => beginRename(menu.row)}>
-            ✎ 이름 변경
-          </button>
-          <button
-            role="menuitem"
-            onClick={() => {
-              onToggleFavorite?.(menu.row)
-              setMenu(null)
-            }}
-          >
-            {favIds?.has(menu.row.id) ? '★ 즐겨찾기 해제' : '☆ 즐겨찾기'}
-          </button>
-          <button
-            role="menuitem"
-            className="danger"
-            onClick={() => {
-              onDelete?.(menu.row)
-              setMenu(null)
-            }}
-          >
-            🗑 삭제
-          </button>
+          {/* 고른 것 위에서 우클릭하면 고른 것 전부에 대한 메뉴로 바뀐다.
+              (이름 변경·즐겨찾기는 하나짜리 동작이라 여기 없다. 이동·복사는 드래그로.) */}
+          {sel.size > 1 && sel.has(menu.row.id) ? (
+            <>
+              <button
+                role="menuitem"
+                onClick={() => {
+                  onBulkDownload?.([...sel])
+                  setMenu(null)
+                }}
+              >
+                ⤓ {sel.size}개 내려받기
+              </button>
+              <button
+                role="menuitem"
+                onClick={() => {
+                  onChecked?.(spaceId, () => new Set())
+                  setMenu(null)
+                }}
+              >
+                ✕ 선택 해제
+              </button>
+              <button
+                role="menuitem"
+                className="danger"
+                onClick={() => {
+                  onBulkDelete?.([...sel])
+                  setMenu(null)
+                }}
+              >
+                🗑 {sel.size}개 삭제
+              </button>
+            </>
+          ) : (
+            <>
+              <button role="menuitem" onClick={() => beginRename(menu.row)}>
+                ✎ 이름 변경
+              </button>
+              <button
+                role="menuitem"
+                onClick={() => {
+                  onToggleFavorite?.(menu.row)
+                  setMenu(null)
+                }}
+              >
+                {favIds?.has(menu.row.id) ? '★ 즐겨찾기 해제' : '☆ 즐겨찾기'}
+              </button>
+              <button
+                role="menuitem"
+                className="danger"
+                onClick={() => {
+                  onDelete?.(menu.row)
+                  setMenu(null)
+                }}
+              >
+                🗑 삭제
+              </button>
+            </>
+          )}
         </div>
       )}
     </>

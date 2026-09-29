@@ -2465,6 +2465,18 @@ button:focus-visible {
   font-weight: 600;
 }
 
+/* 다중선택으로 고른 행. '지금 열려 있는 파일'(.active — 왼쪽 굵은 막대)과 뜻이 달라서
+   표시도 달라야 한다: 이쪽은 행을 한 바퀴 두르는 얇은 테두리다. 둘이 겹칠 수도 있다. */
+.tree-row.checked {
+  background: color-mix(in srgb, var(--primary) 18%, var(--canvas));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--primary) 50%, transparent);
+}
+.tree-row.checked.active {
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--primary) 50%, transparent),
+    inset 3px 0 0 var(--primary);
+}
+
 .tree-row.drag-over {
   background: color-mix(in srgb, var(--primary) 14%, var(--canvas));
   box-shadow: inset 0 0 0 2px var(--primary);
@@ -2647,6 +2659,47 @@ button:focus-visible {
 }
 
 /* 업로드 진행 — 표를 없앤 뒤엔 화면 우하단 플로팅 패널로 보여준다(어느 화면에서나) */
+/* 다중선택 하단 바 — 몇 개를 골랐고 무엇을 할 수 있는지.
+   '무엇을' 골랐는지는 트리에서 그 행들이 직접 강조되므로 여기에 이름을 다시 늘어놓지 않는다.
+   업로드 패널이 우하단이라 이건 가운데에 둔다(둘이 동시에 떠도 안 겹치게). */
+.bulk-bar {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: var(--sp-md);
+  z-index: 60;
+  max-width: calc(100vw - 2 * var(--sp-md));
+  display: flex;
+  align-items: center;
+  gap: var(--sp-md);
+  padding: var(--sp-sm) var(--sp-md);
+  background: var(--canvas);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+}
+.bulk-bar strong {
+  font-size: 0.95em;
+  white-space: nowrap;
+}
+.bulk-bar-hint {
+  font-size: 0.8em;
+}
+.bulk-bar-actions {
+  display: flex;
+  gap: var(--sp-sm);
+}
+.btn-utility.danger {
+  color: var(--danger);
+  border-color: color-mix(in srgb, var(--danger) 40%, transparent);
+}
+/* 좁은 화면에선 안내문을 접는다 — 개수와 버튼이 먼저다 */
+@media (max-width: 860px) {
+  .bulk-bar-hint {
+    display: none;
+  }
+}
+
 .upload-panel {
   position: fixed;
   right: var(--sp-md);

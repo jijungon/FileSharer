@@ -1,6 +1,7 @@
 import io
 import tarfile
 
+from app.api.nodes import BUNDLE_MAX
 from tests.conftest import login
 
 
@@ -385,6 +386,71 @@ def test_folder_tar_download(admin_client):
         assert names == ["배포", "배포/모델.bin", "배포/설정", "배포/설정/config.yml"]
         member = tar.extractfile("배포/설정/config.yml")
         assert member is not None and member.read() == b"key: v"
+
+
+# ---------- 고른 항목 묶어받기(다중선택) ----------
+
+
+def test_bundle_download_packs_selected_items(admin_client):
+    """파일과 폴더를 섞어 고르면 하나의 tar.gz에 공간 이름 디렉토리로 묶여 나온다."""
+    pid = spaces_of(admin_client)["personal"]["id"]
+    folder = admin_client.post("/api/nodes", json={"space_id": pid, "name": "문서함"}).json()
+    upload(admin_client, f"/api/nodes/{folder['id']}/files", "안쪽.txt", b"inner")
+    a = upload(admin_client, f"/api/spaces/{pid}/files", "가.md", b"AAA").json()
+    b = upload(admin_client, f"/api/spaces/{pid}/files", "나.md", b"BBB").json()
+    upload(admin_client, f"/api/spaces/{pid}/files", "안고른것.md", b"NO")
+
+    res = admin_client.get("/api/nodes/bundle", params={"id": [a["id"], b["id"], folder["id"]]})
+    assert res.status_code == 200
+    assert res.headers["content-type"] == "application/gzip"
+
+    with tarfile.open(fileobj=io.BytesIO(res.content), mode="r:gz") as tar:
+        # 개인 공간의 표시 이름('내 공간')으로 묶인다 — 화면에서 부르는 이름과 같아야 한다.
+        assert sorted(tar.getnames()) == [
+            "내 공간",
+            "내 공간/가.md",
+            "내 공간/나.md",
+            "내 공간/문서함",
+            "내 공간/문서함/안쪽.txt",
+        ]
+        member = tar.extractfile("내 공간/문서함/안쪽.txt")
+        assert member is not None and member.read() == b"inner"
+
+
+def test_bundle_rejects_when_one_item_is_not_mine(admin_client, db):
+    """하나라도 남의 것이 섞이면 통째로 거절한다 — 부분 성공으로 새어나가면 안 된다."""
+    setup_people(admin_client, db)
+
+    a_spaces = as_user(admin_client, "a@test.local")
+    theirs = upload(admin_client, f"/api/spaces/{a_spaces['personal']['id']}/files", "비밀.txt")
+
+    b_spaces = as_user(admin_client, "b@test.local")
+    mine = upload(admin_client, f"/api/spaces/{b_spaces['personal']['id']}/files", "내것.txt")
+
+    # 내 것만이면 받아진다 — 아래 거절이 '그냥 다 막혀서'가 아님을 먼저 못 박는다.
+    ok = admin_client.get("/api/nodes/bundle", params={"id": [mine.json()["id"]]})
+    assert ok.status_code == 200
+
+    both = [mine.json()["id"], theirs.json()["id"]]
+    assert admin_client.get("/api/nodes/bundle", params={"id": both}).status_code == 403
+
+
+def test_bundle_caps_the_number_of_items(admin_client):
+    """한 요청이 공간 전체를 긁어가지 못하게 상한을 둔다."""
+    too_many = [f"x{i:031d}" for i in range(BUNDLE_MAX + 1)]
+    res = admin_client.get("/api/nodes/bundle", params={"id": too_many})
+    assert res.status_code == 400
+    assert str(BUNDLE_MAX) in res.json()["detail"]
+
+
+def test_bundle_deduplicates_repeated_ids(admin_client):
+    """같은 id를 두 번 보내도 아카이브 안에서 이름이 겹치지 않는다."""
+    pid = spaces_of(admin_client)["personal"]["id"]
+    node = upload(admin_client, f"/api/spaces/{pid}/files", "중복.md", b"one").json()
+    res = admin_client.get("/api/nodes/bundle", params={"id": [node["id"], node["id"]]})
+    assert res.status_code == 200
+    with tarfile.open(fileobj=io.BytesIO(res.content), mode="r:gz") as tar:
+        assert sorted(tar.getnames()) == ["내 공간", "내 공간/중복.md"]
 
 
 # ---------- 딥링크 경로 ----------

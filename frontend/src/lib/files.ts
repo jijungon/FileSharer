@@ -173,3 +173,7 @@ export const purgeNode = (id: string) =>
 
 export const downloadUrl = (node: NodeInfo) =>
   node.type === 'file' ? `/api/files/${node.id}` : `/api/nodes/${node.id}/tar`
+
+// 고른 항목 여러 개를 tar.gz 하나로. 링크(세션 쿠키)로 바로 받으므로 fetch가 아니다.
+export const bundleUrl = (ids: string[]) =>
+  `/api/nodes/bundle?${ids.map((id) => `id=${encodeURIComponent(id)}`).join('&')}`
