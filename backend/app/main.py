@@ -168,9 +168,11 @@ def create_app() -> FastAPI:
             "build": settings.app_build,  # main 커밋 수 — 큰 쪽이 최신
             "pr": settings.app_pr,  # 어느 작업이 들어갔는지 (#158)
             "built_at": settings.app_built_at,  # 언제 만든 이미지인지
-            # 프런트가 런타임에 Sentry를 켠다. 프런트 DSN은 원래 공개값이라(번들에 박는 게
-            # 일반적) 숨길 대상이 아니고, 이렇게 두면 환경마다 다시 빌드하지 않아도 된다.
-            "sentry_dsn": settings.sentry_dsn,
+            # 프런트가 런타임에 Sentry를 켠다. 브라우저용 DSN은 원래 공개값이라(번들에
+            # 박는 게 일반적) 숨길 대상이 아니고, 이렇게 두면 환경마다 다시 빌드하지
+            # 않아도 된다. **서버용(settings.sentry_dsn)은 절대 여기 싣지 않는다** —
+            # 이 응답엔 인증이 없다(config.py 주석 참고).
+            "sentry_dsn": settings.sentry_dsn_frontend,
             "environment": settings.app_env,
         }
 
