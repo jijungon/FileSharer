@@ -79,8 +79,12 @@ test('Shift+클릭은 화면에 보이는 순서대로 범위를 고른다', asy
   for (const n of names) await expect(row(page, n)).toHaveClass(/checked/)
 })
 
-test('그냥 클릭하면 선택이 풀리고 파일이 열린다', async ({ page }) => {
+test('그냥 클릭하면 그것 하나만 남고 파일이 열린다', async ({ page }) => {
   // 다중선택이 평범한 탐색을 가로채면 안 된다 — 이게 매일 쓰는 동작이다.
+  //
+  // 예전엔 그냥 클릭이 선택을 **비우기만** 했다(누른 것을 담지 않았다). 그래서 파일 넷을
+  // 눌러도(하나는 그냥 + 셋은 Ctrl) 하단 바가 셋이라고 했다 — 처음 누른 것이 늘 빠졌다.
+  // 이제 누른 것 하나가 선택으로 남는다. 바는 둘 이상일 때만 뜨므로 여기선 안 보인다.
   await loginAs(page, ADMIN)
   const tag = Date.now()
   await inFreshFolder(page, '평범한클릭')
@@ -98,9 +102,30 @@ test('그냥 클릭하면 선택이 풀리고 파일이 열린다', async ({ pag
   await expect(page.locator('.bulk-bar')).toContainText('2개 선택됨')
 
   await fileCell(page, a).click() // 수식키 없이
-  await expect(page.locator('.bulk-bar')).toHaveCount(0)
-  await expect(page.locator('.tree-row.checked')).toHaveCount(0)
+  await expect(page.locator('.bulk-bar')).toHaveCount(0) // 하나뿐이라 바는 안 뜬다
+  await expect(page.locator('.tree-row.checked')).toHaveCount(1) // 누른 그것만 남는다
+  await expect(row(page, a)).toHaveClass(/checked/)
   await expect(page.getByRole('heading', { name: '열린 문서' })).toBeVisible()
+})
+
+test('처음 누른 파일도 개수에 들어간다', async ({ page }) => {
+  // 회귀 테스트. 그냥 클릭이 선택을 비우기만 하던 시절엔 여기서 3개가 나왔다 —
+  // 사용자가 "맨 처음 파일만 카운트가 안 된다"고 말한 그 증상이다.
+  await loginAs(page, ADMIN)
+  const tag = Date.now()
+  await inFreshFolder(page, '첫클릭포함')
+
+  const names = [1, 2, 3, 4].map((i) => `첫클릭_${i}_${tag}.txt`)
+  await page
+    .locator('input[type="file"]:not([webkitdirectory])')
+    .setInputFiles(names.map((n) => buf(n)))
+  await expect(fileCell(page, names[3])).toBeVisible()
+
+  await fileCell(page, names[0]).click() // 그냥 클릭 — 이것도 세어져야 한다
+  for (const n of names.slice(1)) await fileCell(page, n).click({ modifiers: ['ControlOrMeta'] })
+
+  await expect(page.locator('.bulk-bar')).toContainText('4개 선택됨')
+  await expect(page.locator('.tree-row.checked')).toHaveCount(4)
 })
 
 test('고른 것들을 tar.gz 하나로 내려받는다', async ({ page }) => {
