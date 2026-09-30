@@ -1,4 +1,4 @@
-import { expect, test } from './fixtures'
+import { ACCOUNT, expect, test } from './fixtures'
 
 test('health endpoint responds', async ({ request }) => {
   const res = await request.get('/api/health')
@@ -24,8 +24,8 @@ test('상단 버전 배지는 서버가 보고하는 값을 쓴다', async ({ pa
 
   await page.goto('/login')
   await page.getByRole('button', { name: /로컬 계정으로 로그인/ }).click()
-  await page.getByPlaceholder('이메일').fill('e2e@test.local')
-  await page.getByPlaceholder('비밀번호').fill('e2e-password-123')
+  await page.getByPlaceholder('이메일').fill(ACCOUNT.email)
+  await page.getByPlaceholder('비밀번호').fill(ACCOUNT.password)
   await page.getByRole('button', { name: '로컬 계정으로 로그인' }).click()
   await expect(page).toHaveURL(/\/files/)
 

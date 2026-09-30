@@ -1,6 +1,10 @@
-import { expect, test } from './fixtures'
+import { RUN_TAG, expect, test } from './fixtures'
 
 import { fileCell } from './helpers'
+
+// 공유 자원(전체 공간·팀·사용자 목록·member 계정)을 건드리므로 파일 안에서는 직렬.
+// playwright.config.ts 의 'shared' 프로젝트가 solo 가 끝난 뒤에 이 파일들을 돌린다.
+test.describe.configure({ mode: 'serial' })
 
 /**
  * 일반 사용자(member) 시점.
@@ -52,12 +56,12 @@ test('마지막 백업 뱃지는 일반 사용자에게도 보인다', async ({ 
 
 test('일반 사용자도 올리고 열고 공유할 수 있다', async ({ memberPage }) => {
   await memberPage.locator('input[type="file"]:not([webkitdirectory])').setInputFiles({
-    name: '사용자문서.md',
+    name: `사용자문서_${RUN_TAG}.md`,
     mimeType: 'text/markdown',
     buffer: Buffer.from('# 일반 사용자 문서\n\n본문입니다.\n'),
   })
 
-  await fileCell(memberPage, /사용자문서\.md/).click()
+  await fileCell(memberPage, `사용자문서_${RUN_TAG}.md`).click()
   await expect(memberPage.getByRole('heading', { name: '일반 사용자 문서' })).toBeVisible()
 
   await memberPage.getByRole('button', { name: '공유 링크', exact: true }).click()

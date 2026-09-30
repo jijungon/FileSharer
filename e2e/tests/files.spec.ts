@@ -1,9 +1,9 @@
-import { expect, test } from './fixtures'
+import { ACCOUNT, RUN_TAG, expect, test } from './fixtures'
 
 import { fileCell, newFolder } from './helpers'
 
-const EMAIL = 'e2e@test.local'
-const PASSWORD = 'e2e-password-123'
+const EMAIL = ACCOUNT.email
+const PASSWORD = ACCOUNT.password
 
 test('local login → browse → create folder → upload file', async ({ page }) => {
   await page.goto('/login')
@@ -19,15 +19,15 @@ test('local login → browse → create folder → upload file', async ({ page }
   await expect(page.locator('.tree-name').filter({ hasText: /E2E폴더/ })).toBeVisible()
 
   await page.locator('input[type="file"]:not([webkitdirectory])').setInputFiles({
-    name: '스모크.txt',
+    name: `스모크_${RUN_TAG}.txt`,
     mimeType: 'text/plain',
     buffer: Buffer.from('e2e smoke content'),
   })
-  await expect(fileCell(page, /스모크\.txt/)).toBeVisible()
+  await expect(fileCell(page, `스모크_${RUN_TAG}.txt`)).toBeVisible()
 
   // 파일 열기 → 공유 링크 팝오버가 열린다(외부 공유 전용).
   // '사내 링크 복사'는 상단 주소창(오미니박스)의 📋로 옮겨, 이 팝오버에는 더 이상 없다.
-  await fileCell(page, /스모크\.txt/).click()
+  await fileCell(page, `스모크_${RUN_TAG}.txt`).click()
   await page.locator('.topbar-fileactions').getByRole('button', { name: '공유 링크', exact: true }).click()
   await expect(page.locator('.share-popover')).toBeVisible()
   await expect(
@@ -50,11 +50,11 @@ test('비텍스트 뷰어(이미지)를 열어도 사이드바는 그대로 보�
   await expect(page).toHaveURL(/\/files/)
 
   await page.locator('input[type="file"]:not([webkitdirectory])').setInputFiles({
-    name: '사진.png',
+    name: `사진_${RUN_TAG}.png`,
     mimeType: 'image/png',
     buffer: PNG_1x1,
   })
-  await fileCell(page, /사진\.png/).click()
+  await fileCell(page, `사진_${RUN_TAG}.png`).click()
 
   // 이미지 뷰어가 인라인으로 열리고, 사이드바(트리)는 계속 보인다. 전체화면 버튼은 없어졌다.
   await expect(page.locator('.image-preview img')).toBeVisible()

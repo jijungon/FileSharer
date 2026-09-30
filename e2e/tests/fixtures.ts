@@ -1,4 +1,4 @@
-import { Page, test as base } from '@playwright/test'
+import { Page, request as apiRequest, test as base } from '@playwright/test'
 
 // 각 테스트 '전에' 콘텐츠 데이터를 초기화해 스펙/테스트 간 상태 누수를 없앤다.
 // 백엔드는 ENABLE_TEST_RESET일 때만 /api/test/reset 을 노출한다(없으면 4xx로 조용히 무시 →
@@ -22,6 +22,31 @@ const ALLOW = [
 export const ADMIN = { email: 'e2e@test.local', password: 'e2e-password-123' }
 export const MEMBER = { email: 'member@test.local', password: 'member-pass-123' }
 
+// ── 워커별 계정 ──
+// 병렬로 돌리려면 워커끼리 서로의 파일을 안 봐야 한다. 계정을 나누면 **개인 공간이
+// 자연히 나뉜다** — 로그인 후 기본 활성 공간이 개인 공간이고(spaces[0]), 업로드도 거기로
+// 간다. 리셋도 그 계정 범위로만 돈다(`POST /api/test/reset?email=...`).
+//
+// Playwright 가 워커 프로세스마다 TEST_PARALLEL_INDEX 를 넣어준다. 그래서 **모듈 상수**로
+// 만들 수 있고, 스펙은 기존 로그인 헬퍼를 그대로 두고 상수만 이걸로 바꾸면 된다.
+//
+// 워커 0 은 부트스트랩 관리자를 그대로 쓴다(계정을 새로 안 만들어도 된다).
+// 역할은 admin — 기존 스펙 다수가 관리 기능을 쓴다(멤버 시점은 memberPage 가 따로 본다).
+const WORKER_INDEX = Number(process.env.TEST_PARALLEL_INDEX ?? 0)
+
+// 이 워커 프로세스에서 만드는 이름에 붙일 꼬리표.
+//
+// 테스트마다 데이터를 비우지 않으므로(위 주석 참고) **이름이 겹치면 안 된다.** 특히
+// 재시도가 문제였다 — 실패한 시도가 남긴 파일과 재시도가 만든 파일이 같은 이름이면
+// 행이 둘이 되어 로케이터가 엉킨다(실제로 trash.spec 이 10회 중 2회 흔들렸다).
+// Playwright 는 실패 후 **새 워커 프로세스**로 재시도하므로 이 값도 새로 뽑힌다.
+export const RUN_TAG = `${Date.now().toString(36)}${WORKER_INDEX}`
+
+export const ACCOUNT: { email: string; password: string } =
+  WORKER_INDEX === 0
+    ? ADMIN
+    : { email: `e2e-w${WORKER_INDEX}@test.local`, password: ADMIN.password }
+
 /** 로그인 폼을 채워 /files 까지 간다. */
 export async function loginAs(page: Page, who: { email: string; password: string }) {
   await page.goto('/login')
@@ -43,17 +68,38 @@ function collectErrors(page: Page, errors: string[]) {
   })
 }
 
-export const test = base.extend<{
-  _reset: void
-  _noConsoleErrors: void
-  memberPage: Page
-}>({
-  _reset: [
-    async ({ request }, use) => {
-      await request.post('/api/test/reset').catch(() => {})
+export const test = base.extend<
+  { _noConsoleErrors: void; memberPage: Page },
+  { _ensureAccount: void }
+>({
+  // 워커당 한 번: 이 워커의 계정을 보장한다(워커 0 은 부트스트랩 관리자라 건너뛴다).
+  //
+  // **비우기는 여기서 하지 않는다.** 리셋은 6개 테이블을 일괄 삭제하는 큰 쓰기인데,
+  // SQLite 는 쓰기가 하나뿐이라 여럿이 동시에 하면 `database is locked` 가 난다
+  // (실제로 그렇게 500·로그인 튕김이 났다). 비우기는 globalSetup 이 실행 시작에 한 번만 한다.
+  //
+  // 그래서 한 워커 안에서는 데이터가 쌓이는데, 괜찮다 — 스펙들이 이름을 타임스탬프로
+  // 고유화하고, 개수를 세는 단언도 전부 '그 화면/그 문서' 범위다(전역 개수를 세지 않는다).
+  _ensureAccount: [
+    async ({}, use, workerInfo) => {
+      const api = await apiRequest.newContext({ baseURL: workerInfo.project.use.baseURL })
+      if (ACCOUNT.email !== ADMIN.email) {
+        // 이미 있으면 4xx 라 그냥 넘어간다(리셋은 사용자를 지우지 않는다).
+        await api.post('/api/auth/login', { data: ADMIN }).catch(() => {})
+        await api.post('/api/users', { data: { ...ACCOUNT, role: 'admin' } }).catch(() => {})
+      }
+      await api.dispose()
+      // 여기서도, 테스트마다도 비우지 않는다. 비우기는 globalSetup 이 실행 시작에 한 번만 한다.
+      //
+      // 테스트마다 비워 봤는데 **더 나빴다**(10회 중 6회 흔들림). BEGIN IMMEDIATE 로 모든
+      // 트랜잭션이 쓰기 잠금을 미리 잡으므로, 매번 큰 삭제를 끼우면 워커들이 줄줄이 기다린다.
+      // 락 에러는 안 나지만 느려져서 단언이 시간 초과된다.
+      //
+      // 대신 **테스트가 만드는 이름을 고유하게** 한다(타임스탬프). 그러면 서로도, 재시도끼리도
+      // 부딪히지 않는다.
       await use()
     },
-    { auto: true },
+    { scope: 'worker', auto: true },
   ],
   // 일반 사용자(member)로 로그인된 별도 창. 관리자 세션과 섞이지 않게 컨텍스트를 따로 연다.
   memberPage: async ({ browser, request }, use, testInfo) => {

@@ -1,7 +1,7 @@
-import { expect, test } from './fixtures'
+import { ACCOUNT, RUN_TAG, expect, test } from './fixtures'
 
-const EMAIL = 'e2e@test.local'
-const PASSWORD = 'e2e-password-123'
+const EMAIL = ACCOUNT.email
+const PASSWORD = ACCOUNT.password
 
 async function loginAsAdmin(page) {
   await page.goto('/login')
@@ -22,18 +22,18 @@ test('업로드 중 파일 목록에 진행 행이 뜨고, 완료되면 실제 �
   })
 
   await page.locator('input[type="file"]:not([webkitdirectory])').setInputFiles({
-    name: '진행.txt',
+    name: `진행_${RUN_TAG}.txt`,
     mimeType: 'text/plain',
     buffer: Buffer.from('x'.repeat(2000)),
   })
 
   const uploadRow = page.locator('.upload-row')
-  await expect(uploadRow).toContainText('진행.txt')
+  await expect(uploadRow).toContainText(`진행_${RUN_TAG}.txt`)
   await expect(uploadRow.locator('.upload-inline-bar')).toBeVisible()
 
   // 완료되면 진행 행이 사라지고 실제 파일이 트리에 나타난다
   await expect(page.locator('.upload-row')).toHaveCount(0, { timeout: 6000 })
-  await expect(page.locator('.tree-name').filter({ hasText: /진행\.txt/ })).toBeVisible()
+  await expect(page.locator('.tree-name').filter({ hasText: `진행_${RUN_TAG}.txt` })).toBeVisible()
 })
 
 test('여러 파일 업로드 시 툴바에 전체 개수가 표시되고, 각 파일이 진행 행으로 뜬다', async ({ page }) => {
@@ -45,9 +45,9 @@ test('여러 파일 업로드 시 툴바에 전체 개수가 표시되고, 각 �
   })
 
   await page.locator('input[type="file"]:not([webkitdirectory])').setInputFiles([
-    { name: '다중1.txt', mimeType: 'text/plain', buffer: Buffer.from('a'.repeat(1000)) },
-    { name: '다중2.txt', mimeType: 'text/plain', buffer: Buffer.from('b'.repeat(1000)) },
-    { name: '다중3.txt', mimeType: 'text/plain', buffer: Buffer.from('c'.repeat(1000)) },
+    { name: `다중1_${RUN_TAG}.txt`, mimeType: 'text/plain', buffer: Buffer.from('a'.repeat(1000)) },
+    { name: `다중2_${RUN_TAG}.txt`, mimeType: 'text/plain', buffer: Buffer.from('b'.repeat(1000)) },
+    { name: `다중3_${RUN_TAG}.txt`, mimeType: 'text/plain', buffer: Buffer.from('c'.repeat(1000)) },
   ])
 
   // 툴바 개수(…/3) + 세 개의 인라인 진행 행
@@ -56,16 +56,16 @@ test('여러 파일 업로드 시 툴바에 전체 개수가 표시되고, 각 �
 
   // 모두 끝나면 진행 행이 사라지고 실제 파일이 트리에 나타난다
   await expect(page.locator('.upload-row')).toHaveCount(0, { timeout: 6000 })
-  await expect(page.locator('.tree-name').filter({ hasText: /다중2\.txt/ })).toBeVisible()
+  await expect(page.locator('.tree-name').filter({ hasText: `다중2_${RUN_TAG}.txt` })).toBeVisible()
 })
 
 test('일부 업로드가 실패하면 그 행만 실패로 표시되고 나머지는 완료된다', async ({ page }) => {
   await loginAsAdmin(page)
 
-  // multipart 본문의 파일명으로 대상 구분: '실패.txt' 요청만 500, 나머지는 통과
+  // multipart 본문의 파일명으로 대상 구분: `실패_${RUN_TAG}.txt` 요청만 500, 나머지는 통과
   await page.route('**/api/spaces/*/files', async (route) => {
     const body = route.request().postData() ?? ''
-    if (body.includes('실패.txt')) {
+    if (body.includes(`실패_${RUN_TAG}.txt`)) {
       await route.fulfill({
         status: 500,
         contentType: 'application/json',
@@ -79,18 +79,18 @@ test('일부 업로드가 실패하면 그 행만 실패로 표시되고 나머�
   })
 
   await page.locator('input[type="file"]:not([webkitdirectory])').setInputFiles([
-    { name: '성공A.txt', mimeType: 'text/plain', buffer: Buffer.from('a') },
-    { name: '실패.txt', mimeType: 'text/plain', buffer: Buffer.from('b') },
+    { name: `성공A_${RUN_TAG}.txt`, mimeType: 'text/plain', buffer: Buffer.from('a') },
+    { name: `실패_${RUN_TAG}.txt`, mimeType: 'text/plain', buffer: Buffer.from('b') },
   ])
 
   // 실패 행은 error 상태 + '실패' 표기, 툴바 개수에 실패 1
   const errorRow = page.locator('.upload-row.error')
-  await expect(errorRow).toContainText('실패.txt')
+  await expect(errorRow).toContainText(`실패_${RUN_TAG}.txt`)
   await expect(errorRow.locator('.upload-inline-pct')).toContainText('실패')
   await expect(page.locator('.upload-count')).toContainText('실패 1')
 
   // 실패해도 성공한 파일은 트리에 나타난다
-  await expect(page.locator('.tree-name').filter({ hasText: /성공A\.txt/ })).toBeVisible()
+  await expect(page.locator('.tree-name').filter({ hasText: `성공A_${RUN_TAG}.txt` })).toBeVisible()
 })
 
 test('로컬 파일을 트리의 폴더에 끌어다 놓으면 그 폴더 안으로 업로드된다', async ({ page }) => {
@@ -141,7 +141,7 @@ test('로컬 파일을 트리의 "파일" 위에 놓으면 그 파일이 든 폴
   // 그 폴더 '안'에 기준이 될 파일 하나를 만든다 — 이 '파일 행' 위에 드롭할 것이다
   await page.request.post(`/api/nodes/${folder.id}/files`, {
     multipart: {
-      file: { name: 'anchor.txt', mimeType: 'text/plain', buffer: Buffer.from('anchor') },
+      file: { name: `anchor_${RUN_TAG}.txt`, mimeType: 'text/plain', buffer: Buffer.from('anchor') },
     },
   })
 
@@ -149,7 +149,7 @@ test('로컬 파일을 트리의 "파일" 위에 놓으면 그 파일이 든 폴
   await page.reload()
   await page.locator('button.space-root').filter({ hasText: '내 공간' }).click()
   await page.locator('.tree-name').filter({ hasText: fname }).click()
-  const fileRow = page.locator('.tree-row').filter({ hasText: 'anchor.txt' })
+  const fileRow = page.locator('.tree-row').filter({ hasText: `anchor_${RUN_TAG}.txt` })
   await expect(fileRow).toBeVisible()
 
   // 로컬 파일을 '폴더'가 아닌 '파일 행'에 dragover→drop → 그 파일의 부모 폴더로 올라가야 한다

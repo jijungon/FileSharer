@@ -1,9 +1,9 @@
-import { expect, test } from './fixtures'
+import { ACCOUNT, RUN_TAG, expect, test } from './fixtures'
 
 import { fileCell, newMd } from './helpers'
 
-const EMAIL = 'e2e@test.local'
-const PASSWORD = 'e2e-password-123'
+const EMAIL = ACCOUNT.email
+const PASSWORD = ACCOUNT.password
 // 1x1 투명 PNG
 const PNG = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==',
@@ -22,11 +22,11 @@ async function loginAsAdmin(page) {
 test('image preview renders inline', async ({ page }) => {
   await loginAsAdmin(page)
   await page.locator('input[type="file"]:not([webkitdirectory])').setInputFiles({
-    name: '픽셀.png',
+    name: `픽셀_${RUN_TAG}.png`,
     mimeType: 'image/png',
     buffer: PNG,
   })
-  await fileCell(page, /픽셀\.png/).click()
+  await fileCell(page, `픽셀_${RUN_TAG}.png`).click()
   await expect(page.locator('.image-preview img')).toBeVisible()
 })
 

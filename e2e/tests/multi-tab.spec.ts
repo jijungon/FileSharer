@@ -1,7 +1,7 @@
-import { expect, test } from './fixtures'
+import { ACCOUNT, expect, test } from './fixtures'
 
-const EMAIL = 'e2e@test.local'
-const PASSWORD = 'e2e-password-123'
+const EMAIL = ACCOUNT.email
+const PASSWORD = ACCOUNT.password
 
 async function login(page) {
   await page.goto('/login')

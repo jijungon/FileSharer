@@ -1,9 +1,9 @@
-import { expect, test } from './fixtures'
+import { ACCOUNT, RUN_TAG, expect, test } from './fixtures'
 
 import { fileCell } from './helpers'
 
-const EMAIL = 'e2e@test.local'
-const PASSWORD = 'e2e-password-123'
+const EMAIL = ACCOUNT.email
+const PASSWORD = ACCOUNT.password
 
 test('markdown editor: open → live preview → edit → save', async ({ page }) => {
   await page.goto('/login')
@@ -14,11 +14,11 @@ test('markdown editor: open → live preview → edit → save', async ({ page }
   await expect(page).toHaveURL(/\/files/)
 
   await page.locator('input[type="file"]:not([webkitdirectory])').setInputFiles({
-    name: '에디터.md',
+    name: `에디터_${RUN_TAG}.md`,
     mimeType: 'text/markdown',
     buffer: Buffer.from('# 제목\n\n- 항목 하나\n'),
   })
-  const row = fileCell(page, /에디터\.md/)
+  const row = fileCell(page, `에디터_${RUN_TAG}.md`)
   await expect(row).toBeVisible()
   await row.click()
 

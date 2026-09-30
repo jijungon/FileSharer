@@ -1724,13 +1724,15 @@ export default function Files() {
                     <span className="node-icon">{node.type === 'folder' ? '📁' : '📄'}</span>{' '}
                     <span className="node-name">{node.name}</span>
                   </td>
+                  {/* 날짜를 앞에 둔다 — 이 열은 날짜로 정렬되는데 이름이 앞에 있으면
+                      정렬된 것처럼 보이지 않는다(눈이 첫 글자를 먼저 읽는다). */}
                   <td className="col-date muted">
+                    {formatDateTime(node.created_at)}
                     {node.uploader && (
                       <span className="by-name" title={`올린 사람: ${node.uploader}`}>
                         {node.uploader}
                       </span>
                     )}
-                    {formatDateTime(node.created_at)}
                   </td>
                   <td className="col-remaining">
                     <TrashRemaining purgeAt={node.purge_at} />

@@ -346,7 +346,11 @@ export default function FolderTree({
           }}
           {...dropHandlers(isFolder ? node.id : node.parent_id, node.id)}
           onContextMenu={(e) => {
-            if (!onRenameCommit && !onDelete && !onToggleFavorite) return
+            // 우클릭 메뉴는 **여러 개를 골랐을 때만** 뜬다.
+            // 단건 메뉴(이름 변경·즐겨찾기·삭제)는 없앴다 — 같은 일을 행에서 바로 할 수
+            // 있기 때문이다: ★ 즐겨찾기 · 🗑 삭제 · 항목 선택 후 Enter 로 이름 변경.
+            // 메뉴가 하나 줄면 화면이 그만큼 조용해진다.
+            if (!(sel.size > 1 && sel.has(node.id))) return
             e.preventDefault()
             setMenu({ row: node, x: e.clientX, y: e.clientY })
           }}
@@ -442,65 +446,36 @@ export default function FolderTree({
           onClick={(e) => e.stopPropagation()}
           onContextMenu={(e) => e.preventDefault()}
         >
-          {/* 고른 것 위에서 우클릭하면 고른 것 전부에 대한 메뉴로 바뀐다.
-              (이름 변경·즐겨찾기는 하나짜리 동작이라 여기 없다. 이동·복사는 드래그로.) */}
-          {sel.size > 1 && sel.has(menu.row.id) ? (
-            <>
-              <button
-                role="menuitem"
-                onClick={() => {
-                  onBulkDownload?.([...sel])
-                  setMenu(null)
-                }}
-              >
-                ⤓ {sel.size}개 내려받기
-              </button>
-              <button
-                role="menuitem"
-                onClick={() => {
-                  onChecked?.(spaceId, () => new Set())
-                  setMenu(null)
-                }}
-              >
-                ✕ 선택 해제
-              </button>
-              <button
-                role="menuitem"
-                className="danger"
-                onClick={() => {
-                  onBulkDelete?.([...sel])
-                  setMenu(null)
-                }}
-              >
-                🗑 {sel.size}개 삭제
-              </button>
-            </>
-          ) : (
-            <>
-              <button role="menuitem" onClick={() => beginRename(menu.row)}>
-                ✎ 이름 변경
-              </button>
-              <button
-                role="menuitem"
-                onClick={() => {
-                  onToggleFavorite?.(menu.row)
-                  setMenu(null)
-                }}
-              >
-                {favIds?.has(menu.row.id) ? '★ 즐겨찾기 해제' : '☆ 즐겨찾기'}
-              </button>
-              <button
-                role="menuitem"
-                className="danger"
-                onClick={() => {
-                  onDelete?.(menu.row)
-                  setMenu(null)
-                }}
-              >
-                🗑 삭제
-              </button>
-            </>
-          )}
+          {/* 고른 것 전부에 대한 메뉴. 단건 메뉴는 없앴다 — 이름 변경·즐겨찾기·삭제는
+              행에서 바로 할 수 있다(Enter · ★ · 🗑). */}
+          <button
+            role="menuitem"
+            onClick={() => {
+              onBulkDownload?.([...sel])
+              setMenu(null)
+            }}
+          >
+            ⤓ {sel.size}개 내려받기
+          </button>
+          <button
+            role="menuitem"
+            onClick={() => {
+              onChecked?.(spaceId, () => new Set())
+              setMenu(null)
+            }}
+          >
+            ✕ 선택 해제
+          </button>
+          <button
+            role="menuitem"
+            className="danger"
+            onClick={() => {
+              onBulkDelete?.([...sel])
+              setMenu(null)
+            }}
+          >
+            🗑 {sel.size}개 삭제
+          </button>
         </div>
       )}
     </>
