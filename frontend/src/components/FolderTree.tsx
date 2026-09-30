@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { attachDragChip } from '../lib/dragchip'
 import { listSpaceTree, TreeRow } from '../lib/files'
 
 interface TreeNode extends TreeRow {
@@ -169,7 +170,14 @@ export default function FolderTree({
       if (multi) anchorRef.current = node.id
       return
     }
-    if (sel.size > 0) onChecked?.(spaceId, () => new Set())
+    // 그냥 클릭 = 앞의 선택을 버리고 **이것 하나만** 고른 상태로 만든다.
+    // 예전엔 선택을 비우기만 하고 누른 것을 담지 않았다. 그래서 파일 넷을 눌러도
+    // (하나는 그냥 + 셋은 Ctrl) 하단 바가 셋이라고 했다 — **처음 누른 것이 늘 빠졌다.**
+    // Shift 는 기준점을 범위에 포함하는데 Ctrl 만 빼먹어 두 방식이 어긋나 있었다.
+    //
+    // 폴더는 담지 않는다. 폴더 클릭은 '펼치고 이동'이라 선택으로 볼 일이 아니고,
+    // 선택에 폴더가 섞이면 그 안의 파일까지 딸려가 화면에 없는 것이 지워진다.
+    onChecked?.(spaceId, () => (node.type === 'folder' ? new Set() : new Set([node.id])))
     anchorRef.current = node.id
     if (node.type === 'folder') {
       onOpenFolder(node.id)
@@ -252,28 +260,9 @@ export default function FolderTree({
     e.dataTransfer.setData('application/x-node-space', spaceId) // 소스 공간 — 드롭 시 이동/복사 판단 기준
 
     e.dataTransfer.effectAllowed = 'copyMove'
-    // 기본 고스트는 뒤(드롭 위치)를 가리므로 커서 옆 작은 칩으로 대체(#81)
-    if (typeof document !== 'undefined' && e.dataTransfer.setDragImage) {
-      const chip = document.createElement('div')
-      chip.className = 'drag-chip'
-      const icon = document.createElement('span')
-      icon.className = 'drag-chip__icon'
-      icon.textContent = ids.length > 1 ? '🗂' : node.type === 'folder' ? '📁' : '📄'
-      const name = document.createElement('span')
-      name.className = 'drag-chip__name'
-      name.textContent = ids.length > 1 ? `${ids.length}개 항목` : node.name
-      chip.append(icon, name)
-      chip.style.position = 'absolute'
-      chip.style.top = '-1000px'
-      chip.style.left = '-1000px'
-      document.body.appendChild(chip)
-      try {
-        e.dataTransfer.setDragImage(chip, 14, 18)
-      } catch {
-        /* 미지원 환경 — 기본 고스트로 폴백 */
-      }
-      setTimeout(() => chip.remove(), 0)
-    }
+    // 기본 고스트는 뒤(드롭 위치)를 가리므로 커서 옆 작은 칩으로 대체(#81).
+    // 휴지통 표도 같은 칩을 쓴다 — 같은 동작은 같아 보여야 한다(lib/dragchip.ts).
+    attachDragChip(e, { count: ids.length, name: node.name, type: node.type })
   }
 
   function renderNode(node: TreeNode, depth = 0) {

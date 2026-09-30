@@ -8,6 +8,7 @@ import NewMarkdownModal from '../components/NewMarkdownModal'
 import ViewerPanel from '../components/ViewerPanel'
 import { api, ApiError, Me, SpaceInfo } from '../lib/api'
 import { copyText } from '../lib/clipboard'
+import { attachDragChip } from '../lib/dragchip'
 import { toggleTheme as applyToggle } from '../lib/theme'
 import { agoMs, formatAgo, formatBytes, formatDateTime, formatTrashRemaining } from '../lib/format'
 import {
@@ -1715,6 +1716,9 @@ export default function Files() {
                     // 휴지통 항목을 공간 위로 끌어다 놓으면 복원 — 공간 드롭 핸들러가 읽는 마커
                     e.dataTransfer.setData('application/x-trash-node-id', node.id)
                     e.dataTransfer.effectAllowed = 'move'
+                    // 트리와 같은 칩을 쓴다. 예전엔 여기만 기본 고스트여서 휴지통에서
+                    // 끌 때만 큰 반투명 행이 따라붙었다 — 같은 동작은 같아 보여야 한다.
+                    attachDragChip(e, { count: 1, name: node.name, type: node.type })
                   }}
                   title="공간으로 끌어다 놓으면 원래 위치로 복원됩니다"
                 >
@@ -1812,7 +1816,10 @@ export default function Files() {
         ))}
         </div>
       </div>
-      {checked.size > 0 && (
+      {/* 둘 이상일 때만 띄운다. 이제 파일을 그냥 클릭해도 그 하나가 '선택된' 상태가
+          되므로(FolderTree 의 activateRow 참고), 0개 초과로 두면 파일을 열 때마다
+          바가 따라 올라와 화면을 가린다. 하나짜리 작업은 행의 ★·🗑 로 한다. */}
+      {checked.size > 1 && (
         <div className="bulk-bar" role="status" aria-label="선택 항목">
           <strong>{checked.size}개 선택됨</strong>
           <span className="muted bulk-bar-hint">
