@@ -16,16 +16,24 @@ async function trashFromTree(page: import('@playwright/test').Page, item: import
 /**
  * 휴지통 행의 '완전 삭제'를 누른다.
  *
- * 그 버튼은 `.row-action { visibility: hidden }` 이라 **행에 마우스를 올려야만** 보인다.
- * hover 와 click 사이에 목록이 다시 그려지면 hover 가 풀려 버튼이 숨고, click 은 보이기를
- * 기다리다 30초를 넘긴다(병렬로 돌리자 10회 중 2회 그랬다).
- * 둘을 한 덩어리로 묶어 재시도하면 그 틈이 사라진다.
+ * 예전엔 그 버튼이 `visibility: hidden` 이라 **행에 마우스를 올려야만** 존재했다.
+ * hover 와 click 사이에 목록이 다시 그려지면 hover 가 풀려 버튼이 사라지고, click 은
+ * 보이기를 기다리다 예산을 태웠다(부하가 걸리면 4회 중 1회꼴). hover+click 을 묶어
+ * 재시도하는 것으로 덮어뒀지만, 재시도가 다 실패하면 그대로 터졌다.
+ *
+ * 이제 `opacity: 0` 이라 **숨겨진 게 아니라 옅을 뿐**이다(트리의 🗑 과 같은 방식).
+ * 그래서 "hover 가 풀려 버튼이 사라진다" 쪽 절반은 없어졌다.
+ *
+ * 하지만 나머지 절반이 남아 있다 — **목록이 다시 그려지면 행 자체가 떨어져 나간다.**
+ * 그때는 클릭이 기본 30초를 다 태우고 터진다(재시도를 걷어냈다가 실제로 그랬다).
+ * locator 는 시도할 때마다 다시 찾으므로, 짧게 여러 번 두드리는 편이 확실하다.
+ * 근본 해결은 목록을 덜 다시 그리는 것이지만 그건 별건이다.
  */
 async function purge(row: import('@playwright/test').Locator) {
   await expect(async () => {
-    await row.hover()
-    await row.getByRole('button', { name: '완전 삭제' }).click({ timeout: 2000 })
-  }).toPass({ timeout: 15_000 })
+    await row.hover() // 사람이 하는 그대로 — 행에 올리면 버튼이 드러난다
+    await row.getByRole('button', { name: '완전 삭제' }).click({ timeout: 1500 })
+  }).toPass({ timeout: 20_000 })
 }
 
 
@@ -125,6 +133,16 @@ test('휴지통에서 완전 삭제하면 파일이 영구히 사라진다', asy
   await page.locator('.sidebar-trash').click()
   const trashRow = page.getByRole('row', { name: `영구삭제_${RUN_TAG}.txt` })
   await expect(trashRow).toBeVisible()
+
+  // 행 버튼은 **키보드로도 닿아야 한다.** 예전엔 visibility:hidden 이라 브라우저가
+  // 요소를 탭 순서와 접근성 트리에서 통째로 들어냈다 — 마우스를 못 쓰면 휴지통에서
+  // 복원도 완전삭제도 할 방법이 없었다. 지금은 초점을 받을 수 있고, 행에 초점이
+  // 들어오면(:focus-within) 드러난다. 행이 확실히 있는 이 자리에서 같이 확인한다.
+  const purgeBtn = trashRow.getByRole('button', { name: '완전 삭제' })
+  await purgeBtn.focus()
+  await expect(purgeBtn).toBeFocused()
+  await expect(purgeBtn).toHaveCSS('opacity', '1')
+  await expect(trashRow.getByRole('button', { name: '복원' })).toHaveCSS('opacity', '1')
 
   // 완전 삭제 → 휴지통에서도 사라진다
   await purge(trashRow)

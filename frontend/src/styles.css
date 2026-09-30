@@ -964,18 +964,31 @@ button:focus-visible {
   white-space: nowrap;
 }
 
+/* 휴지통 행의 복원·완전 삭제. 평소엔 숨기고 그 행에 왔을 때만 보인다 —
+   되돌릴 수 없는 버튼이 늘 떠 있으면 눈에 밟히고 잘못 누르기도 쉽다.
+
+   **visibility 가 아니라 opacity 를 쓴다.** visibility:hidden 은 요소를 탭 순서와
+   접근성 트리에서 **통째로 들어낸다.** 그래서 키보드만 쓰는 사람은 휴지통에서
+   복원도 완전삭제도 할 방법이 없었다. opacity:0 이면 초점은 받을 수 있고,
+   :focus-within 으로 그 순간 드러난다. (즐겨찾기 별표도 같은 이유로 opacity 다.)
+   덤으로 e2e 도 안정된다 — hover 가 한 프레임 풀렸다고 버튼이 사라지지 않는다.
+
+   pointer-events 로 잠그지는 않는다. 마우스는 버튼 위에 와야 누를 수 있고, 오는
+   순간 행이 hover 라 이미 보인다. 잠그면 Playwright 가 마우스를 옮기기 **전에**
+   하는 클릭 가능성 검사에 걸려 오히려 멈춘다. 잘못 누르는 사고는 confirm 이 막는다. */
 .row-action {
   background: none;
   color: var(--primary);
   font-size: 13px;
   padding: 3px 7px;
   border-radius: var(--radius-sm);
-  visibility: hidden;
+  opacity: 0;
 }
 
 .file-table tbody tr:hover .row-action,
+.file-table tbody tr:focus-within .row-action,
 .row-selected .row-action {
-  visibility: visible;
+  opacity: 1;
 }
 
 /* 다중선택 체크박스 열 */
