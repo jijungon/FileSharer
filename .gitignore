@@ -18,6 +18,10 @@ backups/
 !.env.example
 *.pem
 *.key
+# `*.key` 는 개인키를 막지만 `*.key.pub` 는 안 걸린다 — 실제로 공개키가 한 번
+# 딸려 올라갔다(git add -A 에 추적 안 되던 파일이 섞였다). 키 폴더째로 막는다.
+*.key.pub
+key/
 secrets/
 
 # --- 3) 사내 기획/계획 문서 — PUBLIC 레포에 올리지 않음 (로컬 보관) ---
