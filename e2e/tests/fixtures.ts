@@ -101,6 +101,29 @@ export const test = base.extend<
     },
     { scope: 'worker', auto: true },
   ],
+  // 일반 사용자(member)로 로그인된 별도 창. 관리자 세션과 섞이지 않게 컨텍스트를 따로 연다.
+  memberPage: async ({ browser, request }, use, testInfo) => {
+    // 계정 보장 — 관리자로 만든다. 이미 있으면 4xx 라 그냥 넘어간다(리셋이 사용자를 안 지운다).
+    await request.post('/api/auth/login', { data: ADMIN }).catch(() => {})
+    await request
+      .post('/api/users', {  // 관리 라우터 prefix 는 /api (관례와 달리 /api/admin 이 아니다)
+        data: { email: MEMBER.email, password: MEMBER.password, role: 'member' },
+      })
+      .catch(() => {})
+
+    const context = await browser.newContext()
+    const page = await context.newPage()
+    const errors: string[] = []
+    collectErrors(page, errors)
+    await loginAs(page, MEMBER)
+
+    await use(page)
+
+    await context.close()
+    if (testInfo.status === testInfo.expectedStatus && errors.length > 0) {
+      throw new Error(`일반 사용자 화면에서 오류 ${errors.length}건:\n${errors.join('\n')}`)
+    }
+  },
   _noConsoleErrors: [
     async ({ page }, use, testInfo) => {
       const errors: string[] = []
