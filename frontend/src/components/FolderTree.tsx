@@ -47,7 +47,7 @@ interface Props {
     ctx: { srcSpaceId: string; targetSpaceId: string },
   ) => void
   onUploadFiles?: (targetFolderId: string | null, e: React.DragEvent) => void // 로컬 파일/폴더 → 그 폴더(null=공간 루트)로 업로드
-  // 우클릭 컨텍스트 메뉴 동작(파일목록 표를 대체 — 이름변경/즐겨찾기/삭제)
+  // 행에서 바로 하는 것들 — 이름변경(고르고 Enter) · ★ 즐겨찾기 · 🗑 휴지통.
   // 이름변경은 인라인(제자리 입력) — 빈/동일 이름이면 호출 안 함.
   onRenameCommit?: (row: TreeRow, newName: string) => void
   onToggleFavorite?: (row: TreeRow) => void
@@ -83,7 +83,7 @@ export default function FolderTree({
   const [draggingId, setDraggingId] = useState<string | null>(null) // 지금 끌고 있는 행(흐리게 표시)
   const [hoverRowId, setHoverRowId] = useState<string | null>(null) // 커서가 실제로 올라간 행(약한 표시)
   const [renaming, setRenaming] = useState<string | null>(null) // 인라인 이름변경 중인 노드 id
-  // 우클릭 컨텍스트 메뉴: 대상 행 + 화면 좌표
+
   useEffect(() => {
     let alive = true
     listSpaceTree(spaceId)

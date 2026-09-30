@@ -990,7 +990,7 @@ export default function Files() {
     }
   }, [trashMode, favMode])
 
-  // ── 사이드바 트리 우클릭 메뉴 동작(파일목록 표 대체) ──
+  // ── 사이드바 트리의 행에서 바로 하는 것들(이름 변경 · 즐겨찾기 · 삭제) ──
   // 인라인 이름변경 커밋(빈/동일 이름 무시는 FolderTree 쪽에서 처리) — guard가 reload + treeVersion 갱신.
   // 백엔드가 돌려준 실제 새 이름(중복 시 "(2)" 포함)으로, 열린 탭·선택 파일·주소창 경로를 함께 갱신한다.
   async function renameCommit(row: TreeRow, name: string) {
@@ -1774,7 +1774,8 @@ export default function Files() {
             <div className="browser-welcome muted">
               <p>왼쪽 트리에서 파일을 선택해 여세요.</p>
               <p className="browser-welcome-sub">
-                추가는 왼쪽 상단 아이콘(＋폴더 · ↑업로드 · ＋MD), 이름 변경·삭제는 항목 우클릭.
+                추가는 왼쪽 상단 아이콘(＋폴더 · ↑업로드 · ＋MD). 이름 변경은 항목을 고르고 Enter,
+                즐겨찾기·삭제는 행의 ★·🗑.
               </p>
             </div>
           )}
