@@ -91,6 +91,25 @@ def test_password_protected_flow(admin_client):
     assert header.status_code == 200
 
 
+def test_non_ascii_password_travels_only_via_basic_auth(admin_client):
+    """한글 비밀번호는 Basic 으로만 지나간다 — 공유 화면이 이 경로에 기대고 있다.
+
+    HTTP 헤더 값은 Latin-1 만 담을 수 있어서 X-Share-Password 로는 한글을 실어 나를 수 없다.
+    브라우저는 보내기도 전에 TypeError 를 던지고, 억지로 밀어 넣어도 서버엔 깨진 값이 온다.
+    그래서 프런트(frontend/src/lib/sharepw.ts)가 Basic(base64 of UTF-8)으로 감싸 보낸다.
+    여기 Basic 분기를 없애거나 .decode() 를 latin-1 로 바꾸면 **화면이 조용히 깨진다.**
+    """
+    _, res = make_file_share(admin_client, b"secret", password="한글비밀번호")
+    token = res.json()["token"]
+    admin_client.post("/api/auth/logout")
+
+    assert admin_client.get(f"/s/{token}/download").status_code == 401
+    assert admin_client.get(f"/s/{token}/download", auth=("", "틀린비번")).status_code == 401
+
+    ok = admin_client.get(f"/s/{token}/download", auth=("", "한글비밀번호"))
+    assert ok.status_code == 200 and ok.content == b"secret"
+
+
 def test_max_downloads_enforced(admin_client):
     _, res = make_file_share(admin_client, max_downloads=2)
     token = res.json()["token"]
