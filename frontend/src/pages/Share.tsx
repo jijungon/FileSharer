@@ -2,6 +2,7 @@ import { CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from
 import { useParams } from 'react-router-dom'
 import MarkdownPreview from '../components/MarkdownPreview'
 import { formatBytes } from '../lib/format'
+import { shareAuthHeaders } from '../lib/sharepw'
 import { toggleTheme, useAppTheme } from '../lib/theme'
 import { extractToc } from '../lib/toc'
 
@@ -124,7 +125,7 @@ export default function Share() {
   const loadPreview = useCallback(
     async (m: ShareMeta) => {
       if (m.type !== 'file') return
-      const headers: Record<string, string> = password ? { 'X-Share-Password': password } : {}
+      const headers = shareAuthHeaders(password)
       const isMd = ['md', 'markdown', 'txt'].includes(extOf(m.name))
       const isImg = m.mime.startsWith('image/')
       const isPdf = m.mime === 'application/pdf' || extOf(m.name) === 'pdf'
@@ -143,7 +144,15 @@ export default function Share() {
 
   async function unlock() {
     setPwError('')
-    const res = await fetch(`${base}/raw`, { headers: { 'X-Share-Password': password } })
+    // 헤더를 만드는 데 실패하는 일은 이제 없지만(lib/sharepw.ts), fetch 자체가 끊길 수는
+    // 있다. 잡지 않으면 '열기' 가 아무 말 없이 죽은 것처럼 보인다 — 예전에 그랬다.
+    let res: Response
+    try {
+      res = await fetch(`${base}/raw`, { headers: shareAuthHeaders(password) })
+    } catch {
+      setPwError('열 수 없습니다. 잠시 후 다시 시도해 주세요.')
+      return
+    }
     if (res.status === 401) {
       setPwError('비밀번호가 올바르지 않습니다')
       return
