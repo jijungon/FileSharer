@@ -1463,8 +1463,6 @@ export default function Files() {
                   // 선택은 한 공간 안에서만 — 다른 공간 트리에는 넘기지 않는다
                   checked={checkedSpace === s.id ? checked : undefined}
                   onChecked={applyChecked}
-                  onBulkDelete={bulkDelete}
-                  onBulkDownload={bulkDownload}
                 />
             </div>
           ))}

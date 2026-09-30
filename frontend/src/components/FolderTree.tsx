@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { listSpaceTree, TreeRow } from '../lib/files'
 
 interface TreeNode extends TreeRow {
@@ -59,8 +59,6 @@ interface Props {
   // 다음 선택을 **이전 값으로부터** 계산해 넘긴다. 연달아 빠르게 누르면 props의 checked 는
   // 아직 직전 클릭의 결과를 담고 있지 않아(리렌더 전), 통째로 덮어쓰면 클릭 하나가 먹힌다.
   onChecked?: (ofSpace: string, update: (prev: Set<string>) => Set<string>) => void
-  onBulkDelete?: (ids: string[]) => void
-  onBulkDownload?: (ids: string[]) => void
 }
 
 export default function FolderTree({
@@ -78,8 +76,6 @@ export default function FolderTree({
   onDelete,
   checked,
   onChecked,
-  onBulkDelete,
-  onBulkDownload,
 }: Props) {
   const [rows, setRows] = useState<TreeRow[]>([])
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
@@ -88,42 +84,6 @@ export default function FolderTree({
   const [hoverRowId, setHoverRowId] = useState<string | null>(null) // 커서가 실제로 올라간 행(약한 표시)
   const [renaming, setRenaming] = useState<string | null>(null) // 인라인 이름변경 중인 노드 id
   // 우클릭 컨텍스트 메뉴: 대상 행 + 화면 좌표
-  const [menu, setMenu] = useState<{ row: TreeRow; x: number; y: number } | null>(null)
-  const menuRef = useRef<HTMLDivElement>(null)
-  const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(null)
-
-  // 메뉴가 뷰포트 밖(특히 화면 하단·우측)으로 넘치면 안쪽으로 당겨 항상 보이게 한다.
-  // (커서가 트리 맨 아래 항목이면 기본 위치에선 마지막 '삭제' 항목이 화면 밖으로 나갔다.)
-  useLayoutEffect(() => {
-    if (!menu) {
-      setMenuPos(null)
-      return
-    }
-    const el = menuRef.current
-    const w = el?.offsetWidth ?? 180
-    const h = el?.offsetHeight ?? 150
-    const pad = 8
-    setMenuPos({
-      left: Math.max(pad, Math.min(menu.x, window.innerWidth - w - pad)),
-      top: Math.max(pad, Math.min(menu.y, window.innerHeight - h - pad)),
-    })
-  }, [menu])
-
-  // 메뉴 바깥 클릭/스크롤/Esc 시 닫기
-  useEffect(() => {
-    if (!menu) return
-    const close = () => setMenu(null)
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setMenu(null)
-    window.addEventListener('click', close)
-    window.addEventListener('resize', close)
-    window.addEventListener('keydown', onKey)
-    return () => {
-      window.removeEventListener('click', close)
-      window.removeEventListener('resize', close)
-      window.removeEventListener('keydown', onKey)
-    }
-  }, [menu])
-
   useEffect(() => {
     let alive = true
     listSpaceTree(spaceId)
@@ -221,7 +181,6 @@ export default function FolderTree({
 
   // 인라인 이름변경: 시작(메뉴 닫고 그 자리에 입력창) / 커밋(빈·동일 이름이면 무시)
   function beginRename(node: TreeRow) {
-    setMenu(null)
     setRenaming(node.id)
   }
   function commitRename(node: TreeRow, raw: string) {
@@ -345,15 +304,6 @@ export default function FolderTree({
             setHoverRowId(null)
           }}
           {...dropHandlers(isFolder ? node.id : node.parent_id, node.id)}
-          onContextMenu={(e) => {
-            // 우클릭 메뉴는 **여러 개를 골랐을 때만** 뜬다.
-            // 단건 메뉴(이름 변경·즐겨찾기·삭제)는 없앴다 — 같은 일을 행에서 바로 할 수
-            // 있기 때문이다: ★ 즐겨찾기 · 🗑 삭제 · 항목 선택 후 Enter 로 이름 변경.
-            // 메뉴가 하나 줄면 화면이 그만큼 조용해진다.
-            if (!(sel.size > 1 && sel.has(node.id))) return
-            e.preventDefault()
-            setMenu({ row: node, x: e.clientX, y: e.clientY })
-          }}
         >
           {onToggleFavorite && (
             <button
@@ -436,47 +386,6 @@ export default function FolderTree({
     <>
       {tree.length > 0 && (
         <ul className="folder-tree tree-branch">{tree.map((n) => renderNode(n, 0))}</ul>
-      )}
-      {menu && (
-        <div
-          ref={menuRef}
-          className="tree-menu"
-          style={{ position: 'fixed', top: menuPos?.top ?? menu.y, left: menuPos?.left ?? menu.x }}
-          role="menu"
-          onClick={(e) => e.stopPropagation()}
-          onContextMenu={(e) => e.preventDefault()}
-        >
-          {/* 고른 것 전부에 대한 메뉴. 단건 메뉴는 없앴다 — 이름 변경·즐겨찾기·삭제는
-              행에서 바로 할 수 있다(Enter · ★ · 🗑). */}
-          <button
-            role="menuitem"
-            onClick={() => {
-              onBulkDownload?.([...sel])
-              setMenu(null)
-            }}
-          >
-            ⤓ {sel.size}개 내려받기
-          </button>
-          <button
-            role="menuitem"
-            onClick={() => {
-              onChecked?.(spaceId, () => new Set())
-              setMenu(null)
-            }}
-          >
-            ✕ 선택 해제
-          </button>
-          <button
-            role="menuitem"
-            className="danger"
-            onClick={() => {
-              onBulkDelete?.([...sel])
-              setMenu(null)
-            }}
-          >
-            🗑 {sel.size}개 삭제
-          </button>
-        </div>
       )}
     </>
   )
