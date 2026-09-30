@@ -90,6 +90,35 @@ body {
   min-height: 100vh;
 }
 
+/* ── 한글 줄바꿈 ──────────────────────────────────────────────────────────
+   한글은 기본값(word-break: normal)에서 **글자 단위로** 끊긴다. 그래서 단어
+   한가운데가 갈라진다 — "공유 가이/드", "파일 공유 가이/드". keep-all 이면
+   어절(띄어쓰기) 단위로만 줄을 바꾼다.
+
+   ⚠️ **읽을거리에만 건다. 앱 골격(표·트리·버튼)에는 걸지 말 것.**
+   줄바꿈 규칙은 글자만 바꾸는 게 아니라 **min-content 너비와 줄 수**를 바꾼다.
+   처음엔 body 전체에 걸었는데, 띄어쓰기 없는 한글 파일명이 예전과 다른 지점에서
+   접히면서 표 행 높이가 달라졌다. 골격에 거는 순간 파급을 다 못 읽는다.
+   글자 몇 개 예쁘자고 레이아웃을 흔들 이유는 없다.
+
+   overflow-wrap 은 break-word 여야 한다. anywhere 는 min-content 너비까지
+   한 글자로 줄여버려 표 머리글("이름")이 세로로 쪼개진다. */
+.md-preview,
+.share-page {
+  word-break: keep-all;
+  overflow-wrap: break-word;
+}
+
+/* 코드는 예외 — 어절이라는 개념이 없고 이미 자기 규칙(pre/overflow-x)이 있다.
+   keep-all 이 걸리면 긴 명령줄이 엉뚱한 데서 접힌다. */
+.md-preview pre,
+.md-preview code,
+.share-page pre,
+.share-page code {
+  word-break: normal;
+  overflow-wrap: normal;
+}
+
 h1,
 h2,
 h3 {

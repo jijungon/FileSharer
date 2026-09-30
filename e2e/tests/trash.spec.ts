@@ -168,7 +168,7 @@ test('휴지통 항목에 자동 완전삭제까지 남은 시간이 표시된�
   await expect(page.locator('.upload-row')).toHaveCount(0)
   const item = page.locator('.tree-name').filter({ hasText: `카운트다운_${RUN_TAG}.txt` })
   await expect(item).toBeVisible()
-  // 트리 우클릭 → 🗑 삭제
+  // 트리 행의 🗑 버튼으로 삭제
   await trashFromTree(page, item)
   // 삭제가 커밋되어 트리에서 빠질 때까지 기다린다 — 이 대기 없이 바로 휴지통을 열면
   // (느린 CI에서) 삭제 커밋 전에 휴지통 목록을 읽어 항목이 안 보일 수 있다.
