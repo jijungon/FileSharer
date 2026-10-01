@@ -162,9 +162,14 @@ def _children(db: Session, space_id: str, parent_id: str | None) -> list[dict]:
 
 @router.get("/spaces/{space_id}/children")
 def space_children(
-    space_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)
+    space_id: str,
+    principal: Principal = Depends(current_principal),
+    db: Session = Depends(get_db),
 ) -> list[dict]:
-    space = get_space_checked(db, user, space_id)
+    """세션 쿠키 또는 API 토큰(Bearer)으로 공간 최상위 훑기 — CLI 의 ``ls``."""
+    space = get_space_checked(db, principal.user, space_id)
+    if principal.token is not None:
+        tokens_svc.enforce_read_scope_space(db, principal.token, space)
     return _children(db, space.id, None)
 
 
@@ -514,11 +519,16 @@ def list_recent(
 
 @router.get("/nodes/{node_id}/children")
 def node_children(
-    node_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)
+    node_id: str,
+    principal: Principal = Depends(current_principal),
+    db: Session = Depends(get_db),
 ) -> list[dict]:
-    node = get_node_checked(db, user, node_id)
+    """세션 쿠키 또는 API 토큰(Bearer)으로 폴더 훑기 — CLI 의 ``ls <폴더>``."""
+    node = get_node_checked(db, principal.user, node_id)
     if node.type != "folder":
         raise HTTPException(status_code=400, detail="폴더가 아닙니다")
+    if principal.token is not None:
+        tokens_svc.enforce_read_scope(db, principal.token, node)
     return _children(db, node.space_id, node.id)
 
 

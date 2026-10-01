@@ -2,8 +2,9 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..deps import current_user, get_db
+from ..deps import Principal, current_principal, get_db
 from ..models import Space, Team, TeamMember, User
+from ..services import tokens as tokens_svc
 
 router = APIRouter(prefix="/api", tags=["spaces"])
 
@@ -35,6 +36,15 @@ def visible_spaces(db: Session, user: User) -> list[dict]:
 
 @router.get("/spaces")
 def list_spaces(
-    user: User = Depends(current_user), db: Session = Depends(get_db)
+    principal: Principal = Depends(current_principal), db: Session = Depends(get_db)
 ) -> list[dict]:
-    return visible_spaces(db, user)
+    """세션 쿠키 또는 API 토큰(Bearer)으로 공간 목록 — CLI 가 어디에 올릴지 고를 수 있게.
+
+    토큰으로 물으면 **그 토큰이 갇힌 공간 하나만** 돌려준다. 토큰이 못 들어가는 공간을
+    목록에만 띄우면, 고르고 나서야 403 을 보게 된다.
+    """
+    spaces = visible_spaces(db, principal.user)
+    if principal.token is None:
+        return spaces
+    scoped = tokens_svc.scope_space_id(db, principal.token)
+    return [s for s in spaces if s["id"] == scoped]
