@@ -25,14 +25,21 @@ test('local login → browse → create folder → upload file', async ({ page }
   })
   await expect(fileCell(page, `스모크_${RUN_TAG}.txt`)).toBeVisible()
 
-  // 파일 열기 → 공유 링크 팝오버가 열린다(외부 공유 전용).
-  // '사내 링크 복사'는 상단 주소창(오미니박스)의 📋로 옮겨, 이 팝오버에는 더 이상 없다.
+  // 파일 열기 → 공유 링크 팝오버. 한 파일을 남에게 주는 방법을 **여기 한곳에** 모았다 —
+  // 사내(로그인한 사람에게 주는 앱 주소)와 사외(링크를 받은 누구나) 로 가른다.
+  // 예전엔 사내 쪽이 주소창의 📋 로 따로 나가 있었다.
   await fileCell(page, `스모크_${RUN_TAG}.txt`).click()
-  await page.locator('.topbar-fileactions').getByRole('button', { name: '공유 링크', exact: true }).click()
-  await expect(page.locator('.share-popover')).toBeVisible()
-  await expect(
-    page.locator('.share-popover').getByRole('button', { name: /사내 링크 복사/ }),
-  ).toHaveCount(0)
+  // 파일 액션은 상단 바 가운데에서 **탭 줄**로 옮겼다(.tab-actions) — 시연 피드백.
+  await page
+    .locator('.tab-actions')
+    .getByRole('button', { name: '공유 링크', exact: true })
+    .click()
+  const popover = page.locator('.share-popover')
+  await expect(popover).toBeVisible()
+  await expect(popover).toContainText('사내')
+  await expect(popover).toContainText('사외')
+  // 사내 칸에는 로그인해야 열리는 앱 주소가 그대로 들어 있다
+  await expect(popover.locator('code').first()).toContainText('/files/')
 })
 
 // 1x1 투명 PNG (텍스트가 아닌 미리보기 = MediaPreview 경로)

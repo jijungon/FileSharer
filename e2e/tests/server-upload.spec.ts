@@ -15,9 +15,13 @@ async function loginAsAdmin(page) {
   await expect(page).toHaveURL(/\/files/)
 }
 
-// 버튼은 업로드/다운로드를 함께 다루므로 '↕ 서버'로 이름이 바뀌었고, 팝오버는 '서버 전송'이다.
+// 버튼은 업로드/다운로드를 함께 다루므로 이름이 '서버'가 됐고, 팝오버는 '서버 전송'이다.
+// 탭 줄에선 **아이콘만** 보이고 글자는 화면에서만 접혀 있다. hasText 는 눈에 보이는 글자를
+// 보므로 그 버튼을 못 찾는다 — 접근성 이름으로 집어야 사람이 부르는 이름과 같은 걸 집는다.
+const serverButton = (page) => page.getByRole('button', { name: '서버', exact: true })
+
 async function openServerUpload(page) {
-  await page.getByRole('button').filter({ hasText: '서버' }).first().click()
+  await serverButton(page).click()
   await expect(page.getByRole('dialog', { name: '서버 전송' })).toBeVisible()
 }
 
@@ -67,7 +71,7 @@ test('임시 토큰 발급(버튼) → 한 토큰으로 여러 파일 Bearer 업
 
   // 파일을 열면 상단 액션에도 '서버' 버튼이 있다(폴더뷰뿐 아니라 파일뷰에도).
   await fileCell(page, names[0]).click()
-  await expect(page.getByRole('button').filter({ hasText: '서버' }).first()).toBeVisible()
+  await expect(serverButton(page)).toBeVisible()
 
   // 같은 토큰으로 '내려받기' 명령도 제공된다(filesharer → 원격지). 공개 링크 없이 헤더 인증.
   await openServerUpload(page)

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { IconDownload, IconLink, IconServer, IconUpload } from './icons'
 import ServerTransferPopover from './ServerTransferPopover'
 import SharePopover from './SharePopover'
 import { SpaceInfo } from '../lib/api'
@@ -79,16 +80,22 @@ export default function LinkBar({
         {/* 로컬: 다운로드 · 로컬 업로드 (연한 노랑) */}
         {target && (
           <a href={downloadUrl(target)}>
-            <button className="btn-utility btn-tier-local">다운로드</button>
+            <button className="btn-utility btn-tier-local" title={`${target.name} 내려받기`}>
+              <IconDownload />
+              <span className="btn-label">다운로드</span>
+            </button>
           </a>
         )}
         {space && onLocalUpload && (
           <button
             className="btn-utility btn-tier-local"
             onClick={onLocalUpload}
-            title="내 PC에서 이 위치로 업로드 (폴더는 끌어다 놓기)"
+            // 어느 폴더로 올라가는지 이름으로 말해준다 — "이 위치"만으로는
+            // 파일을 열어 둔 상태에서 어디로 가는지 알 수 없다.
+            title={`내 PC에서 ${currentLabel}(으)로 업로드 (폴더는 끌어다 놓기)`}
           >
-            ↑ 로컬 업로드
+            <IconUpload />
+            <span className="btn-label">로컬 업로드</span>
           </button>
         )}
         {space && <span className="action-divider" aria-hidden="true" />}
@@ -100,9 +107,10 @@ export default function LinkBar({
               setServerUpOpen((v) => !v)
               setShareOpen(false)
             }}
-            title="서버(헤드리스)에서 올리고 내리기 — API 토큰 + curl"
+            title={`${currentLabel}에서 서버(헤드리스)로 올리고 내리기 — API 토큰 + curl`}
           >
-            ↕ 서버
+            <IconServer />
+            <span className="btn-label">서버</span>
           </button>
         )}
         {/* 링크: 공유 링크 (진한 노랑). '사내 링크 복사'는 공유 팝오버 안으로 옮겨 바를 정리했다. */}
@@ -113,8 +121,10 @@ export default function LinkBar({
             setShareOpen((v) => !v)
             setServerUpOpen(false)
           }}
+          title={target ? `${target.name} 공유 — 사내 주소 / 사외 링크` : '공유할 파일을 먼저 고르세요'}
         >
-          공유 링크
+          <IconLink />
+          <span className="btn-label">공유 링크</span>
         </button>
         {serverUpOpen && space && (
           <ServerTransferPopover

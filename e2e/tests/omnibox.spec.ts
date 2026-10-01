@@ -14,9 +14,9 @@ async function login(page) {
 }
 
 // 상단 검색창은 크롬식 '주소창(오미니박스)'을 겸한다.
-// 파일을 열면 그 파일의 경로가 뜨고(주소 모드) 📋로 사내 공유 링크를 복사한다.
+// 파일을 열면 그 파일의 경로가 뜬다(주소 모드). 사내 링크 복사는 공유 팝오버로 옮겼다.
 // 타이핑하면 검색 모드로 바뀌고, 결과를 고르면 다시 주소(경로) 모드로 돌아온다.
-test('상단 주소창: 파일을 열면 경로가 뜨고 📋가 생기며, 타이핑하면 검색 모드로 바뀐다', async ({
+test('상단 주소창: 파일을 열면 경로가 뜨고, 타이핑하면 검색 모드로 바뀐다', async ({
   page,
 }) => {
   await login(page)
@@ -34,8 +34,9 @@ test('상단 주소창: 파일을 열면 경로가 뜨고 📋가 생기며, 타
   const box = page.getByPlaceholder('파일 이름·내용 검색')
   await expect(page.locator('.topbar-search.is-address')).toBeVisible()
   await expect(box).toHaveValue(new RegExp(fname.replace(/[.]/g, '\\.')))
-  // 사내 공유 링크 복사 버튼(📋)이 주소창 안에 있다
-  await expect(page.locator('.topbar-search-copy')).toBeVisible()
+  // 사내 링크 복사는 **공유 팝오버 안('사내' 칸)** 으로 옮겼다 — 한 파일을 남에게 주는
+  // 방법이 주소창과 팝오버 두 군데로 흩어져 있었다. 주소창에는 더 이상 없다.
+  await expect(page.locator('.topbar-search-copy')).toHaveCount(0)
 
   // 타이핑하면 검색 모드로 전환 — 주소 틴트가 사라지고 결과 드롭다운이 뜬다
   await box.click()

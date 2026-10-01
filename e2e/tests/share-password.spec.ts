@@ -53,10 +53,13 @@ test('한글 비밀번호가 걸린 공유를 화면에서 열 수 있다', asyn
   await expect(anonPage.getByText('비밀번호가 올바르지 않습니다')).toBeVisible()
   await expect(anonPage.getByText('비밀 내용')).toHaveCount(0)
 
-  // 맞으면 열린다 — 예전에는 여기서 영원히 멈춰 있었다
+  // 맞으면 열린다 — 예전에는 여기서 영원히 멈춰 있었다.
+  // exact 인 이유: 페이지 제목 <h2>📄 한글잠금_….md</h2> 와 본문 <h1>한글잠금</h1> 이 둘 다
+  // '한글잠금' 을 품는다. 부분 일치로 두면 미리보기가 그려지기 '전'에만 통과하는,
+  // 렌더 속도에 기대는 테스트가 된다 — 실제로 그렇게 한 번 터졌다. 본문 쪽을 집는다.
   await anonPage.getByPlaceholder('비밀번호').fill(PW)
   await anonPage.getByRole('button', { name: '열기', exact: true }).click()
-  await expect(anonPage.getByRole('heading', { name: '한글잠금' })).toBeVisible()
+  await expect(anonPage.getByRole('heading', { name: '한글잠금', exact: true })).toBeVisible()
 
   await anon.close()
 })
