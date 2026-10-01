@@ -16,7 +16,7 @@ from ..services.serving import serve_blob
 from ..services.shares import check_password, consume_download, resolve_share
 from ..services.storage import StorageBackend
 from ..services.tar_stream import stream_tar_gz
-from .nodes import collect_tar_entries, get_storage
+from .nodes import collect_tar_entries, get_storage, media_type_for
 
 router = APIRouter(tags=["public"])
 
@@ -61,13 +61,23 @@ def share_raw(
     check_password(request, share)
     if node.type != "file":
         raise HTTPException(status_code=400, detail="파일이 아닙니다")
+    # 저장된 mime 이 비었거나 octet-stream 이면 확장자로 다시 추론한다.
+    # 안 그러면 공유 페이지에서 영상·음성이 재생되지 않는다(브라우저가 형식을 모른다).
+    media_type = media_type_for(node)
+    extra: dict[str, str] = {}
+    if media_type in ("text/html", "application/xhtml+xml"):
+        # **여기가 비어 있었다.** 앱 안(/api/files/{id}/raw)에는 걸려 있는데 공유에는 없어서,
+        # 이 주소를 주소창에 바로 열면 업로드된 HTML 의 스크립트가 **앱 오리진에서 실행**됐다.
+        # 공유 링크는 사외에 건네라고 만든 것이라 더 위험하다. iframe sandbox 와 이중 방어.
+        extra = {"Content-Security-Policy": "sandbox", "X-Content-Type-Options": "nosniff"}
     return serve_blob(
         storage,
         node.storage_key,
         filename=node.name,
-        media_type=node.mime or "application/octet-stream",
+        media_type=media_type,
         disposition="inline",
         request=request,
+        extra_headers=extra,
     )
 
 

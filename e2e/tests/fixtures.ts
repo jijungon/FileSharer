@@ -14,6 +14,10 @@ const ALLOW = [
   /challenge-platform/i,
   /Failed to load resource/i, // 리소스 404 등(앱 로직 에러 아님)
   /net::ERR_/i,
+  // HTML 미리보기(샌드박스 iframe)가 **스크립트를 막았다는 브라우저의 보고**다.
+  // 앱 오류가 아니라 보안 장치가 작동한 증거라 통과시킨다 — 오히려 이게 안 나오면
+  // sandbox 가 풀린 것이다(그건 share-guard.spec 이 따로 단언한다).
+  /Blocked script execution in 'about:srcdoc'/i,
 ]
 
 // e2e 로그인 계정. **지금까지 모든 테스트가 관리자(ADMIN)로만 돌았다** — 그래서

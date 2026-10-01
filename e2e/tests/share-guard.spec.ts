@@ -17,10 +17,15 @@ import { fileCell } from './helpers'
 // aria-label="사내 공유 링크 복사" 가 부분 일치로 함께 잡힌다.
 const SHARE_BTN = { name: '공유 링크', exact: true } as const
 
-async function upload(page: import('@playwright/test').Page, name: string, body: string) {
+async function upload(
+  page: import('@playwright/test').Page,
+  name: string,
+  body: string,
+  mime = 'text/markdown',
+) {
   await page.locator('input[type="file"]:not([webkitdirectory])').setInputFiles({
     name,
-    mimeType: 'text/markdown',
+    mimeType: mime,
     buffer: Buffer.from(body),
   })
   await expect(fileCell(page, name)).toBeVisible()
@@ -30,10 +35,17 @@ async function upload(page: import('@playwright/test').Page, name: string, body:
 async function share(
   page: import('@playwright/test').Page,
   slug: string,
-  opts: { password?: string; maxDownloads?: number } = {},
+  opts: {
+    password?: string
+    maxDownloads?: number
+    /** 기본은 `<slug>_<tag>.md`. 형식별 미리보기를 보려면 직접 준다. */
+    name?: string
+    body?: string
+    mime?: string
+  } = {},
 ) {
-  const name = `${slug}_${RUN_TAG}.md`
-  await upload(page, name, `# ${slug}\n\n비밀 내용\n`)
+  const name = opts.name ?? `${slug}_${RUN_TAG}.md`
+  await upload(page, name, opts.body ?? `# ${slug}\n\n비밀 내용\n`, opts.mime)
   await fileCell(page, name).click()
   await page.getByRole('button', SHARE_BTN).click()
 
@@ -47,6 +59,13 @@ async function share(
   })
   await expect(urlCode).toBeVisible()
   return (await urlCode.textContent())!.trim()
+}
+
+/** 공유 팝오버를 닫는다. 링크를 만들고 나면 폼이 '새 링크 더 만들기' 로 바뀌어서,
+ *  닫지 않고 다음 파일을 공유하려 하면 '링크 만들기' 버튼을 못 찾는다. */
+async function closeSharePopover(page: import('@playwright/test').Page) {
+  await page.locator('.share-popover').getByRole('button', { name: /닫기/ }).click()
+  await expect(page.locator('.share-popover')).toHaveCount(0)
 }
 
 test('비밀번호 링크: 비밀번호 없이는 내용이 나가지 않는다', async ({ page, browser }) => {
@@ -151,5 +170,61 @@ test('없는 토큰은 404 — 링크를 찍어볼 수 없다', async ({ page, b
 
   const anon = await browser.newContext()
   expect((await anon.request.get(`${origin}/s/aaaaaaaaaaaaaaaaaaaaaa/meta`)).status()).toBe(404)
+  await anon.close()
+})
+
+test('공유 페이지가 HTML·코드·영상을 미리보기로 보여준다', async ({ page, browser }) => {
+  // 예전엔 md·txt·이미지·PDF 만 보여주고 나머지는 "미리보기를 지원하지 않는 형식"이었다.
+  // 앱 안 뷰어는 진작 보여주고 있었으니 같은 파일이 두 화면에서 다르게 보였다.
+  await loginAs(page, ACCOUNT)
+
+  const anon = await browser.newContext()
+
+  // ① HTML — **격리해서** 보여준다. 심어둔 스크립트가 돌면 안 된다.
+  const htmlUrl = await share(page, '리포트', {
+    name: `리포트_${RUN_TAG}.html`,
+    body: '<h1>공유된 리포트</h1><script>document.body.innerHTML="RAN"</script>',
+    mime: 'application/octet-stream', // 업로더가 일반 mime 을 보내도 확장자로 되짚는다
+  })
+  await closeSharePopover(page)
+
+  const htmlPage = await anon.newPage()
+  await htmlPage.goto(htmlUrl)
+  const frame = htmlPage.locator('iframe')
+  await expect(frame).toHaveAttribute('sandbox', '')
+  // sandbox 라 부모에서 안을 들여다볼 수 없다 — srcdoc 에 원문이 그대로 있는지로 확인한다
+  await expect(frame).toHaveAttribute('srcdoc', /공유된 리포트/)
+  await expect(htmlPage.getByText('미리보기를 지원하지 않는')).toHaveCount(0)
+
+  // 서버도 같은 걸 막아준다(iframe 과 이중 방어) — 주소창에 /raw 를 직접 열어도 안전해야 한다
+  const raw = await anon.request.get(`${htmlUrl}/raw`)
+  expect(raw.headers()['content-security-policy']).toBe('sandbox')
+  expect(raw.headers()['x-content-type-options']).toBe('nosniff')
+
+  // ② 코드 — 마크다운이 아니라 코드블록으로. `#` 주석이 제목으로 잡히면 안 된다.
+  const codeUrl = await share(page, '코드', {
+    name: `설정_${RUN_TAG}.py`,
+    body: 'def f():\n    return 1\n\n# 주석은 제목이 아니다\n',
+    mime: 'application/octet-stream',
+  })
+  await closeSharePopover(page)
+
+  const codePage = await anon.newPage()
+  await codePage.goto(codeUrl)
+  await expect(codePage.locator('pre code')).toContainText('def f():')
+  await expect(codePage.locator('.share-toc')).toHaveCount(0) // 목차가 서면 안 된다
+
+  // ③ 영상 — 통째로 받지 않고 주소를 직접 문다
+  const vidUrl = await share(page, '영상', {
+    name: `영상_${RUN_TAG}.mp4`,
+    body: '\u0000\u0000\u0000 ftypisom',
+    mime: 'application/octet-stream',
+  })
+  await closeSharePopover(page)
+
+  const vidPage = await anon.newPage()
+  await vidPage.goto(vidUrl)
+  await expect(vidPage.locator('video')).toHaveAttribute('src', /\/raw$/)
+
   await anon.close()
 })

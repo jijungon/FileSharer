@@ -1,6 +1,16 @@
 import { api } from './api'
 import { NodeInfo } from './files'
 
+/** 형식 판별에 필요한 **최소한의 모양**.
+ *
+ * 앱 안의 NodeInfo 와 공유 페이지의 ShareMeta 가 둘 다 이걸 만족한다. 같은 파일을
+ * 두 화면이 다르게 판정하면("앱에선 보이는데 공유에선 안 보인다") 사용자만 헷갈린다. */
+export interface FileLike {
+  type: string
+  name: string
+  mime: string
+}
+
 // 편집기로 여는 텍스트 확장자. 문서(md·txt·csv…)에 더해 코드·설정 파일도 포함해
 // 문법 강조로 보기/편집할 수 있게 한다. (.html은 렌더 뷰(isHtml)가 먼저 잡으므로 제외)
 const TEXT_EXTS = [
@@ -19,14 +29,14 @@ export function extOf(name: string): string {
 }
 
 /** 편집기로 열 수 있는 텍스트 파일인가 */
-export function isTextFile(node: NodeInfo): boolean {
+export function isTextFile(node: FileLike): boolean {
   if (node.type !== 'file') return false
   if (node.mime.startsWith('text/')) return true
   return TEXT_EXTS.includes(extOf(node.name))
 }
 
 /** 우측 렌더링이 마크다운인 파일 */
-export function isMarkdown(node: NodeInfo): boolean {
+export function isMarkdown(node: FileLike): boolean {
   return ['md', 'markdown'].includes(extOf(node.name))
 }
 
@@ -44,12 +54,12 @@ export const saveContent = (nodeId: string, content: string, baseUpdatedAt: stri
 
 const IMAGE_EXTS = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp', 'avif']
 
-export function isImage(node: NodeInfo): boolean {
+export function isImage(node: FileLike): boolean {
   if (node.type !== 'file') return false
   return node.mime.startsWith('image/') || IMAGE_EXTS.includes(extOf(node.name))
 }
 
-export function isPdf(node: NodeInfo): boolean {
+export function isPdf(node: FileLike): boolean {
   if (node.type !== 'file') return false
   return node.mime === 'application/pdf' || extOf(node.name) === 'pdf'
 }
@@ -58,17 +68,17 @@ const VIDEO_EXTS = ['mp4', 'webm', 'ogv', 'mov', 'm4v', 'mkv']
 const AUDIO_EXTS = ['mp3', 'wav', 'ogg', 'oga', 'm4a', 'aac', 'flac', 'weba']
 const HTML_EXTS = ['html', 'htm']
 
-export function isVideo(node: NodeInfo): boolean {
+export function isVideo(node: FileLike): boolean {
   if (node.type !== 'file') return false
   return node.mime.startsWith('video/') || VIDEO_EXTS.includes(extOf(node.name))
 }
 
-export function isAudio(node: NodeInfo): boolean {
+export function isAudio(node: FileLike): boolean {
   if (node.type !== 'file') return false
   return node.mime.startsWith('audio/') || AUDIO_EXTS.includes(extOf(node.name))
 }
 
-export function isHtml(node: NodeInfo): boolean {
+export function isHtml(node: FileLike): boolean {
   if (node.type !== 'file') return false
   return node.mime === 'text/html' || HTML_EXTS.includes(extOf(node.name))
 }
@@ -77,7 +87,7 @@ export function isHtml(node: NodeInfo): boolean {
 const OFFICE_EXTS = ['ppt', 'pptx', 'doc', 'docx', 'xls', 'xlsx', 'odp', 'ods', 'odt', 'hwp', 'hwpx']
 
 /** PPT·워드·엑셀 등 — 서버에서 PDF로 변환해 미리보기 */
-export function isOffice(node: NodeInfo): boolean {
+export function isOffice(node: FileLike): boolean {
   if (node.type !== 'file') return false
   return OFFICE_EXTS.includes(extOf(node.name))
 }
