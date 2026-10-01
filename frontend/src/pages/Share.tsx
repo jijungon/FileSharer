@@ -248,9 +248,13 @@ export default function Share() {
       ? `mkdir -p '${meta.name}' && curl -fL${auth} ${origin}${base}/tar | tar xzf - -C '${meta.name}'`
       : `curl -fLOJ${auth} ${origin}${base}/download`
 
+  // 자기 레이아웃을 들고 오는 미리보기(HTML 보고서·PDF·오피스)는 **창을 다 쓴다**.
+  // 900px 은 글 읽기 좋은 폭이지만, 넓은 표가 든 문서는 그 안에서 좌우로 끌어야 한다.
+  const wide = html || isPdf(meta) || isOffice(meta)
+
   return (
     <div
-      className={`share-page${toc.length > 0 ? ' has-toc' : ''}`}
+      className={`share-page${toc.length > 0 ? ' has-toc' : ''}${wide ? ' is-wide' : ''}`}
       style={{ '--share-head-h': `${headH}px` } as CSSProperties}
     >
       <header className="share-page-head" ref={headRef}>
