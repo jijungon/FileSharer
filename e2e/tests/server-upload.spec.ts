@@ -96,3 +96,47 @@ test('임시 토큰 발급(버튼) → 한 토큰으로 여러 파일 Bearer 업
 
   await api.dispose()
 })
+
+// 팝오버가 자기 상자 밖으로 새어 나가지 않는지 — 눈으로만 보이던 깨짐을 숫자로 잡는다.
+//
+// 액션을 탭 줄로 내리면서 `.tab-actions { white-space: nowrap }` 를 넣었는데(안 그러면
+// '자동저장'이 '자/동/저/장'으로 세로로 쪼개진다), 그게 팝오버 안 설명 문단까지 상속돼
+// 한 줄로 뻗어 나갔다 — 913px 가 필요한 문단이 440px 상자 안에 들어앉았다.
+// 거기에 팝오버는 top:56px(상단 바 시절 좌표)로 자기 버튼이 있는 탭 줄을 덮고 있었고,
+// 기준 조상이 뷰어 개폐에 따라 바뀌어 화면 밖으로도 밀려났다.
+// 기존 테스트는 전부 통과했다 — 버튼이 '보이기는' 했으니까.
+//
+// 그래서 보이는지가 아니라 **어디까지 차지하는지**를 본다.
+test('서버 전송 팝오버는 탭 줄 아래에 붙고, 내용이 상자 밖으로 새지 않는다', async ({ page }) => {
+  await loginAsAdmin(page)
+  await page.setViewportSize({ width: 1280, height: 800 })
+  await openServerUpload(page)
+
+  const geom = await page.evaluate(() => {
+    const pop = document.querySelector('.share-popover') as HTMLElement
+    const bar = document.querySelector('.tab-bar') as HTMLElement
+    const r = pop.getBoundingClientRect()
+    const spill = [...pop.querySelectorAll('*')]
+      .map((e) => ({ cls: String((e as HTMLElement).className).slice(0, 24), right: e.getBoundingClientRect().right }))
+      .filter((x) => x.right > r.right + 1)
+      .map((x) => x.cls)
+    return {
+      left: r.left, right: r.right, top: r.top, bottom: r.bottom,
+      barBottom: bar.getBoundingClientRect().bottom,
+      whiteSpace: getComputedStyle(pop).whiteSpace,
+      spill,
+      pageScrollsSideways: document.documentElement.scrollWidth > window.innerWidth,
+    }
+  })
+
+  // 1) 자기 버튼이 있는 줄 **아래**에 뜬다 — 예전엔 top:56px 고정이라 탭 줄을 덮었다
+  expect(geom.top).toBeGreaterThanOrEqual(geom.barBottom)
+  // 2) 탭 줄의 nowrap 이 팝오버까지 따라 들어오지 않는다
+  expect(geom.whiteSpace).toBe('normal')
+  // 3) 아무것도 상자 밖으로 안 나간다
+  expect(geom.spill).toEqual([])
+  // 4) 화면 안에 들어온다 — 가로로 끌어야 보이면 안 된다
+  expect(geom.right).toBeLessThanOrEqual(1280)
+  expect(geom.left).toBeGreaterThanOrEqual(0)
+  expect(geom.pageScrollsSideways).toBe(false)
+})

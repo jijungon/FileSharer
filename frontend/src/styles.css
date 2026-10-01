@@ -1169,6 +1169,8 @@ button:focus-visible {
      따라 45.6px 로 커진다 — 마지막 탭을 닫을 때마다 아래 목록이 5px 들썩였다.
      탭 하나가 들어간 높이로 바닥을 깔아 두 상태의 높이를 맞춘다(넘치면 늘어난다). */
   min-height: 46px;
+  /* 공유·서버 전송 팝오버가 매달리는 기준점 (.share-popover 주석 참고) */
+  position: relative;
   display: flex;
   align-items: stretch;
   padding: 4px 6px 0;
@@ -1915,12 +1917,25 @@ button:focus-visible {
 }
 
 /* --- 공유 팝오버 & 공유 페이지 --- */
+/* 팝오버는 **그 버튼이 있는 줄 바로 아래**에 건다.
+   예전엔 액션이 상단 바에 있어 top:56px(헤더 높이)로 맞췄는데, 액션이 탭 줄로 내려오면서
+   그 좌표가 버튼과 무관해졌다 — 팝오버가 탭 줄을 덮어 자기 버튼을 가렸고, '가장 가까운
+   positioned 조상' 이 뷰어를 열고 닫을 때마다 달라져 좌우로 튀었다(열기 전 left=816 → 연 뒤 567).
+   .tab-bar 를 기준점으로 못박는다. .tab-actions 의 overflow-x:auto 는 이걸 자르지 못한다 —
+   기준 블록(.tab-bar)이 그 바깥에 있기 때문이다.
+
+   white-space 를 되돌리는 이유: .tab-actions 의 nowrap('자/동/저/장' 세로 쪼개짐 방지)이
+   팝오버 안 설명 문단까지 상속돼 한 줄로 뻗어 나갔다(913px 필요 / 404px 상자). 팝오버는
+   떠 있는 패널이지 탭 줄의 일부가 아니다. */
 .share-popover {
   position: absolute;
-  top: 56px;
-  right: var(--sp-lg);
+  top: calc(100% + 4px);
+  right: 8px;
   z-index: 40;
   width: min(440px, calc(100vw - 32px));
+  max-height: calc(100vh - 140px);
+  overflow-y: auto;
+  white-space: normal;
   background: var(--canvas);
   border: 1px solid var(--hairline);
   border-radius: var(--radius-lg);
@@ -2066,6 +2081,13 @@ button:focus-visible {
   max-width: 900px;
   margin: 0 auto;
   padding: var(--sp-xl) var(--sp-lg);
+}
+
+/* 900px 은 **글을 읽기 좋은 폭**이다(한 줄이 너무 길면 눈이 돌아올 자리를 잃는다).
+   그런데 HTML 보고서·PDF·오피스 문서는 자기 레이아웃을 들고 온다 — 넓은 표가 들어 있으면
+   900px 안에서 좌우로 끌어야 한다. 이런 미리보기엔 창을 다 내준다. */
+.share-page.is-wide {
+  max-width: min(1600px, 100%);
 }
 
 /* 스크롤을 한참 내려도 테마 전환·다운로드가 손 닿는 곳에 있어야 한다 → 헤더 고정.
