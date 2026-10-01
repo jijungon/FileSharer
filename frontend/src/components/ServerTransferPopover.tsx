@@ -85,7 +85,7 @@ export default function ServerTransferPopover({
       <div className="share-head">
         <strong>서버 전송</strong> <span className="muted">{label}</span>
         <span className="toolbar-spacer" style={{ flex: 1 }} />
-        <button className="row-action" style={{ visibility: 'visible' }} onClick={onClose}>
+        <button className="row-action" onClick={onClose}>
           닫기 ✕
         </button>
       </div>

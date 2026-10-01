@@ -121,6 +121,16 @@ test('회수한 링크는 즉시 죽는다', async ({ page, browser }) => {
   // 파일명이 '회수'를 품고 있으면 그 행의 버튼들까지 함께 잡힌다(실제로 겪었다).
   const revoke = page.locator('.share-existing').getByRole('button', { name: '회수', exact: true })
   await expect(revoke).toHaveCount(1)
+
+  // **눈에 보이는지까지 본다.** toBeVisible() 로는 부족하다 — Playwright 는 opacity:0 을
+  // '보인다'로 친다. 실제로 .row-action 의 숨김 규칙을 바꾸면서 이 버튼과 팝오버의
+  // '닫기 ✕' 가 투명해진 채 배포된 적이 있다(v1.0.4). 클릭은 되니 테스트는 다 통과했다.
+  await expect(revoke).toHaveCSS('opacity', '1')
+  await expect(page.locator('.share-popover').getByRole('button', { name: /닫기/ })).toHaveCSS(
+    'opacity',
+    '1',
+  )
+
   await revoke.click()
   await expect(revoke).toHaveCount(0)
 

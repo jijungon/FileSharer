@@ -81,7 +81,7 @@ export default function SharePopover({ node, onClose }: { node: NodeInfo; onClos
       <div className="share-head">
         <strong>공유 링크</strong> <span className="muted">{node.name}</span>
         <span className="toolbar-spacer" />
-        <button className="row-action" style={{ visibility: 'visible' }} onClick={onClose}>
+        <button className="row-action" onClick={onClose}>
           닫기 ✕
         </button>
       </div>
@@ -176,7 +176,6 @@ export default function SharePopover({ node, onClose }: { node: NodeInfo; onClos
               </span>
               <button
                 className="row-action"
-                style={{ visibility: 'visible' }}
                 onClick={() => api(`/api/shares/${s.id}`, { method: 'DELETE' }).then(reload)}
               >
                 회수
