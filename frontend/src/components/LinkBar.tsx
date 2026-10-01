@@ -4,6 +4,7 @@ import ServerTransferPopover from './ServerTransferPopover'
 import SharePopover from './SharePopover'
 import { SpaceInfo } from '../lib/api'
 import { downloadUrl, NodeInfo } from '../lib/files'
+import { ro } from '../lib/josa'
 
 interface Props {
   space: SpaceInfo | null
@@ -92,7 +93,7 @@ export default function LinkBar({
             onClick={onLocalUpload}
             // 어느 폴더로 올라가는지 이름으로 말해준다 — "이 위치"만으로는
             // 파일을 열어 둔 상태에서 어디로 가는지 알 수 없다.
-            title={`내 PC에서 ${currentLabel}(으)로 업로드 (폴더는 끌어다 놓기)`}
+            title={`내 PC에서 ${currentLabel}${ro(currentLabel)} 업로드 (폴더는 끌어다 놓기)`}
           >
             <IconUpload />
             <span className="btn-label">로컬 업로드</span>

@@ -9,6 +9,7 @@ import ViewerPanel from '../components/ViewerPanel'
 import { api, ApiError, Me, SpaceInfo } from '../lib/api'
 import { IconFilePlus, IconFolderPlus, IconRefresh } from '../components/icons'
 import { attachDragChip } from '../lib/dragchip'
+import { ro } from '../lib/josa'
 import { toggleTheme as applyToggle } from '../lib/theme'
 import { agoMs, formatAgo, formatBytes, formatDateTime, formatTrashRemaining } from '../lib/format'
 import {
@@ -1008,7 +1009,11 @@ export default function Files() {
       }
       if (copying && done > 0) {
         const many = done > 1 ? `${done}개를 ` : ''
-        flash(target.spaceName ? `${many}${target.spaceName}(으)로 복사했습니다` : '복사했습니다')
+        flash(
+          target.spaceName
+            ? `${many}${target.spaceName}${ro(target.spaceName)} 복사했습니다`
+            : '복사했습니다',
+        )
       }
     } catch (err) {
       flash(err instanceof Error ? err.message : '요청에 실패했습니다')
@@ -1382,7 +1387,7 @@ export default function Files() {
                     ? '휴지통 항목을 놓으면 원래 위치로 복원됩니다 (이 공간으로 옮기는 게 아닙니다)'
                     : s.id === spaceId
                       ? '항목을 놓으면 이 공간 최상위로 이동 · 로컬 파일을 놓으면 업로드'
-                      : `항목을 놓으면 ${s.name}(으)로 복사 · 로컬 파일을 놓으면 업로드`
+                      : `항목을 놓으면 ${s.name}${ro(s.name)} 복사 · 로컬 파일을 놓으면 업로드`
                 }
               >
                 {s.name}

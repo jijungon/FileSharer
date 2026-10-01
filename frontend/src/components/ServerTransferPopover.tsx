@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { copyText } from '../lib/clipboard'
+import { ro } from '../lib/josa'
 import { showToast } from '../lib/globalErrors'
 import { createToken } from '../lib/tokens'
 
@@ -92,8 +93,8 @@ export default function ServerTransferPopover({
 
       {activeToken ? (
         <p className="muted" style={{ margin: '2px 0' }}>
-          임시 토큰(<code>{masked}</code>)이 적용됐습니다 — 이 토큰은 <strong>{label}</strong>로
-          업로드됩니다(목적지가 토큰에 담김).{' '}
+          임시 토큰(<code>{masked}</code>)이 적용됐습니다 — 이 토큰은 <strong>{label}</strong>
+          {ro(label)} 업로드됩니다(목적지가 토큰에 담김).{' '}
           <button type="button" className="linklike" onClick={() => onActiveToken(null)}>
             해제
           </button>
@@ -106,7 +107,8 @@ export default function ServerTransferPopover({
       ) : (
         <>
           <p className="muted" style={{ margin: '2px 0 6px' }}>
-            브라우저 없이 <strong>{label}</strong>로 파일을 올립니다. 아래 버튼으로{' '}
+            브라우저 없이 <strong>{label}</strong>
+            {ro(label)} 파일을 올립니다. 아래 버튼으로{' '}
             <strong>{EXPIRES_MIN}분짜리 임시 토큰</strong>을 발급하면 curl에 자동으로 채워집니다.
             목적지는 토큰에 담겨 URL에 폴더 지정이 필요 없습니다.
           </p>
