@@ -67,6 +67,8 @@ export default function SharePopover({ node, onClose }: { node: NodeInfo; onClos
   // 공유 URL은 지금 보고 있는 브라우저 오리진 기준으로 만든다 —
   // dev(5173)·prod(동일 오리진) 모두 그 오리진에서 열리고 curl도 그 오리진으로 동작한다.
   const shareUrl = created ? `${window.location.origin}/s/${created.token}` : ''
+  // 사내 링크 — 앱 안의 그 파일로 바로 가는 주소. 로그인·권한 검사를 그대로 거친다.
+  const internalUrl = `${window.location.origin}/files/${node.id}`
   const getCommand = created ? `curl -fsSL ${shareUrl}/get | sh` : ''
   const pw = created?.protected // 비번 링크면 -u :'<비밀번호>' 를 붙여 안내
   const auth = pw ? ` -u :'<비밀번호>'` : ''
@@ -86,7 +88,25 @@ export default function SharePopover({ node, onClose }: { node: NodeInfo; onClos
         </button>
       </div>
 
-      {/* 사내 링크 복사는 상단 주소창(오미니박스)의 📋로 이동해 여기선 제거 — 이 팝오버는 외부 공유 링크 전용 */}
+      {/* 한 파일을 남에게 주는 방법이 **두 군데로 흩어져 있었다** — 사내 링크는 주소창의 📋,
+          사외 링크는 이 팝오버. 받는 사람이 누구냐만 다를 뿐 하는 일은 같으므로 한곳에 모으고
+          '사내 / 사외' 로 가른다. 주소창 📋 는 없앴다. */}
+      <div className="share-section">
+        <label className="share-label">사내 — 로그인한 사람에게</label>
+        <div className="share-copyrow">
+          <code>{internalUrl}</code>
+          <button className="btn-utility" onClick={() => copy(internalUrl, 'internal')}>
+            {copied === 'internal' ? '복사됨 ✓' : '복사'}
+          </button>
+        </div>
+        <p className="muted share-hint">
+          로그인해야 열립니다. 만료도 비밀번호도 없고, 권한이 있는 사람만 봅니다.
+        </p>
+      </div>
+
+      <div className="share-section-divider" />
+
+      <label className="share-label share-section-title">사외 — 링크를 받은 누구나</label>
       {created ? (
         <div className="share-result">
           <label className="share-label">원커맨드 — VM·터미널에서 한 줄로 받기+해제</label>

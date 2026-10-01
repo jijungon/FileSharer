@@ -7,7 +7,7 @@ import NameModal from '../components/NameModal'
 import NewMarkdownModal from '../components/NewMarkdownModal'
 import ViewerPanel from '../components/ViewerPanel'
 import { api, ApiError, Me, SpaceInfo } from '../lib/api'
-import { copyText } from '../lib/clipboard'
+import { IconFilePlus, IconFolderPlus, IconRefresh } from '../components/icons'
 import { attachDragChip } from '../lib/dragchip'
 import { toggleTheme as applyToggle } from '../lib/theme'
 import { agoMs, formatAgo, formatBytes, formatDateTime, formatTrashRemaining } from '../lib/format'
@@ -49,46 +49,6 @@ type SortDir = 'asc' | 'desc'
 
 // 동시 업로드 개수 상한. 큰 파일(수백 MB)이 대역폭을 나눠 쓰므로 과하지 않게 3.
 const UPLOAD_CONCURRENCY = 3
-
-// 툴바용 라인 아이콘(VS Code풍, currentColor 단색). stroke 기반이라 테마색을 따른다.
-const svgProps = {
-  width: 16,
-  height: 16,
-  viewBox: '0 0 24 24',
-  fill: 'none',
-  stroke: 'currentColor',
-  strokeWidth: 2,
-  strokeLinecap: 'round' as const,
-  strokeLinejoin: 'round' as const,
-  'aria-hidden': true,
-}
-function IconRefresh({ className }: { className?: string }) {
-  return (
-    <svg {...svgProps} className={className}>
-      <path d="M21 12a9 9 0 1 1-2.64-6.36" />
-      <path d="M21 3v6h-6" />
-    </svg>
-  )
-}
-function IconFolderPlus() {
-  return (
-    <svg {...svgProps}>
-      <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
-      <line x1="12" y1="11" x2="12" y2="17" />
-      <line x1="9" y1="14" x2="15" y2="14" />
-    </svg>
-  )
-}
-function IconFilePlus() {
-  return (
-    <svg {...svgProps}>
-      <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" />
-      <polyline points="14 3 14 8 19 8" />
-      <line x1="12" y1="12" x2="12" y2="18" />
-      <line x1="9" y1="15" x2="15" y2="15" />
-    </svg>
-  )
-}
 
 function compareNodes(a: NodeInfo, b: NodeInfo, key: SortKey, dir: SortDir): number {
   // 폴더는 항상 먼저 (그룹 고정) — 정렬 방향과 무관
@@ -154,7 +114,6 @@ export default function Files() {
   const [searchFocused, setSearchFocused] = useState(false) // 상단 검색 드롭다운 열림 여부
   const [searchIdx, setSearchIdx] = useState(-1) // 키보드로 하이라이트한 결과(-1=없음)
   const [searchTyping, setSearchTyping] = useState(false) // true=검색 타이핑 중, false=주소(현재 파일 경로) 표시
-  const [copiedLink, setCopiedLink] = useState(false) // 주소창 📋 복사 피드백
   const searchRef = useRef<HTMLDivElement>(null)
   const [favIds, setFavIds] = useState<Set<string>>(new Set()) // 내 즐겨찾기 노드 id
   const [favMode, setFavMode] = useState(false) // 즐겨찾기 뷰
@@ -1191,7 +1150,9 @@ export default function Files() {
           )}
         </h2>
         {/* 상단 검색 = 주소창(오미니박스). 파일을 열면 그 파일의 경로를 보여주고(주소 모드),
-            타이핑하면 이름+내용 검색(검색 모드). 📋는 지금 파일의 사내 공유 링크를 복사한다. */}
+            타이핑하면 이름+내용 검색(검색 모드).
+            사내 링크 복사는 **공유 팝오버 안('사내' 칸)** 으로 옮겼다 — 한 파일을 남에게 주는
+            방법이 주소창과 팝오버 두 군데로 흩어져 있었다. */}
         <div className={`topbar-search${addressMode ? ' is-address' : ''}`} ref={searchRef}>
           <span className="topbar-search-icon" aria-hidden>
             {addressMode ? '📄' : '🔎'}
@@ -1244,25 +1205,6 @@ export default function Files() {
             }}
             aria-label="파일 경로·검색 주소창"
           />
-          {addressMode && selected && (
-            <button
-              type="button"
-              className="topbar-search-copy"
-              title="사내 공유 링크 복사 (로그인 사용자용)"
-              aria-label="사내 공유 링크 복사"
-              onClick={async () => {
-                const ok = await copyText(`${window.location.origin}/files/${selected.id}`)
-                if (ok) {
-                  setCopiedLink(true)
-                  setTimeout(() => setCopiedLink(false), 1500)
-                } else {
-                  flash('복사하지 못했어요 — 주소를 길게 눌러 수동 복사해 주세요')
-                }
-              }}
-            >
-              {copiedLink ? '✓' : '📋'}
-            </button>
-          )}
           {searchTyping && searchResults !== null && searchQ.trim() && searchFocused && (
             <div className="topbar-search-results">
               <div className="search-results-head muted">
@@ -1297,21 +1239,10 @@ export default function Files() {
           )}
         </div>
         <div className="topbar-flex-spacer" />
-        {/* 파일 액션(다운로드·로컬/서버 업로드·공유)을 상단 바로 통합 — 파일을 열든(선택 파일 대상)
-            안 열든(현재 폴더/공간 대상) 같은 자리에 둔다. 경로는 위 주소창(오미니박스)이 보여준다. */}
-        {space && !trashMode && !favMode && (
-          <div className="topbar-fileactions">
-            <LinkBar
-              actionsOnly
-              space={space}
-              path={path}
-              selected={selected}
-              activeToken={activeToken}
-              onActiveToken={setActiveToken}
-              onLocalUpload={() => fileInput.current?.click()}
-            />
-          </div>
-        )}
+        {/* 파일 액션(다운로드·로컬/서버 업로드·공유)은 **탭 줄**로 내렸다(아래 .tab-actions).
+            상단 가운데에 있으면 늘 같은 자리에 같은 모양으로 떠 있어서 "열린 파일에 대한
+            버튼"처럼 보이는데, 실제로는 대상이 섞여 있다(다운로드·공유는 고른 것, 업로드·서버는
+            지금 있는 곳). 시연에서 그 지적을 받았다. */}
         <div className="topbar-right">
           <span className="muted">{me.email}</span>
           {me.role === 'admin' && (
@@ -1529,8 +1460,11 @@ export default function Files() {
         />
 
         <div className="content-col">
-          {/* 다중 탭 바 — 열린 파일 탭. 활성 하이라이트 · 미저장 ●(호버 시 ✕) · 클릭 전환 · 가운데클릭 닫기 */}
-          {openTabs.length > 0 && !trashMode && !favMode && (
+          {/* 다중 탭 바 — 열린 파일 탭. 활성 하이라이트 · 미저장 ●(호버 시 ✕) · 클릭 전환 · 가운데클릭 닫기
+              **탭이 하나도 없어도 이 줄은 뜬다.** 액션 네 개 중 '로컬 업로드'와 '서버'는 열린 파일이
+              아니라 **지금 보고 있는 폴더**가 대상이라, 탭에 묶어 두면 로그인 직후엔 업로드할 방법이
+              아예 없어진다(끌어다 놓기 말고는). 탭 쪽 컨트롤(저장·삭제·닫기)만 탭이 있을 때 붙인다. */}
+          {!trashMode && !favMode && (
             <div className="tab-bar">
               <div
                 className="tab-strip"
@@ -1598,23 +1532,40 @@ export default function Files() {
                 )
               })}
               </div>
-              {/* Stage B: 탭 줄 오른쪽 — | 칸막이 + (활성 편집기가 portal로 넣는 저장/자동저장) + 삭제 + 닫기 */}
-              {viewerOpen && selected && (
-                <div className="tab-actions">
-                  <span className="tab-actions-divider" aria-hidden="true" />
-                  <div className="tab-action-slot" ref={setActionSlot} />
-                  <button
-                    className="btn-utility btn-danger-ghost"
-                    onClick={() => deleteTab(selected)}
-                    title="이 파일을 휴지통으로 이동 (복원 가능)"
-                  >
-                    🗑 삭제
-                  </button>
-                  <button className="btn-utility" onClick={() => closeTab(selected.id)}>
-                    닫기
-                  </button>
-                </div>
-              )}
+              {/* Stage B: 탭 줄 오른쪽 — 파일 액션 + | 칸막이 + (활성 편집기가 portal로 넣는 저장/자동저장) + 삭제 + 닫기 */}
+              <div className="tab-actions">
+                {/* 파일 액션 — 자동저장·저장 **왼쪽**. 삭제·닫기와 한 줄에 모여 있어야
+                    "지금 열어 둔 이것에 대한 버튼"으로 읽힌다.
+                    탭이 없을 땐 이 네 개만 남는다 — 다운로드·공유는 고른 게 없으면 스스로 빠지거나
+                    눌리지 않고, 업로드·서버는 지금 폴더를 대상으로 그대로 동작한다. */}
+                {space && (
+                  <LinkBar
+                    actionsOnly
+                    space={space}
+                    path={path}
+                    selected={selected}
+                    activeToken={activeToken}
+                    onActiveToken={setActiveToken}
+                    onLocalUpload={() => fileInput.current?.click()}
+                  />
+                )}
+                {viewerOpen && selected && (
+                  <>
+                    <span className="tab-actions-divider" aria-hidden="true" />
+                    <div className="tab-action-slot" ref={setActionSlot} />
+                    <button
+                      className="btn-utility btn-danger-ghost"
+                      onClick={() => deleteTab(selected)}
+                      title="이 파일을 휴지통으로 이동 (복원 가능)"
+                    >
+                      🗑 삭제
+                    </button>
+                    <button className="btn-utility" onClick={() => closeTab(selected.id)}>
+                      닫기
+                    </button>
+                  </>
+                )}
+              </div>
             </div>
           )}
 
@@ -1792,8 +1743,8 @@ export default function Files() {
             <div className="browser-welcome muted">
               <p>왼쪽 트리에서 파일을 선택해 여세요.</p>
               <p className="browser-welcome-sub">
-                추가는 왼쪽 상단 아이콘(＋폴더 · ↑업로드 · ＋MD). 이름 변경은 항목을 고르고 Enter,
-                즐겨찾기·삭제는 행의 ★·🗑.
+                새로 만들기는 왼쪽 상단 아이콘(＋폴더 · ＋MD), 올리기는 위 줄의 ↑ 아이콘(또는 창에
+                끌어다 놓기). 이름 변경은 항목을 고르고 Enter, 즐겨찾기·삭제는 행의 ★·🗑.
               </p>
             </div>
           )}

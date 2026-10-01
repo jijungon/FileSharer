@@ -2,8 +2,8 @@ import { ACCOUNT, RUN_TAG, expect, test } from './fixtures'
 
 import { fileCell } from './helpers'
 
-// '공유 링크' 를 exact 로 찾는 이유: 주소창의 📋 버튼이 aria-label="사내 공유 링크 복사" 라
-// 부분 일치로 함께 잡힌다. 지금까지는 뷰어가 열리기 '전에' 클릭해 운좋게 하나만 맞았을 뿐이다.
+// '공유 링크' 를 exact 로 찾는 이유: 팝오버 안에도 '사내 공유 링크 복사' 버튼이 있어
+// 부분 일치로 둘이 함께 잡힌다. 탭 줄의 버튼은 아이콘만 보이지만 이름은 글자 그대로 남아 있다.
 
 const EMAIL = ACCOUNT.email
 const PASSWORD = ACCOUNT.password
