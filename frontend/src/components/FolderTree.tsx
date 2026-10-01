@@ -53,6 +53,8 @@ interface Props {
   onRenameCommit?: (row: TreeRow, newName: string) => void
   onToggleFavorite?: (row: TreeRow) => void
   onDelete?: (row: TreeRow) => void
+  /** 고른 것 중 폴더가 몇 개인지 부모에게 알린다 — 하단 바가 "폴더 N개 포함"을 띄우는 데 쓴다. */
+  onFolderCount?: (n: number) => void
   // ── 다중선택 ──
   // 선택 집합은 부모(Files)가 들고 있다. 대량작업과 하단 바가 거기 있고, 공간이 여러 개라
   // 트리도 여러 개인데 선택은 한 공간 안에서만 성립하기 때문이다.
@@ -75,6 +77,7 @@ export default function FolderTree({
   onRenameCommit,
   onToggleFavorite,
   onDelete,
+  onFolderCount,
   checked,
   onChecked,
 }: Props) {
@@ -146,6 +149,26 @@ export default function FolderTree({
     walk(tree)
     return out
   }, [tree, expanded])
+
+  // 고른 것 안에 폴더가 몇 개인가. 폴더를 고르면 **그 안의 파일도 함께** 삭제·이동되는데,
+  // 개수만 봐서는 그게 안 보인다("6개 선택됨"인데 파일 8개가 사라지는 식). 하단 바가
+  // 그 사실을 말해줄 수 있게 세어서 올려보낸다. 접힌 폴더도 세야 하므로 트리를 끝까지 훑는다.
+  const selectedFolders = useMemo(() => {
+    if (!checked) return 0
+    let n = 0
+    const walk = (nodes: TreeNode[]) => {
+      for (const node of nodes) {
+        if (node.type === 'folder' && checked.has(node.id)) n += 1
+        walk(node.children)
+      }
+    }
+    walk(tree)
+    return n
+  }, [tree, checked])
+
+  useEffect(() => {
+    if (checked) onFolderCount?.(selectedFolders)
+  }, [checked, selectedFolders, onFolderCount])
 
   // 행을 눌렀을 때. Ctrl/Cmd=하나 집기·놓기, Shift=기준점부터 여기까지, 그냥 클릭=선택 풀고 열기.
   function activateRow(e: React.MouseEvent, node: TreeNode) {

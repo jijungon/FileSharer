@@ -929,6 +929,10 @@ export default function Files() {
   // 리렌더 전의 옛 선택을 덮어써 클릭 하나가 먹힌다.
   // 다른 공간에서 고르기 시작하면 이전 선택은 버린다(이동/복사 판단이 항목마다 갈리므로).
   // 그 판단은 ref로 한다 — 같은 배치 안의 두 번째 클릭에게는 state가 아직 옛 공간이다.
+  // 고른 것 안의 폴더 수(트리가 세어 올려준다). 폴더를 고르면 그 안의 파일도 함께
+  // 처리되는데 개수만 봐서는 안 보인다 — 하단 바와 삭제 확인창이 그 사실을 말한다.
+  const [checkedFolders, setCheckedFolders] = useState(0)
+
   function applyChecked(ofSpace: string, update: (prev: Set<string>) => Set<string>) {
     const fresh = checkedSpaceRef.current !== ofSpace
     checkedSpaceRef.current = ofSpace
@@ -937,7 +941,12 @@ export default function Files() {
   }
   async function bulkDelete(ids: string[]) {
     if (ids.length === 0) return
-    if (!window.confirm(`${ids.length}개를 휴지통으로 이동할까요?`)) return
+    // 폴더가 끼어 있으면 화면 숫자보다 많이 사라진다 — 지우기 전에 말해준다.
+    const inside =
+      checkedFolders > 0
+        ? `\n\n폴더 ${checkedFolders}개가 들어 있습니다 — 그 안의 파일도 함께 사라집니다.`
+        : ''
+    if (!window.confirm(`${ids.length}개를 휴지통으로 이동할까요?${inside}`)) return
     clearChecked()
     await trashMany(ids)
   }
@@ -1435,10 +1444,14 @@ export default function Files() {
                     uploadToTarget({ spaceId: s.id, parentId: null }, e)
                   }
                 }}
+                // 휴지통 모드에서 끌면 **어느 공간에 놓든 원래 자리로 복원**된다(restoreNode).
+                // 그런데 문구는 "이 공간으로 복사"라고 말하고 있었다 — 사실과 다르다.
                 title={
-                  s.id === spaceId
-                    ? '항목을 놓으면 이 공간 최상위로 이동 · 로컬 파일을 놓으면 업로드'
-                    : `항목을 놓으면 ${s.name}(으)로 복사 · 로컬 파일을 놓으면 업로드`
+                  trashMode
+                    ? '휴지통 항목을 놓으면 원래 위치로 복원됩니다 (이 공간으로 옮기는 게 아닙니다)'
+                    : s.id === spaceId
+                      ? '항목을 놓으면 이 공간 최상위로 이동 · 로컬 파일을 놓으면 업로드'
+                      : `항목을 놓으면 ${s.name}(으)로 복사 · 로컬 파일을 놓으면 업로드`
                 }
               >
                 {s.name}
@@ -1464,6 +1477,7 @@ export default function Files() {
                   // 선택은 한 공간 안에서만 — 다른 공간 트리에는 넘기지 않는다
                   checked={checkedSpace === s.id ? checked : undefined}
                   onChecked={applyChecked}
+                  onFolderCount={setCheckedFolders}
                 />
             </div>
           ))}
@@ -1822,6 +1836,11 @@ export default function Files() {
       {checked.size > 1 && (
         <div className="bulk-bar" role="status" aria-label="선택 항목">
           <strong>{checked.size}개 선택됨</strong>
+          {checkedFolders > 0 && (
+            <span className="bulk-bar-warn">
+              폴더 {checkedFolders}개 포함 — 안의 파일도 함께 처리됩니다
+            </span>
+          )}
           <span className="muted bulk-bar-hint">
             Ctrl/⌘+클릭으로 더 고르기 · Shift+클릭으로 범위 · 폴더나 공간으로 끌면 이동·복사
           </span>
