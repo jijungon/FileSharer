@@ -465,3 +465,111 @@ def test_token_can_download_folder_tar_in_scope(admin_client):
     assert res.status_code == 200, res.text
     names = tarfile.open(fileobj=io.BytesIO(res.content), mode="r:gz").getnames()
     assert any(n.endswith("x.txt") for n in names)
+
+
+# ── CLI 가 쓰려면 '둘러보기' 가 돼야 한다 ──────────────────────────────────
+#
+# 토큰은 처음부터 올리기·내려받기가 됐지만 **목록 조회는 세션 쿠키만** 받았다.
+# 그래서 토큰을 쥔 쪽은 '이미 아는 id' 로만 접근할 수 있었다 — 그건 CLI 가 아니다.
+# ls 가 되려면 공간 목록 · 공간 최상위 · 폴더 안, 이 셋이 Bearer 를 받아야 한다.
+#
+# 다만 **보이는 범위는 토큰 범위와 같아야** 한다. 목록에만 띄우고 들어가면 403 이면
+# 사람을 두 번 속이는 셈이다.
+
+
+def test_token_lists_only_its_own_space(admin_client):
+    """공간 목록을 토큰으로 물으면 '그 토큰이 갇힌 공간 하나'만 나온다."""
+    spaces = spaces_of(admin_client)
+    personal = spaces["personal"]
+    # 세션으로는 개인 + 전체(org) 둘 다 보인다
+    assert len(admin_client.get("/api/spaces").json()) >= 2
+
+    token = make_token(admin_client, label="cli", space_id=personal["id"])["token"]
+    anon = bare_client(admin_client)
+    res = anon.get("/api/spaces", headers={"Authorization": f"Bearer {token}"})
+
+    assert res.status_code == 200, res.text
+    assert [s["id"] for s in res.json()] == [personal["id"]]
+
+
+def test_token_browses_space_root_and_folder(admin_client):
+    """ls 의 두 경로 — 공간 최상위와 폴더 안. 둘 다 쿠키 없이 토큰만으로."""
+    personal = spaces_of(admin_client)["personal"]
+    folder = admin_client.post(
+        "/api/nodes", json={"space_id": personal["id"], "name": "보관함"}
+    ).json()
+    upload(admin_client, f"/api/spaces/{personal['id']}/files", "뿌리.txt")
+    upload(admin_client, f"/api/nodes/{folder['id']}/files", "안쪽.txt")
+
+    token = make_token(admin_client, label="cli", space_id=personal["id"])["token"]
+    anon = bare_client(admin_client)
+    auth = {"Authorization": f"Bearer {token}"}
+
+    root = anon.get(f"/api/spaces/{personal['id']}/children", headers=auth)
+    assert root.status_code == 200, root.text
+    assert {n["name"] for n in root.json()} == {"보관함", "뿌리.txt"}
+
+    inside = anon.get(f"/api/nodes/{folder['id']}/children", headers=auth)
+    assert inside.status_code == 200, inside.text
+    assert [n["name"] for n in inside.json()] == ["안쪽.txt"]
+
+
+def test_token_cannot_browse_other_space(admin_client):
+    """범위 밖 공간은 **방향과 무관하게** 막힌다 — 올리기만 막고 훑기는 열어두면 의미가 없다."""
+    spaces = spaces_of(admin_client)
+    personal, org = spaces["personal"], spaces["org"]
+    token = make_token(admin_client, label="cli", space_id=personal["id"])["token"]
+
+    res = bare_client(admin_client).get(
+        f"/api/spaces/{org['id']}/children", headers={"Authorization": f"Bearer {token}"}
+    )
+    assert res.status_code == 403
+    assert "범위" in res.json()["detail"]
+
+
+def test_folder_scoped_token_sees_its_folder_but_not_the_root(admin_client):
+    """폴더 범위 토큰은 **자기 폴더만** 훑는다. 공간 최상위는 못 본다.
+
+    업로드에서 루트를 막는 것과 같은 선이다 — 안 그러면 토큰 하나로 형제 폴더를
+    구경할 수 있게 된다(이름만 봐도 새는 정보가 있다).
+    """
+    personal = spaces_of(admin_client)["personal"]
+    mine = admin_client.post(
+        "/api/nodes", json={"space_id": personal["id"], "name": "내폴더"}
+    ).json()
+    admin_client.post("/api/nodes", json={"space_id": personal["id"], "name": "남의폴더"})
+    upload(admin_client, f"/api/nodes/{mine['id']}/files", "안쪽.txt")
+
+    token = make_token(admin_client, label="cli", node_id=mine["id"])["token"]
+    anon = bare_client(admin_client)
+    auth = {"Authorization": f"Bearer {token}"}
+
+    inside = anon.get(f"/api/nodes/{mine['id']}/children", headers=auth)
+    assert inside.status_code == 200, inside.text
+    assert [n["name"] for n in inside.json()] == ["안쪽.txt"]
+
+    root = anon.get(f"/api/spaces/{personal['id']}/children", headers=auth)
+    assert root.status_code == 403
+    # 공간 목록에도 그 공간이 뜨긴 한다(폴더가 그 안에 사니까) — 최상위를 '훑는' 것만 막는다
+    assert [s["id"] for s in anon.get("/api/spaces", headers=auth).json()] == [personal["id"]]
+
+
+def test_browsing_still_requires_some_credential(admin_client):
+    """쿠키도 토큰도 없으면 401. 둘러보기를 열면서 문을 열어두지는 않았다."""
+    personal = spaces_of(admin_client)["personal"]
+    anon = bare_client(admin_client)
+    assert anon.get("/api/spaces").status_code == 401
+    assert anon.get(f"/api/spaces/{personal['id']}/children").status_code == 401
+
+
+def test_revoked_token_cannot_browse(admin_client):
+    """회수한 토큰은 훑기도 못 한다 — 업로드만 막고 읽기가 열려 있으면 회수가 아니다."""
+    personal = spaces_of(admin_client)["personal"]
+    created = make_token(admin_client, label="cli", space_id=personal["id"])
+    token = created["token"]
+    auth = {"Authorization": f"Bearer {token}"}
+    anon = bare_client(admin_client)
+    assert anon.get("/api/spaces", headers=auth).status_code == 200
+
+    assert admin_client.delete(f"/api/tokens/{created['id']}").status_code == 200
+    assert anon.get("/api/spaces", headers=auth).status_code == 401

@@ -156,6 +156,37 @@ def enforce_read_scope(db: Session, token: ApiToken, node: Node) -> None:
         raise HTTPException(status_code=403, detail="토큰 범위 밖의 공간입니다")
 
 
+def scope_space_id(db: Session, token: ApiToken) -> str | None:
+    """토큰이 갇혀 있는 공간 하나의 id. 범위가 폴더면 그 폴더가 사는 공간이다.
+
+    토큰은 **언제나 공간 하나 안에** 있다 — 폴더 범위든, 공간 범위든, 기본값(개인 공간)이든.
+    목록을 토큰으로 볼 때 이 하나만 남기면 된다.
+    """
+    if token.node_id:
+        node = db.get(Node, token.node_id)
+        return node.space_id if node else None
+    if token.space_id:
+        return token.space_id
+    personal = db.scalar(
+        select(Space).where(Space.type == "personal", Space.user_id == token.user_id)
+    )
+    return personal.id if personal else None
+
+
+def enforce_read_scope_space(db: Session, token: ApiToken, space: Space) -> None:
+    """토큰으로 '공간 최상위'를 훑을 수 있는지 검사. 범위 밖이면 403.
+
+    폴더 범위 토큰은 최상위를 못 본다 — 업로드에서 루트를 막는 것과 같은 선이다
+    (enforce_scope 참고). 그 토큰은 자기 폴더를 ``/nodes/{id}/children`` 으로 훑는다.
+    """
+    if token.node_id:
+        raise HTTPException(
+            status_code=403, detail="이 토큰은 폴더 범위라 공간 최상위를 볼 수 없습니다"
+        )
+    if space.id != scope_space_id(db, token):
+        raise HTTPException(status_code=403, detail="토큰 범위 밖의 공간입니다")
+
+
 def resolve_upload_target(db: Session, token: ApiToken) -> tuple[Space, str | None]:
     """토큰 범위 → 업로드 목적지 (space, parent_id). URL에 경로 id 없이 토큰만으로 올릴 때 쓴다.
 
