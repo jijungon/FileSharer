@@ -214,7 +214,8 @@ test('공유 페이지가 HTML·코드·영상을 미리보기로 보여준다',
   await expect(codePage.locator('pre code')).toContainText('def f():')
   await expect(codePage.locator('.share-toc')).toHaveCount(0) // 목차가 서면 안 된다
 
-  // ③ 영상 — 통째로 받지 않고 주소를 직접 문다
+  // ③ 영상 — 통째로 받지 않고 주소를 직접 문다.
+  //    원본(/raw)이 아니라 변환 경로다 — 브라우저가 못 읽는 오디오 코덱이면 서버가 AAC 로 바꾼다.
   const vidUrl = await share(page, '영상', {
     name: `영상_${RUN_TAG}.mp4`,
     body: '\u0000\u0000\u0000 ftypisom',
@@ -224,7 +225,42 @@ test('공유 페이지가 HTML·코드·영상을 미리보기로 보여준다',
 
   const vidPage = await anon.newPage()
   await vidPage.goto(vidUrl)
-  await expect(vidPage.locator('video')).toHaveAttribute('src', /\/raw$/)
+  await expect(vidPage.locator('video')).toHaveAttribute('src', /\/preview\.mp4$/)
+
+  await anon.close()
+})
+
+test('공유된 오피스 문서도 미리보기 경로를 탄다 — 규칙을 우회하지 않는다', async ({
+  page,
+  browser,
+}) => {
+  // 오피스·한글은 서버가 LibreOffice 로 PDF 를 만들어 준다. **변환 자체는 이 환경에
+  // 있을 수도 없을 수도 있어서** 결과물을 단언하지 않는다. 대신 중요한 것을 본다 —
+  // 이 주소가 공유 링크 규칙(회수·비밀번호)을 **우회하는 뒷문이 되지 않는가.**
+  await loginAs(page, ACCOUNT)
+  const url = await share(page, '발표', {
+    name: `발표_${RUN_TAG}.pptx`,
+    body: 'dummy',
+    mime: 'application/octet-stream',
+  })
+
+  const anon = await browser.newContext()
+
+  // 오피스가 맞으니 "형식이 아니다"(400)는 아니어야 한다.
+  // 변환이 되면 200(PDF), 변환기가 없으면 503(사유 포함) — 둘 다 정상이다.
+  const ok = await anon.request.get(`${url}/preview.pdf`)
+  expect([200, 503]).toContain(ok.status())
+  if (ok.status() === 200) expect(ok.headers()['content-type']).toContain('application/pdf')
+
+  // 회수하면 미리보기도 함께 죽는다 — 여기가 뚫리면 회수가 무의미해진다
+  await closeSharePopover(page)
+  await fileCell(page, `발표_${RUN_TAG}.pptx`).click()
+  await page.getByRole('button', SHARE_BTN).click()
+  const revoke = page.locator('.share-existing').getByRole('button', { name: '회수', exact: true })
+  await revoke.click()
+  await expect(revoke).toHaveCount(0)
+
+  expect((await anon.request.get(`${url}/preview.pdf`)).status()).toBe(410)
 
   await anon.close()
 })

@@ -3,7 +3,7 @@ import tarfile
 from datetime import timedelta
 
 from app.models import ShareLink, utcnow
-from tests.conftest import login
+from tests.conftest import ADMIN_EMAIL, ADMIN_PASSWORD, login
 
 
 def upload(client, url, name, content=b"hello"):
@@ -141,6 +141,43 @@ def test_shared_video_gets_real_media_type(admin_client):
 
     res = admin_client.get(f"/s/{token}/raw")
     assert res.headers["content-type"].startswith("video/mp4")
+
+
+def test_share_office_preview_needs_a_valid_link(admin_client):
+    """공유된 오피스 문서는 PDF 로 볼 수 있다 — 단, 링크 규칙은 그대로 지킨다.
+
+    변환 자체(LibreOffice)는 이 환경에 없을 수 있으므로 **권한·형식 판정만** 본다.
+    오피스가 아니면 400, 회수된 링크면 410 — 즉 미리보기가 규칙을 우회하지 않는다.
+    """
+    sp = personal_space(admin_client)
+    txt = upload(admin_client, f"/api/spaces/{sp['id']}/files", "메모.txt", b"x").json()
+    token = admin_client.post(f"/api/nodes/{txt['id']}/shares", json={}).json()["token"]
+    admin_client.post("/api/auth/logout")
+
+    # 오피스가 아니면 미리보기 대상이 아니다
+    assert admin_client.get(f"/s/{token}/preview.pdf").status_code == 400
+    # 영상도 마찬가지
+    assert admin_client.get(f"/s/{token}/preview.mp4").status_code == 400
+
+
+def test_share_preview_respects_revoke_and_password(admin_client):
+    """미리보기 주소가 **뒷문이 되면 안 된다** — 회수·비밀번호를 그대로 지킨다."""
+    sp = personal_space(admin_client)
+    node = upload(admin_client, f"/api/spaces/{sp['id']}/files", "발표.pptx", b"x").json()
+    res = admin_client.post(
+        f"/api/nodes/{node['id']}/shares", json={"password": "knock-knock"}
+    ).json()
+    token, share_id = res["token"], res["id"]
+    admin_client.post("/api/auth/logout")
+
+    # 비밀번호 없이는 미리보기도 막힌다
+    assert admin_client.get(f"/s/{token}/preview.pdf").status_code == 401
+
+    # 회수하면 미리보기도 함께 죽는다
+    login(admin_client, ADMIN_EMAIL, ADMIN_PASSWORD)
+    admin_client.delete(f"/api/shares/{share_id}")
+    admin_client.post("/api/auth/logout")
+    assert admin_client.get(f"/s/{token}/preview.pdf", auth=("", "knock-knock")).status_code == 410
 
 
 def test_non_ascii_password_travels_only_via_basic_auth(admin_client):

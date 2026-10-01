@@ -16,7 +16,13 @@ from ..services.serving import serve_blob
 from ..services.shares import check_password, consume_download, resolve_share
 from ..services.storage import StorageBackend
 from ..services.tar_stream import stream_tar_gz
-from .nodes import collect_tar_entries, get_storage, media_type_for
+from .nodes import (
+    collect_tar_entries,
+    get_storage,
+    media_type_for,
+    office_pdf_response,
+    video_preview_response,
+)
 
 router = APIRouter(tags=["public"])
 
@@ -79,6 +85,40 @@ def share_raw(
         request=request,
         extra_headers=extra,
     )
+
+
+@router.get("/s/{token}/preview.pdf")
+def share_office_preview(
+    token: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    storage: StorageBackend = Depends(get_storage),
+):
+    """공유된 오피스·한글 문서를 PDF로 변환해 보여준다 — 앱 안과 같은 변환·같은 캐시.
+
+    **다운로드 횟수를 소비하지 않는다**(/raw 와 같다). 미리보기를 켜 둔 것만으로
+    횟수가 줄면 "한 번만 받게 했는데 열어보지도 못했다"가 된다.
+    """
+    share, node = resolve_share(db, token)
+    check_password(request, share)
+    return office_pdf_response(storage, node)
+
+
+@router.get("/s/{token}/preview.mp4")
+def share_video_preview(
+    token: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    storage: StorageBackend = Depends(get_storage),
+):
+    """공유된 영상 — 브라우저가 못 읽는 오디오 코덱이면 AAC로 바꿔 내려준다.
+
+    예전에는 공유에서 원본만 내려줘서, AC-3 같은 코덱이 든 영상은 **소리 없이 그림만**
+    나오거나 아예 재생되지 않았다. 앱 안에서는 되던 것이 공유에서만 안 됐다.
+    """
+    share, node = resolve_share(db, token)
+    check_password(request, share)
+    return video_preview_response(storage, node, request)
 
 
 @router.get("/s/{token}/download")

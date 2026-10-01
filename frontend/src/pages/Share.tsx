@@ -4,7 +4,16 @@ import MarkdownPreview from '../components/MarkdownPreview'
 import { formatBytes } from '../lib/format'
 import { shareAuthHeaders } from '../lib/sharepw'
 import { toggleTheme, useAppTheme } from '../lib/theme'
-import { isAudio, isHtml, isImage, isMarkdown, isPdf, isTextFile, isVideo } from '../lib/markdown'
+import {
+  isAudio,
+  isHtml,
+  isImage,
+  isMarkdown,
+  isOffice,
+  isPdf,
+  isTextFile,
+  isVideo,
+} from '../lib/markdown'
 import { extractToc } from '../lib/toc'
 
 interface ShareMeta {
@@ -32,6 +41,10 @@ export default function Share() {
   const [text, setText] = useState<string | null>(null)
   const [blobUrl, setBlobUrl] = useState('')
   const [showAdvanced, setShowAdvanced] = useState(false)
+  // 오피스·한글은 서버가 LibreOffice 로 PDF 를 만들어 준다 — 몇 초 걸릴 수 있어
+  // 상태를 들고 있어야 한다(빈 화면만 보이면 고장으로 읽힌다).
+  const [officeState, setOfficeState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle')
+  const [officeErr, setOfficeErr] = useState('')
   const [activeHeading, setActiveHeading] = useState('')
   const headRef = useRef<HTMLElement>(null)
   const tocRef = useRef<HTMLElement>(null)
@@ -135,6 +148,24 @@ export default function Share() {
       // 영상·음성은 통째로 받지 않는다 — <video>/<audio> 가 주소를 직접 열어
       // 구간 요청(Range)으로 조금씩 받는다. 큰 파일을 메모리에 올리면 탭이 죽는다.
       if (isVideo(m) || isAudio(m)) return
+      // 오피스·한글은 변환 결과(PDF)를 따로 받아온다.
+      if (isOffice(m)) {
+        setOfficeState('loading')
+        setOfficeErr('')
+        try {
+          const r = await fetch(`${base}/preview.pdf`, { headers })
+          if (!r.ok) {
+            const body = (await r.json().catch(() => null)) as { detail?: string } | null
+            throw new Error(body?.detail ?? `미리보기 변환 실패 (${r.status})`)
+          }
+          setBlobUrl(URL.createObjectURL(await r.blob()))
+          setOfficeState('ready')
+        } catch (err) {
+          setOfficeErr(err instanceof Error ? err.message : '미리보기를 만들지 못했습니다')
+          setOfficeState('error')
+        }
+        return
+      }
       // HTML·텍스트는 글자로, 이미지·PDF 는 blob 으로.
       const wantsText = isHtml(m) || isTextFile(m)
       if (!wantsText && !isImage(m) && !isPdf(m)) return
@@ -290,13 +321,31 @@ export default function Share() {
           {isPdf(meta) && blobUrl && (
             <iframe className="pdf-frame share-pdf" src={blobUrl} title={meta.name} />
           )}
+          {/* 오피스·한글은 서버가 LibreOffice 로 만든 PDF 를 보여준다. 변환에 몇 초 걸릴 수
+              있어 상태를 말해준다 — 빈 화면만 있으면 고장으로 읽힌다. */}
+          {isOffice(meta) && officeState === 'loading' && (
+            <p className="muted">미리보기를 만드는 중입니다… (문서가 크면 몇 초 걸립니다)</p>
+          )}
+          {isOffice(meta) && officeState === 'error' && (
+            <p className="muted">{officeErr} — 위의 다운로드를 이용하세요.</p>
+          )}
+          {isOffice(meta) && officeState === 'ready' && blobUrl && (
+            <iframe className="pdf-frame share-pdf" src={blobUrl} title={meta.name} />
+          )}
           {/* 영상·음성은 주소를 직접 물린다 — 브라우저가 구간 요청으로 받아 바로 재생한다.
               비밀번호가 걸린 공유는 헤더를 못 실으므로 재생 대신 다운로드를 안내한다. */}
           {isVideo(meta) &&
             (meta.protected ? (
               <p className="muted">비밀번호가 걸린 영상은 재생할 수 없습니다 — 다운로드를 이용하세요.</p>
             ) : (
-              <video className="share-media" src={`${base}/raw`} controls preload="metadata" />
+              // 원본(/raw)이 아니라 변환 경로를 쓴다 — 브라우저가 못 읽는 오디오 코덱(AC-3 등)이면
+              // 서버가 AAC 로 바꿔 준다. 호환이면 서버가 원본을 그대로 흘려보낸다.
+              <video
+                className="share-media"
+                src={`${base}/preview.mp4`}
+                controls
+                preload="metadata"
+              />
             ))}
           {isAudio(meta) &&
             (meta.protected ? (
@@ -311,7 +360,8 @@ export default function Share() {
             !isImage(meta) &&
             !isPdf(meta) &&
             !isVideo(meta) &&
-            !isAudio(meta) && (
+            !isAudio(meta) &&
+            !isOffice(meta) && (
               <p className="muted">미리보기를 지원하지 않는 형식입니다 — 위의 다운로드를 이용하세요.</p>
             )}
           {meta.type === 'folder' && (

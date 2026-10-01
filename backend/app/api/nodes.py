@@ -4,7 +4,7 @@ from datetime import timedelta
 from pathlib import Path, PurePosixPath
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request, UploadFile
+from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request, Response, UploadFile
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy import select
@@ -860,15 +860,13 @@ def raw_file(
     )
 
 
-@router.get("/files/{node_id}/preview.pdf")
-def office_preview(
-    node_id: str,
-    user: User = Depends(current_user),
-    db: Session = Depends(get_db),
-    storage: StorageBackend = Depends(get_storage),
-):
-    """오피스 문서(PPT·워드·엑셀 등)를 PDF로 변환해 미리보기용으로 내려준다."""
-    node = get_node_checked(db, user, node_id)
+def office_pdf_response(storage: StorageBackend, node: Node) -> FileResponse:
+    """오피스 문서를 PDF로 바꿔 내려준다(캐시 우선).
+
+    **권한 검사는 부르는 쪽 책임이다.** 앱 안(로그인)과 공유 링크(토큰)가 같은 변환과
+    같은 캐시를 쓰도록 몸통만 떼어낸 것이다 — 캐시 키가 storage_key 라 같은 파일은
+    누가 열든 한 번만 변환된다(LibreOffice 변환은 몇 초씩 걸린다).
+    """
     if node.type != "file" or not is_office(node.name):
         raise HTTPException(status_code=400, detail="오피스 문서가 아닙니다")
     if not storage.exists(node.storage_key):
@@ -891,17 +889,24 @@ def office_preview(
     )
 
 
-@router.get("/files/{node_id}/preview.mp4")
-def video_preview(
+@router.get("/files/{node_id}/preview.pdf")
+def office_preview(
     node_id: str,
-    request: Request,
     user: User = Depends(current_user),
     db: Session = Depends(get_db),
     storage: StorageBackend = Depends(get_storage),
 ):
+    """오피스 문서(PPT·워드·엑셀 등)를 PDF로 변환해 미리보기용으로 내려준다."""
+    return office_pdf_response(storage, get_node_checked(db, user, node_id))
+
+
+def video_preview_response(storage: StorageBackend, node: Node, request: Request) -> Response:
     """영상 미리보기용 서빙. 오디오가 브라우저 비호환 코덱(AC-3 등)이면 AAC로 변환해
-    내려주고, 호환이면 원본을 그대로 스트리밍한다. 판정·변환 결과는 캐시해 재사용."""
-    node = get_node_checked(db, user, node_id)
+    내려주고, 호환이면 원본을 그대로 스트리밍한다. 판정·변환 결과는 캐시해 재사용.
+
+    **권한 검사는 부르는 쪽 책임이다** — 앱 안(로그인)과 공유 링크(토큰)가 같은 변환과
+    같은 캐시를 쓰도록 몸통만 떼어냈다.
+    """
     if node.type != "file" or not is_video(node.name):
         raise HTTPException(status_code=400, detail="영상 파일이 아닙니다")
     if not storage.exists(node.storage_key):
@@ -952,6 +957,17 @@ def video_preview(
         passthrough.write_text(codec or "none", encoding="utf-8")
         return serve_original()
     return serve_transcoded()
+
+
+@router.get("/files/{node_id}/preview.mp4")
+def video_preview(
+    node_id: str,
+    request: Request,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+    storage: StorageBackend = Depends(get_storage),
+):
+    return video_preview_response(storage, get_node_checked(db, user, node_id), request)
 
 
 # 한 번에 묶어 받을 수 있는 항목 수. id를 링크의 질의 문자열로 나르므로 URL 길이에
