@@ -91,6 +91,58 @@ def test_password_protected_flow(admin_client):
     assert header.status_code == 200
 
 
+def test_shared_html_is_sandboxed(admin_client):
+    """공유된 HTML 은 **앱 오리진에서 실행되면 안 된다.**
+
+    /s/<token>/raw 는 비로그인으로 열리는 주소다. 누가 이 주소를 주소창에 바로 열면
+    업로드된 HTML 이 file.rgrg.im 에서 그대로 돈다 — 세션 쿠키는 HttpOnly 라도 같은
+    오리진으로 인증된 API 를 부를 수 있으니 그 사람 행세가 된다. 공유 링크는 사외에
+    건네라고 만든 것이라 더 위험하다.
+
+    앱 안(/api/files/{id}/raw)에는 이 방어가 있었는데 **공유 쪽만 빠져 있었다.**
+    """
+    sp = personal_space(admin_client)
+    # 업로더가 보낸 mime 이 일반적(octet-stream)이어도 확장자로 html 임이 드러난다 —
+    # 그 경로까지 막혀 있어야 한다.
+    node = admin_client.post(
+        f"/api/spaces/{sp['id']}/files",
+        files={
+            "file": (
+                "page.html",
+                io.BytesIO(b"<h1>hi</h1><script>alert(1)</script>"),
+                "application/octet-stream",
+            )
+        },
+    ).json()
+    token = admin_client.post(f"/api/nodes/{node['id']}/shares", json={}).json()["token"]
+    admin_client.post("/api/auth/logout")
+
+    res = admin_client.get(f"/s/{token}/raw")
+    assert res.status_code == 200
+    assert res.headers["content-type"].startswith("text/html")
+    assert res.headers["Content-Security-Policy"] == "sandbox"
+    assert res.headers["X-Content-Type-Options"] == "nosniff"
+
+
+def test_shared_video_gets_real_media_type(admin_client):
+    """확장자로 형식을 되짚어 준다 — 안 그러면 공유 페이지에서 영상이 재생되지 않는다.
+
+    업로더가 보낸 mime 이 비거나 octet-stream 인 경우가 흔하다(브라우저·CLI 마다 다르다).
+    """
+    sp = personal_space(admin_client)
+    node = admin_client.post(
+        f"/api/spaces/{sp['id']}/files",
+        files={
+            "file": ("clip.mp4", io.BytesIO(b"\x00\x00\x00 ftypmp42"), "application/octet-stream")
+        },
+    ).json()
+    token = admin_client.post(f"/api/nodes/{node['id']}/shares", json={}).json()["token"]
+    admin_client.post("/api/auth/logout")
+
+    res = admin_client.get(f"/s/{token}/raw")
+    assert res.headers["content-type"].startswith("video/mp4")
+
+
 def test_non_ascii_password_travels_only_via_basic_auth(admin_client):
     """한글 비밀번호는 Basic 으로만 지나간다 — 공유 화면이 이 경로에 기대고 있다.
 

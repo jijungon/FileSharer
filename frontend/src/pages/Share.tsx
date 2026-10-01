@@ -4,6 +4,7 @@ import MarkdownPreview from '../components/MarkdownPreview'
 import { formatBytes } from '../lib/format'
 import { shareAuthHeaders } from '../lib/sharepw'
 import { toggleTheme, useAppTheme } from '../lib/theme'
+import { isAudio, isHtml, isImage, isMarkdown, isPdf, isTextFile, isVideo } from '../lib/markdown'
 import { extractToc } from '../lib/toc'
 
 interface ShareMeta {
@@ -39,7 +40,12 @@ export default function Share() {
 
   const base = `/s/${token}`
   // 공유받은 문서는 길어도 '스크롤만' 있어서 원하는 문단으로 가기 어렵다 → 좌측 목차.
-  const toc = useMemo(() => (text ? extractToc(text) : []), [text])
+  // 목차는 **마크다운일 때만** 뽑는다. 코드 파일에도 돌리면 파이썬의 `# 주석`이
+  // 제목으로 잡혀 엉뚱한 목차가 선다.
+  const toc = useMemo(
+    () => (text && meta && isMarkdown(meta) ? extractToc(text) : []),
+    [text, meta],
+  )
 
   function jumpTo(id: string) {
     const el = document.getElementById(id)
@@ -126,13 +132,15 @@ export default function Share() {
     async (m: ShareMeta) => {
       if (m.type !== 'file') return
       const headers = shareAuthHeaders(password)
-      const isMd = ['md', 'markdown', 'txt'].includes(extOf(m.name))
-      const isImg = m.mime.startsWith('image/')
-      const isPdf = m.mime === 'application/pdf' || extOf(m.name) === 'pdf'
-      if (!isMd && !isImg && !isPdf) return
+      // 영상·음성은 통째로 받지 않는다 — <video>/<audio> 가 주소를 직접 열어
+      // 구간 요청(Range)으로 조금씩 받는다. 큰 파일을 메모리에 올리면 탭이 죽는다.
+      if (isVideo(m) || isAudio(m)) return
+      // HTML·텍스트는 글자로, 이미지·PDF 는 blob 으로.
+      const wantsText = isHtml(m) || isTextFile(m)
+      if (!wantsText && !isImage(m) && !isPdf(m)) return
       const res = await fetch(`${base}/raw`, { headers })
       if (!res.ok) throw new Error('unauthorized')
-      if (isMd) setText(await res.text())
+      if (wantsText) setText(await res.text())
       else setBlobUrl(URL.createObjectURL(await res.blob()))
     },
     [base, password],
@@ -195,9 +203,11 @@ export default function Share() {
       </div>
     )
 
-  const isMd = ['md', 'markdown', 'txt'].includes(extOf(meta.name))
-  const isImg = meta.mime.startsWith('image/')
-  const isPdf = meta.mime === 'application/pdf' || extOf(meta.name) === 'pdf'
+  // 앱 안 뷰어(ViewerPanel)와 **같은 판별**을 쓴다 — 같은 파일이 두 화면에서 다르게
+  // 보이면 안 된다. 오피스·한글만 아직 빠져 있다(서버 PDF 변환이 로그인 전용이라서).
+  const md = isMarkdown(meta)
+  const html = isHtml(meta)
+  const code = !md && !html && isTextFile(meta) // json·py·yaml… 코드블록으로 그린다
   const downloadHref = `${base}/download`
   const origin = window.location.origin
   const auth = meta.protected ? ` -u :'<비밀번호>'` : ''
@@ -256,16 +266,54 @@ export default function Share() {
         )}
 
         <main className="share-page-body">
-          {isMd && text !== null && <MarkdownPreview text={text} />}
-          {isImg && blobUrl && (
+          {md && text !== null && <MarkdownPreview text={text} />}
+          {/* 코드·설정 파일은 마크다운으로 그리면 서식이 먹혀 원문이 망가진다 — 코드블록으로 */}
+          {code && text !== null && (
+            <MarkdownPreview text={'```' + extOf(meta.name) + '\n' + text + '\n```'} />
+          )}
+          {/* HTML 은 **격리해서** 보여준다. sandbox="" 면 스크립트가 돌지 않고 쿠키에도 못 닿는다.
+              서버도 Content-Security-Policy: sandbox 를 함께 내려준다(이중 방어). */}
+          {html && text !== null && (
+            <iframe
+              className="pdf-frame share-pdf"
+              title={meta.name}
+              sandbox=""
+              referrerPolicy="no-referrer"
+              srcDoc={text}
+            />
+          )}
+          {isImage(meta) && blobUrl && (
             <div className="image-preview">
               <img src={blobUrl} alt={meta.name} />
             </div>
           )}
-          {isPdf && blobUrl && <iframe className="pdf-frame share-pdf" src={blobUrl} title={meta.name} />}
-          {meta.type === 'file' && !isMd && !isImg && !isPdf && (
-            <p className="muted">미리보기를 지원하지 않는 형식입니다 — 위의 다운로드를 이용하세요.</p>
+          {isPdf(meta) && blobUrl && (
+            <iframe className="pdf-frame share-pdf" src={blobUrl} title={meta.name} />
           )}
+          {/* 영상·음성은 주소를 직접 물린다 — 브라우저가 구간 요청으로 받아 바로 재생한다.
+              비밀번호가 걸린 공유는 헤더를 못 실으므로 재생 대신 다운로드를 안내한다. */}
+          {isVideo(meta) &&
+            (meta.protected ? (
+              <p className="muted">비밀번호가 걸린 영상은 재생할 수 없습니다 — 다운로드를 이용하세요.</p>
+            ) : (
+              <video className="share-media" src={`${base}/raw`} controls preload="metadata" />
+            ))}
+          {isAudio(meta) &&
+            (meta.protected ? (
+              <p className="muted">비밀번호가 걸린 음성은 재생할 수 없습니다 — 다운로드를 이용하세요.</p>
+            ) : (
+              <audio className="share-media" src={`${base}/raw`} controls preload="metadata" />
+            ))}
+          {meta.type === 'file' &&
+            !md &&
+            !code &&
+            !html &&
+            !isImage(meta) &&
+            !isPdf(meta) &&
+            !isVideo(meta) &&
+            !isAudio(meta) && (
+              <p className="muted">미리보기를 지원하지 않는 형식입니다 — 위의 다운로드를 이용하세요.</p>
+            )}
           {meta.type === 'folder' && (
             <p className="muted">폴더 공유입니다. 다운로드 버튼을 누르면 tar.gz로 받아집니다.</p>
           )}

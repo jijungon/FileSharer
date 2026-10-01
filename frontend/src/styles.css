@@ -2165,6 +2165,14 @@ button:focus-visible {
   height: 70vh;
 }
 
+/* 공유 페이지의 영상·음성. 폭을 넘지 않게만 잡고 높이는 내용에 맡긴다 —
+   세로 영상이 화면을 다 먹지 않도록 상한을 둔다. */
+.share-media {
+  width: 100%;
+  max-height: 70vh;
+  display: block;
+}
+
 .share-curl {
   background: var(--surface-tile);
   color: var(--on-dark);
