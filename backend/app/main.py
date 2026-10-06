@@ -202,14 +202,31 @@ def create_app() -> FastAPI:
     if STATIC_DIR.exists():
         assets = STATIC_DIR / "assets"
         if assets.exists():
+            # /assets 의 파일 이름엔 내용 해시가 들어 있다(index-C2ITz2zb.js). 내용이 바뀌면
+            # 이름이 바뀌므로 오래 캐시해도 안전하다 — 캐시 지시는 앞단(Caddy)이 붙인다.
             app.mount("/assets", StaticFiles(directory=assets), name="assets")
+
+        # 여기로 나가는 건 **이름에 해시가 없는 것들**이다 — index.html, favicon 따위.
+        # Cache-Control 을 안 붙이면 브라우저가 휴리스틱 캐싱을 쓴다: 대략
+        # (지금 - Last-Modified) × 10% 를 유효기간으로 잡는다. 배포 직후엔 0 에 가까워
+        # 문제가 없지만, **마지막 배포로부터 시간이 흐를수록 그 창이 커진다** —
+        # 3일 전에 배포한 상태로 들어온 사람에겐 7시간쯤 유효한 걸로 읽힌다.
+        # 그러면 오늘 배포해도 그 사람은 몇 시간 동안 옛 화면을 본다.
+        #
+        # no-cache 는 '저장하지 마라' 가 아니라 '쓰기 전에 물어봐라' 다.
+        #
+        # 비용은 **매번 껍데기를 다시 받는 것**이다 — starlette 의 FileResponse 는 조건부
+        # 요청을 처리하지 않아서, If-None-Match/If-Modified-Since 를 보내도 304 가 아니라
+        # 200 으로 전부 다시 온다(직접 확인했다). 여기로 나가는 건 index.html 907 바이트
+        # 하나뿐이라 그걸로 충분하다. 6.3MB 짜리 /assets 는 해시가 붙어 있어 이 길로 안 온다.
+        NO_CACHE = {"Cache-Control": "no-cache"}
 
         @app.get("/{path:path}", include_in_schema=False)
         def spa(path: str):  # noqa: ARG001
             candidate = STATIC_DIR / path
             if path and candidate.is_file() and candidate.resolve().is_relative_to(STATIC_DIR):
-                return FileResponse(candidate)
-            return FileResponse(STATIC_DIR / "index.html")
+                return FileResponse(candidate, headers=NO_CACHE)
+            return FileResponse(STATIC_DIR / "index.html", headers=NO_CACHE)
     else:
 
         @app.get("/", include_in_schema=False)
