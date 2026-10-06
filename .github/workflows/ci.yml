@@ -292,6 +292,75 @@ jobs:
           docker buildx imagetools create "${ARGS[@]}" "$SRC"
           echo "${{ needs.image.outputs.version }} 승격 완료"
 
+  # ── 배포가 실제로 나갔는지 확인한다 ──
+  # promote 까지는 "레지스트리에 새 태그를 붙였다" 일 뿐이다. 그게 오리진까지 가서
+  # 멀쩡히 도는지는 **아무도 안 봤다** — 지금껏 사람이 손으로 curl 해서 확인했다.
+  #
+  # 태그를 민 배포에서만 돈다. main 머지는 :latest 를 안 건드리므로 확인할 것이 없다.
+  verify:
+    needs: [promote]
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-24.04
+    steps:
+      - name: 새 버전이 뜰 때까지 기다린다
+        run: |
+          set -euo pipefail
+          # 태그 이름이 곧 버전이다(appver 가 그렇게 정한다). 잡 사이로 값을 나르지 않는다.
+          WANT="${GITHUB_REF#refs/tags/}"
+          echo "기다리는 버전: $WANT"
+          # watchtower 폴링(~60초) + 컨테이너 재생성까지 넉넉히. 이미지는 이미 다 구워져
+          # 있으므로 여기서 오래 걸리면 그 자체가 신호다.
+          for _ in $(seq 1 60); do   # 최대 10분
+            NOW=$(curl -fsS --max-time 10 https://file.rgrg.im/api/health 2>/dev/null \
+                  | python3 -c 'import sys,json;print(json.load(sys.stdin).get("version",""))' 2>/dev/null || echo "")
+            if [ "$NOW" = "$WANT" ]; then
+              echo "::notice::$WANT 반영됨"
+              exit 0
+            fi
+            echo "  아직 ${NOW:-응답없음}"
+            sleep 10
+          done
+          echo "::error::10분 안에 $WANT 가 안 올라왔습니다"
+          exit 1
+
+      - name: 핵심 경로 점검 (읽기 전용)
+        run: |
+          set -euo pipefail
+          BASE=https://file.rgrg.im
+          fail=0
+          check() { # 설명 · 기대코드 · 경로
+            code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 15 "$BASE$3")
+            if [ "$code" = "$2" ]; then printf '  ✓ %-26s %s\n' "$1" "$code"
+            else printf '  ✗ %-26s %s (기대 %s)\n' "$1" "$code" "$2"; fail=1; fi
+          }
+          # 첫 화면이 떠야 하고, 로그인 없이 들어오면 막혀야 한다. 둘 중 하나만
+          # 어긋나도 배포가 잘못된 것이다 — 열려 있으면 더 큰일이다.
+          check "첫 화면"          200 "/"
+          check "CLI 설치 스크립트" 200 "/cli/install.sh"
+          check "CLI 버전"          200 "/cli/version"
+          check "내 정보(인증 필요)" 401 "/api/me"
+          check "공간 목록(인증 필요)" 401 "/api/spaces"
+
+          # SPA 껍데기는 매번 재검증돼야 한다(no-cache). 이게 빠지면 배포해도 사람들이
+          # 옛 화면을 본다 — 그 자체로는 아무 에러도 안 난다.
+          cc=$(curl -sS -o /dev/null -D - --max-time 15 "$BASE/" | grep -i '^cache-control' | tr -d '\r' || true)
+          case "$cc" in
+            *no-cache*) printf '  ✓ %-26s %s\n' "껍데기 캐시" "no-cache" ;;
+            *) printf '  ✗ %-26s %s\n' "껍데기 캐시" "${cc:-없음}"; fail=1 ;;
+          esac
+
+          [ "$fail" = "0" ] || { echo "::error::배포 후 점검 실패"; exit 1; }
+          echo "::notice::배포 후 점검 통과"
+
+  # 점검이 깨지면 **자동으로 되돌린다.** 확인만 하고 되돌릴 줄 모르면 "깨졌다" 고
+  # 알려주고 끝이라, 결국 사람이 한밤중에 손으로 고쳐야 한다.
+  rollback-on-failure:
+    needs: [verify]
+    if: always() && needs.verify.result == 'failure'
+    uses: ./.github/workflows/rollback.yml
+    with:
+      reason: "배포 후 점검 실패 — ${{ github.ref_name }}"
+
   # ── 자동 배포(CD): 오리진의 watchtower가 pull 방식으로 처리 ──
   # 오리진(Oracle)이 인바운드 SSH를 소스 IP로 제한 → GitHub 러너에서의 SSH 배포는
   # 연결 타임아웃으로 불가. 그래서 CD는 오리진 쪽에서 pull 한다: 오리진의 watchtower
