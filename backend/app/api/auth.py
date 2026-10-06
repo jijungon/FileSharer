@@ -6,7 +6,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..deps import current_user, get_db
+from ..deps import Principal, current_principal, get_db
 from ..models import User
 from ..security import verify_password
 
@@ -66,5 +66,12 @@ me_router = APIRouter(prefix="/api", tags=["auth"])
 
 
 @me_router.get("/me")
-def me(user: User = Depends(current_user)) -> dict:
+def me(principal: Principal = Depends(current_principal)) -> dict:
+    """세션 쿠키 또는 API 토큰(Bearer)으로 '나' 를 묻는다.
+
+    토큰도 받는 이유: CLI 의 ``whoami`` 가 **어느 계정인지** 를 말해야 한다. 토큰은
+    승인한 브라우저 세션의 계정을 물려받으므로, 터미널에서는 그게 누구인지 알 길이
+    없었다 — 기기 이름만 보여주면 "내 계정이 맞나?" 를 확인할 방법이 없다.
+    """
+    user = principal.user
     return {"id": user.id, "email": user.email, "name": user.name, "role": user.role}

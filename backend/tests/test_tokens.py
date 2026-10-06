@@ -573,3 +573,34 @@ def test_revoked_token_cannot_browse(admin_client):
 
     assert admin_client.delete(f"/api/tokens/{created['id']}").status_code == 200
     assert anon.get("/api/spaces", headers=auth).status_code == 401
+
+
+def test_me_answers_for_a_token_too(admin_client):
+    """CLI 의 whoami 가 **어느 계정인지** 를 말하려면 /api/me 가 Bearer 도 받아야 한다.
+
+    토큰은 승인한 브라우저 세션의 계정을 물려받는다. 터미널 쪽에서는 그게 누구인지
+    알 길이 없었다 — 기기 이름(ubuntu@호스트)은 '어디서' 지 '누구' 가 아니다.
+    공용 브라우저에서 남의 계정으로 승인해 버려도 모르고 쓰게 된다.
+    """
+    token = make_token(admin_client, label="cli")["token"]
+    mine = admin_client.get("/api/me").json()
+
+    res = bare_client(admin_client).get(
+        "/api/me", headers={"Authorization": f"Bearer {token}"}
+    )
+    assert res.status_code == 200, res.text
+    assert res.json()["email"] == mine["email"], "토큰이 귀속된 계정을 말해야 한다"
+
+
+def test_me_still_refuses_without_any_credential(admin_client):
+    assert bare_client(admin_client).get("/api/me").status_code == 401
+
+
+def test_revoked_token_cannot_ask_who_it_is(admin_client):
+    created = make_token(admin_client, label="cli")
+    auth = {"Authorization": f"Bearer {created['token']}"}
+    anon = bare_client(admin_client)
+    assert anon.get("/api/me", headers=auth).status_code == 200
+
+    admin_client.delete(f"/api/tokens/{created['id']}")
+    assert anon.get("/api/me", headers=auth).status_code == 401

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { api, ApiError, SpaceInfo } from '../lib/api'
+import { api, ApiError, Me, SpaceInfo } from '../lib/api'
 import { formatAgo } from '../lib/format'
 import { ro } from '../lib/josa'
 
@@ -26,6 +26,7 @@ export default function Device() {
   const [code, setCode] = useState(params.get('code') ?? '')
   const [pending, setPending] = useState<Pending | null>(null)
   const [spaces, setSpaces] = useState<SpaceInfo[]>([])
+  const [me, setMe] = useState<Me | null>(null)
   const [spaceId, setSpaceId] = useState('') // '' = 내 공간만(기본값)
   const [days, setDays] = useState(90)
   const [err, setErr] = useState('')
@@ -33,6 +34,8 @@ export default function Device() {
   const [busy, setBusy] = useState(false)
 
   useEffect(() => {
+    // 내가 누구인지도 같이 받는다 — 아래에서 '누구 자격을 내주는지' 를 보여줘야 한다
+    api<Me>('/api/me').then(setMe).catch(() => setMe(null))
     api<SpaceInfo[]>('/api/spaces')
       .then(setSpaces)
       .catch((e) => {
@@ -129,6 +132,11 @@ export default function Device() {
         <div className="device-request">
           {/* 피싱 방어의 핵심 — 무엇을 허락하는지가 눈에 보여야 한다 */}
           <dl className="device-facts">
+            {/* **맨 위에 계정.** 토큰은 지금 이 브라우저 세션의 계정을 물려받는다.
+                공용 브라우저에 남의 계정으로 로그인돼 있으면, 그 자격을 모른 채
+                터미널에 내주게 된다. 기기·IP 보다 먼저 확인할 것이다. */}
+            <dt>누구 자격으로</dt>
+            <dd>{me ? me.email : '(확인 중…)'}</dd>
             <dt>기기</dt>
             <dd>{pending.client_name || '(이름 없음)'}</dd>
             <dt>요청 IP</dt>
@@ -139,7 +147,8 @@ export default function Device() {
 
           <p className="device-warn">
             내가 방금 터미널에서 <code>login</code> 을 친 게 아니라면 <strong>거부</strong>하세요.
-            남이 보내온 코드를 대신 넣어주는 일은 하지 마세요.
+            남이 보내온 코드를 대신 넣어주는 일은 하지 마세요. 위의 계정이 내 계정이 맞는지도
+            확인하세요 — 공용 브라우저라면 남의 계정으로 로그인돼 있을 수 있습니다.
           </p>
 
           <label className="device-field">
@@ -165,7 +174,13 @@ export default function Device() {
           </label>
 
           <p className="muted device-summary">
-            <strong>{pending.client_name || '이 기기'}</strong>가 <strong>{target}</strong>
+            <strong>{pending.client_name || '이 기기'}</strong>가{' '}
+            {me && (
+              <>
+                <strong>{me.email}</strong> 자격으로{' '}
+              </>
+            )}
+            <strong>{target}</strong>
             {ro(target)} {days}일 동안 접근합니다. 언제든 회수할 수 있습니다.
           </p>
 

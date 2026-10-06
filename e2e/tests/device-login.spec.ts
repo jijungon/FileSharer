@@ -37,12 +37,19 @@ test('CLI 로그인: 터미널이 코드를 받고 → 브라우저에서 승인
   // **무엇을 승인하는지가 보여야 한다** — 이 방식의 약점이 "이 코드 좀 넣어주세요" 피싱이다.
   // 기기 이름은 요약문에도 나오므로 사실 목록(.device-facts)을 집는다 — 판단의 근거는 거기다.
   const facts = page.locator('.device-facts')
+  // **누구 자격인지가 맨 위다.** 토큰은 지금 이 브라우저 세션의 계정을 물려받는다 —
+  // 공용 브라우저에 남의 계정으로 로그인돼 있으면 그 자격을 모른 채 내주게 된다.
+  await expect(facts.locator('dt').first()).toHaveText('누구 자격으로')
+  await expect(facts.locator('dd').first()).toHaveText(EMAIL)
   await expect(facts).toContainText('joji-macbook')
   await expect(facts).toContainText('요청 IP')
   await expect(facts).toContainText('요청 시각')
   // 시각은 '방금' 이어야 한다. 서버의 naive-UTC 를 로컬로 읽으면 '9시간 전'이 나오는데,
   // 하필 사람이 '내가 방금 한 게 맞나' 를 가늠하는 단서라 틀리면 안 된다.
   await expect(facts.locator('dd').last()).toHaveText(/방금|초 전/)
+
+  // 요약문도 '누가·누구 자격으로·어디까지·얼마나' 를 한 줄로 말한다
+  await expect(page.locator('.device-summary')).toContainText(EMAIL)
 
   await page.getByRole('button', { name: '허용', exact: true }).click()
   await expect(page.getByText('허용했습니다')).toBeVisible()
@@ -127,4 +134,20 @@ test('CLI 로그인: 틀린 코드는 조용히 넘어가지 않고 말을 해�
   await page.getByRole('button', { name: '확인', exact: true }).click()
   await expect(page.locator('.device-error')).toBeVisible()
   await expect(page.getByRole('button', { name: '허용', exact: true })).toHaveCount(0)
+})
+
+
+test('CLI 로그인: 받은 토큰이 어느 계정 것인지 서버가 말해준다', async ({ page }) => {
+  // 터미널의 `whoami` 가 이걸 쓴다. 기기 이름은 '어디서' 지 '누구' 가 아니다.
+  await login(page)
+  const made = await page.request.post('/api/tokens', { data: { label: 'bastion' } })
+  const token = (await made.json()).token
+
+  const anon = await page.context().browser()!.newContext()
+  const who = await anon.request.get('/api/me', {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  expect(who.status()).toBe(200)
+  expect((await who.json()).email).toBe(EMAIL)
+  await anon.close()
 })

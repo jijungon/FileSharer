@@ -253,3 +253,58 @@ def test_get_offers_both_ways_out(client, tmp_path):
     src.write_text(fetch(client, "/cli/filesharer"), encoding="utf-8")
     text = src.read_text("utf-8")
     assert "-o 받을위치" in text and "--force" in text
+
+
+def test_whoami_asks_the_server_who_this_token_is(client, tmp_path, monkeypatch, capsys):
+    """'whoami' 인데 '누구' 가 빠져 있었다 — 기기 이름만 보여줬다.
+
+    기기(ubuntu@호스트)는 **어디서** 지 **누구** 가 아니다. 토큰은 승인한 브라우저
+    세션의 계정을 물려받으므로, 틀린 계정으로 붙어도 터미널에서는 알 길이 없었다.
+    """
+    module = load_served_cli(client, tmp_path)
+    cfg = tmp_path / "config.json"
+    cfg.write_text(
+        '{"server": "https://x.test", "token": "fsk_a.b", "label": "ubuntu@bastion"}',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(module, "CONFIG_PATH", cfg)
+
+    def fake_request(server, path, **kwargs):
+        if path == "/api/me":
+            return 200, {"email": "joji@parametacorp.com", "name": "joji", "role": "user"}
+        if path == "/api/spaces":
+            return 200, [{"id": "s1", "name": "내 공간"}]
+        raise AssertionError(path)
+
+    monkeypatch.setattr(module, "request", fake_request)
+
+    class Args:
+        server = None
+
+    assert module.cmd_whoami(Args()) == 0
+    out = capsys.readouterr().out
+    assert "계정" in out and "joji@parametacorp.com" in out
+    # 계정이 맨 위여야 한다 — whoami 가 답해야 할 질문이다
+    assert out.index("joji@parametacorp.com") < out.index("ubuntu@bastion")
+
+
+def test_whoami_survives_a_server_that_wont_say(client, tmp_path, monkeypatch, capsys):
+    """계정을 못 받아도 나머지는 보여준다 — whoami 가 통째로 죽으면 더 답답하다."""
+    module = load_served_cli(client, tmp_path)
+    cfg = tmp_path / "config.json"
+    cfg.write_text('{"server": "https://x.test", "token": "t", "label": "box"}', encoding="utf-8")
+    monkeypatch.setattr(module, "CONFIG_PATH", cfg)
+    monkeypatch.setattr(
+        module,
+        "request",
+        lambda server, path, **k: (200, [{"id": "s", "name": "내 공간"}])
+        if path == "/api/spaces"
+        else (500, None),
+    )
+
+    class Args:
+        server = None
+
+    assert module.cmd_whoami(Args()) == 0
+    out = capsys.readouterr().out
+    assert "확인 못 함" in out and "box" in out
