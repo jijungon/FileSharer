@@ -294,3 +294,53 @@ def test_range_continuation_does_not_consume_download(admin_client):
     assert admin_client.get(
         f"/s/{token}/download", headers={"Range": "bytes=5-"}
     ).status_code in ok
+
+
+# ── 링크를 가려낼 수 있어야 한다 ─────────────────────────────────────────
+
+
+def test_links_can_be_told_apart(admin_client):
+    """링크를 여러 개 만들면 목록이 '누가 · 언제 발급 · 언제 만료' 로 전부 똑같아진다.
+
+    **그러면 어느 걸 회수할지 알 수 없다.** 두 가지로 가른다 — 사람이 적는 메모와,
+    주소의 앞자리(.../s/IVvfDn…). 앞자리는 보낸 링크와 눈으로 맞춰볼 수 있다는 게
+    요점이라, 공유 id 가 아니라 **토큰** 앞자리여야 한다.
+    """
+    node, res = make_file_share(admin_client, b"x")
+    first = res.json()
+    second = admin_client.post(
+        f"/api/nodes/{node['id']}/shares", json={"label": "박대리님"}
+    ).json()
+
+    rows = admin_client.get(f"/api/nodes/{node['id']}/shares").json()
+    by_id = {r["id"]: r for r in rows}
+
+    assert by_id[second["id"]]["label"] == "박대리님"
+    assert by_id[first["id"]]["label"] == "", "메모는 선택이다 — 안 적으면 빈 값"
+
+    for created in (first, second):
+        prefix = by_id[created["id"]]["token_prefix"]
+        assert prefix and created["token"].startswith(prefix), "주소와 맞춰볼 수 있어야 한다"
+        assert len(prefix) == 8
+
+    # 두 링크의 앞자리는 서로 다르다 — 같으면 가려내는 의미가 없다
+    assert by_id[first["id"]]["token_prefix"] != by_id[second["id"]]["token_prefix"]
+
+
+def test_prefix_alone_cannot_open_the_link(admin_client, client):
+    """앞자리만으로는 열 수 없어야 한다 — 가려내라고 두는 것이지 열쇠가 아니다."""
+    node, _ = make_file_share(admin_client, b"x")
+    prefix = admin_client.get(f"/api/nodes/{node['id']}/shares").json()[0]["token_prefix"]
+
+    # /s/{token}/meta 가 공유를 해석하는 자리다 — 앞자리로는 못 연다
+    assert client.get(f"/s/{prefix}/meta").status_code in (404, 410)
+
+
+def test_label_is_trimmed_and_capped(admin_client):
+    node, _ = make_file_share(admin_client, b"x")
+    made = admin_client.post(
+        f"/api/nodes/{node['id']}/shares", json={"label": "  " + "가" * 200 + "  "}
+    ).json()
+    rows = admin_client.get(f"/api/nodes/{node['id']}/shares").json()
+    got = next(r for r in rows if r["id"] == made["id"])["label"]
+    assert len(got) == 120 and not got.startswith(" ")
