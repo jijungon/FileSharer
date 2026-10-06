@@ -12,6 +12,8 @@ interface ShareInfo {
   download_count: number
   created_at?: string | null // 언제 발급했는지
   created_by_name?: string // 누가 발급했는지(여러 사람이 쓰는 공간에서 필요)
+  label?: string // 만들 때 적어둔 한 줄("박대리님") — 어느 걸 회수할지 가르는 핵심
+  token_prefix?: string // 주소의 앞자리(.../s/IVvfDn…) — 보낸 링크와 눈으로 맞춰본다
 }
 
 interface CreatedShare extends ShareInfo {
@@ -24,6 +26,7 @@ export default function SharePopover({ node, onClose }: { node: NodeInfo; onClos
   const [days, setDays] = useState(7)
   const [password, setPassword] = useState('')
   const [maxDownloads, setMaxDownloads] = useState('')
+  const [label, setLabel] = useState('')
   const [created, setCreated] = useState<CreatedShare | null>(null)
   const [existing, setExisting] = useState<ShareInfo[]>([])
   const [error, setError] = useState('')
@@ -46,6 +49,7 @@ export default function SharePopover({ node, onClose }: { node: NodeInfo; onClos
           days,
           password: password || null,
           max_downloads: maxDownloads ? Number(maxDownloads) : null,
+          label: label.trim(),
         }),
       })
       setCreated(res)
@@ -169,6 +173,18 @@ export default function SharePopover({ node, onClose }: { node: NodeInfo; onClos
               placeholder="무제한"
             />
           </label>
+          <label>
+            메모 <span className="muted">(선택)</span>
+            <input
+              value={label}
+              onChange={(e) => setLabel(e.target.value)}
+              maxLength={120}
+              // 링크를 여러 개 만들면 목록에서 전부 똑같아 보인다. 한 줄 적어두면
+              // 나중에 '어느 걸 회수할지' 가 그 자리에서 풀린다. 강제하지는 않는다 —
+              // 공유는 '만들고 바로 보내는' 흐름이라 입력을 막으면 성가시다.
+              placeholder="누구에게 주는 링크인지 (예: 박대리님)"
+            />
+          </label>
           <button className="btn-primary" onClick={create}>
             링크 만들기
           </button>
@@ -181,18 +197,33 @@ export default function SharePopover({ node, onClose }: { node: NodeInfo; onClos
           <label className="share-label">발급된 링크</label>
           {existing.map((s) => (
             <div key={s.id} className="share-row">
-              <span className="muted">
-                {/* 여러 사람이 쓰는 공간이라 "이 링크 누가 언제 만든 건지"가 먼저 보여야 한다 */}
-                {s.created_by_name && <strong>{s.created_by_name}</strong>}
-                {(s.created_by_name ? ' · ' : '') +
-                  [
-                    s.created_at ? `${s.created_at.slice(0, 10)} 발급` : null,
-                    `~${s.expires_at.slice(0, 10)} 만료`,
-                    s.protected ? '🔒' : null,
-                    s.max_downloads != null ? `${s.download_count}/${s.max_downloads}회` : null,
-                  ]
-                    .filter(Boolean)
-                    .join(' · ')}
+              <span className="share-row-text">
+                {/* 링크가 여러 개면 날짜·발급자만으로는 전부 똑같아 보인다 — 어느 걸
+                    회수할지 가르는 건 메모, 없으면 주소 앞자리다. 그래서 맨 앞에 둔다. */}
+                <span className="share-row-id">
+                  {s.label ? (
+                    s.label
+                  ) : s.token_prefix ? (
+                    <code>{s.token_prefix}…</code>
+                  ) : (
+                    <span className="muted">(메모 없음)</span>
+                  )}
+                </span>
+                <span className="muted share-row-meta">
+                  {/* 여러 사람이 쓰는 공간이라 "누가 언제 만든 건지"도 보여야 한다 */}
+                  {s.created_by_name && <strong>{s.created_by_name}</strong>}
+                  {(s.created_by_name ? ' · ' : '') +
+                    [
+                      // 메모를 적었다면 앞자리는 여기로 내린다 — 둘 다 필요할 때가 있다
+                      s.label && s.token_prefix ? `${s.token_prefix}…` : null,
+                      s.created_at ? `${s.created_at.slice(0, 10)} 발급` : null,
+                      `~${s.expires_at.slice(0, 10)} 만료`,
+                      s.protected ? '🔒' : null,
+                      s.max_downloads != null ? `${s.download_count}/${s.max_downloads}회` : null,
+                    ]
+                      .filter(Boolean)
+                      .join(' · ')}
+                </span>
               </span>
               <button
                 className="row-action"

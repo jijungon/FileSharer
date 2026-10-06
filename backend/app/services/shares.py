@@ -28,6 +28,7 @@ def create_share(
     days: int | None = None,
     password: str | None = None,
     max_downloads: int | None = None,
+    label: str = "",
 ) -> tuple[ShareLink, str]:
     settings = get_settings()
     days = days or settings.share_default_days
@@ -42,6 +43,9 @@ def create_share(
     share = ShareLink(
         node_id=node.id,
         token_hash=_hash_token(token),
+        label=(label or "").strip()[:120],
+        # 앞 8자만. 보낸 주소(.../s/IVvfDn…)와 눈으로 맞춰보라고 두는 것이다.
+        token_prefix=token[:8],
         expires_at=utcnow() + timedelta(days=days),
         password_hash=hash_password(password) if password else None,
         max_downloads=max_downloads,
@@ -64,6 +68,9 @@ def share_out(share: ShareLink) -> dict:
         # 여러 사람이 쓰는 공간에서 "이 링크 누가 언제 만든 건지" 알 수 있게 한다.
         "created_at": as_utc(share.created_at).isoformat() if share.created_at else None,
         "created_by_name": email_nickname(share.creator.email) if share.creator else "",
+        "label": share.label or "",
+        # 이 기능 전에 만든 링크는 비어 있다 — 원문을 복원할 길이 없다.
+        "token_prefix": share.token_prefix or "",
     }
 
 

@@ -3211,3 +3211,27 @@ button:focus-visible {
     border-top: 1px solid var(--divider-soft);
   }
 }
+/* 발급된 링크 한 줄 — 무엇인지(메모·앞자리)를 위에, 곁다리(누가·언제)를 아래에.
+   한 줄에 다 늘어놓으면 링크가 여러 개일 때 전부 똑같아 보인다. */
+.share-row-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+.share-row-id {
+  font-size: 13px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.share-row-id code {
+  font-size: 12px;
+  background: var(--surface-pearl);
+  border-radius: var(--radius-sm);
+  padding: 1px 5px;
+}
+.share-row-meta {
+  font-size: 12px;
+}

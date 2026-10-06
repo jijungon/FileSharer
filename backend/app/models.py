@@ -123,6 +123,19 @@ class ShareLink(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
+    # 링크를 여러 개 만들면 목록이 "joji · 10-01 발급 · ~10-08 만료" 로 전부 똑같아져
+    # **어느 걸 회수할지 알 수 없다.** 두 가지로 가른다:
+    #
+    #   label  — 사람이 적는 한 줄("박대리님", "협력사 전달"). 본질적인 해결이다.
+    #   token_prefix — 토큰 앞자리. 메모를 안 적었어도 구분은 되고, 무엇보다 **보낸
+    #            주소와 눈으로 맞춰볼 수 있다**(.../s/IVvfDn… 의 그 앞자리다).
+    #
+    # 접두사를 따로 두는 이유: 토큰 원문은 해시로만 저장해 복원할 수 없다. 앞 8자를
+    # 드러내도 남는 35자(≈208비트)로는 추측이 불가능하고, 이 목록을 볼 수 있는 사람은
+    # 애초에 발급 직후 원문을 본 사람이다.
+    label: Mapped[str] = mapped_column(String(120), default="")
+    token_prefix: Mapped[str] = mapped_column(String(12), default="")
+
     # 표시용(누가 발급했는지). Node.creator 와 같은 방식 — 배치 로드·읽기 전용.
     creator: Mapped["User | None"] = relationship(
         "User", foreign_keys=[created_by], lazy="selectin", viewonly=True

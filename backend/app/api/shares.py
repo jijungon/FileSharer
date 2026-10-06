@@ -17,6 +17,8 @@ class CreateShareBody(BaseModel):
     days: int | None = None
     password: str | None = None
     max_downloads: int | None = None
+    # 선택이다. 공유는 '만들고 바로 보내는' 흐름이라 입력을 강제하면 성가시다.
+    label: str = ""
 
 
 @router.post("/nodes/{node_id}/shares", status_code=201)
@@ -34,6 +36,7 @@ def make_share(
         days=body.days,
         password=body.password or None,
         max_downloads=body.max_downloads,
+        label=body.label,
     )
     audit.log(db, "share_create", user_id=user.id, node_id=node.id, detail=node.name)
     settings = get_settings()
