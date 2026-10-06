@@ -154,6 +154,50 @@ class ApiToken(Base):
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
 
+class DeviceAuth(Base):
+    """CLI 로그인(디바이스 플로우, RFC 8628)의 한 번짜리 승인 건.
+
+    터미널과 브라우저가 **서로 못 만나도** 되게 하는 게 요점이다. 둘 다 서버만 본다 —
+    SSH 로 들어간 VM 에서 CLI 를 돌리면 노트북 브라우저는 그 VM 의 localhost 에 닿을 수
+    없으므로, 흔한 localhost 콜백 방식은 아예 쓸 수 없다.
+
+    코드를 **둘로 가르는** 이유: ``user_code`` 는 사람이 눈으로 옮기는 짧은 코드고,
+    ``device_code`` 는 터미널만 아는 긴 비밀값이다. 남이 user_code 를 어깨너머로 봐도
+    토큰은 못 받아간다 — 받으려면 device_code 가 있어야 한다.
+
+    ``device_code`` 는 ``fsd_<id>.<secret>`` 꼴이고 secret 만 해시로 둔다(ApiToken 과 같은 방식).
+
+    승인 시점에 토큰을 만들지 **않는다**. 원문은 생성 때 한 번만 나오는데, 그걸 받아갈
+    CLI 는 그 뒤에 폴링하러 온다 — 중간에 어딘가 적어두면 해싱이 의미를 잃는다.
+    그래서 승인은 '허락했다'만 남기고, **토큰은 폴링이 왔을 때 만들어 그 자리에서 건넨다.**
+    """
+
+    __tablename__ = "device_auths"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    # device_code 의 secret 부분만 scrypt 해시로(원문·id 는 저장 안 함)
+    code_hash: Mapped[str] = mapped_column(String(255))
+    # 사람이 옮겨 적는 코드. 헷갈리는 글자(0/O, 1/I/L)와 모음을 뺀 자모로 만든다.
+    user_code: Mapped[str] = mapped_column(String(16), index=True)
+    # pending → approved → consumed, 또는 denied
+    status: Mapped[str] = mapped_column(String(16), default="pending", index=True)
+    # 승인 전엔 비어 있다 — 누가 승인했는지가 곧 토큰의 주인이 된다
+    user_id: Mapped[str | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    # 승인 화면에 그대로 보여줄 것들. 피싱("이 코드 좀 넣어주세요")을 사람이 알아채려면
+    # **무엇을 승인하는지** 가 눈에 보여야 한다.
+    client_name: Mapped[str] = mapped_column(String(120), default="")
+    client_ip: Mapped[str] = mapped_column(String(64), default="")
+    # 승인된 범위(토큰에 그대로 넘어간다)
+    space_id: Mapped[str | None] = mapped_column(ForeignKey("spaces.id"), nullable=True)
+    node_id: Mapped[str | None] = mapped_column(ForeignKey("nodes.id"), nullable=True)
+    token_days: Mapped[int] = mapped_column(Integer, default=90)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    expires_at: Mapped[datetime] = mapped_column(DateTime)
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # 폴링 간격(slow_down) 판정용 — 너무 자주 물으면 간격을 늘려 돌려보낸다
+    last_polled_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
 class Favorite(Base):
     """사용자별 즐겨찾기(별표). (user_id, node_id) 유일."""
 

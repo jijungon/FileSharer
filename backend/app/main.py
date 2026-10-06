@@ -12,6 +12,7 @@ from starlette.staticfiles import StaticFiles
 from .api.admin import router as admin_router
 from .api.auth import me_router
 from .api.auth import router as auth_router
+from .api.device import router as device_router
 from .api.google_auth import router as google_router
 from .api.nodes import router as nodes_router
 from .api.public import router as public_router
@@ -182,6 +183,7 @@ def create_app() -> FastAPI:
     app.include_router(google_router)
     app.include_router(spaces_router)
     app.include_router(tokens_router)
+    app.include_router(device_router)
     app.include_router(nodes_router)
     app.include_router(shares_router)
     app.include_router(system_router)

@@ -2991,3 +2991,99 @@ button:focus-visible {
 .file-table tbody tr[draggable='true']:active {
   cursor: grabbing;
 }
+
+/* --- CLI 로그인 승인 화면 (/device) ------------------------------------
+   읽고 판단하는 화면이라 좁게 잡는다. 긴 줄은 읽다가 눈이 돌아올 자리를 잃는다. */
+.device-page {
+  max-width: 520px;
+  margin: 0 auto;
+  padding: var(--sp-xl) var(--sp-lg);
+}
+.device-lede {
+  margin-bottom: var(--sp-lg);
+}
+.device-codebox {
+  display: flex;
+  gap: var(--sp-xs);
+}
+.device-codebox input {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  /* 사람이 옮겨 적는 코드다 — 글자 하나씩 또렷하게, 자간을 벌려 혼동을 줄인다 */
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 20px;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  text-align: center;
+  padding: 10px 12px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-sm);
+  background: var(--surface-pearl);
+  color: var(--ink);
+}
+.device-error {
+  color: var(--danger, #c0392b);
+  font-size: 14px;
+}
+.device-request {
+  margin-top: var(--sp-lg);
+  padding-top: var(--sp-lg);
+  border-top: 1px solid var(--hairline);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-sm);
+}
+/* 기기·IP·시각 — 피싱을 사람이 알아채는 단서다. 작게 숨기지 않는다. */
+.device-facts {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 6px var(--sp-md);
+  margin: 0;
+  font-size: 15px;
+}
+.device-facts dt {
+  color: var(--ink-muted-48);
+}
+.device-facts dd {
+  margin: 0;
+  font-weight: 600;
+  word-break: break-all;
+}
+.device-warn {
+  margin: var(--sp-xs) 0;
+  padding: 10px 12px;
+  border-left: 3px solid var(--hairline-strong);
+  background: var(--surface-tile);
+  font-size: 14px;
+  line-height: 1.6;
+}
+.device-field {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-sm);
+  font-size: 14px;
+}
+.device-field select {
+  font: inherit;
+  font-size: 14px;
+  padding: 7px 10px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-sm);
+  background: var(--surface-pearl);
+  color: var(--ink);
+  min-width: 180px;
+}
+.device-summary {
+  font-size: 14px;
+  margin: var(--sp-xs) 0 0;
+}
+.device-actions {
+  display: flex;
+  gap: var(--sp-xs);
+  margin-top: var(--sp-xs);
+}
+.device-actions button {
+  flex: 1;
+}
