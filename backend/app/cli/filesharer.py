@@ -323,17 +323,65 @@ def resolve(server: str, token: str, path: str) -> tuple[dict, dict | None]:
         raise Fail(f"어느 공간인지 앞에 붙여주세요 — {names}")
 
     node: dict | None = None
-    for name in rest:
+    for depth, name in enumerate(rest):  # index(name) 을 쓰면 같은 이름이 두 번 나올 때 어긋난다
         here = children(server, token, space_id=space["id"], node_id=node["id"] if node else None)
         match = next((n for n in here if n["name"] == name), None)
         if match is None:
-            where = "/".join([space["name"], *rest[: rest.index(name)]])
-            raise Fail(f"'{name}' 을(를) 찾지 못했습니다 (안쪽: {where})")
+            where = "/".join([space["name"], *rest[:depth]])
+            # **없다는 말만 하면 버그인지 오타인지 구분이 안 된다.** 거기 뭐가 있는지
+            # 같이 보여주면 대개 그 줄에서 끝난다.
+            lines = [
+                f"'{where}' 안에 '{name}'{josa(name, '이', '가')} 없습니다",
+                f"  여기 있는 것: {preview_names(here)}",
+            ]
+            # 첫 칸에서 틀렸고 쓸 수 있는 공간이 하나뿐이면, 다른 공간 이름을 적었을
+            # 가능성이 크다 — 그 토큰으론 애초에 못 간다는 걸 말해준다.
+            if depth == 0 and len(available) == 1:
+                lines.append(
+                    f"  이 자격은 '{available[0]['name']}'만 볼 수 있습니다 — "
+                    "다른 공간을 쓰려면 filesharer login 으로 범위를 넓히세요"
+                )
+            raise Fail("\n".join(lines))
         node = match
     return space, node
 
 
 # ── ls / put / get ──────────────────────────────────────────────────────
+
+
+# 받침이 있는 것으로 읽히는 끝글자. 숫자는 읽은 소리(영·일·삼·육·칠·팔), 영문은
+# 엘·엠·엔·알. 웹(lib/josa.ts)과 같은 규칙인데, '을/를'·'이/가' 는 ㄹ 예외가 없어 더 쉽다.
+_BATCHIM_DIGITS = set("013678")
+_BATCHIM_LETTERS = set("lmnr")
+
+
+def has_batchim(word: str) -> bool:
+    for ch in reversed(word or ""):
+        if "가" <= ch <= "힣":
+            return (ord(ch) - 0xAC00) % 28 != 0
+        if ch.isdigit():
+            return ch in _BATCHIM_DIGITS
+        if ch.isalpha():
+            return ch.lower() in _BATCHIM_LETTERS
+    return False  # 읽을 글자가 없으면 받침 없는 쪽(짧은 조사)
+
+
+def josa(word: str, with_batchim: str, without: str) -> str:
+    """``josa(name, "을", "를")`` — 이름 뒤에 붙일 조사만 돌려준다.
+
+    '(을)를' 로 피하면 틀리진 않지만 공문서 투다. 폴더·파일 이름은 사용자가 짓는데
+    그 뒤에 조사를 박아두면 절반은 틀린 말이 된다.
+    """
+    return with_batchim if has_batchim(word) else without
+
+
+def preview_names(rows: list[dict], limit: int = 6) -> str:
+    """'여기 있는 것' 한 줄. 많으면 끊고 몇 개 더 있는지 말한다."""
+    if not rows:
+        return "(비어 있음)"
+    names = [n["name"] for n in rows]
+    shown = " · ".join(names[:limit])
+    return shown if len(names) <= limit else f"{shown} … 외 {len(names) - limit}개"
 
 
 def human(size: int) -> str:
@@ -409,7 +457,8 @@ def cmd_put(args) -> int:
 
     space, node = resolve(server, token, dest_path)
     if node and node["type"] != "folder":
-        raise Fail(f"'{node['name']}' 은(는) 폴더가 아닙니다")
+        name = node["name"]
+        raise Fail(f"'{name}'{josa(name, '은', '는')} 폴더가 아닙니다")
     dest = (
         f"/api/nodes/{node['id']}/files" if node else f"/api/spaces/{space['id']}/files"
     )
@@ -436,13 +485,20 @@ def cmd_get(args) -> int:
     if node is None:
         raise Fail("받을 대상을 경로에 적어주세요")
     if node["type"] != "file":
-        raise Fail(f"'{node['name']}' 은(는) 폴더입니다 — 아직 폴더째 받기는 지원하지 않습니다")
+        name = node["name"]
+        raise Fail(
+            f"'{name}'{josa(name, '은', '는')} 폴더입니다 — 아직 폴더째 받기는 지원하지 않습니다"
+        )
 
     out = Path(args.output) if args.output else Path(node["name"])
     if out.is_dir():
         out = out / node["name"]
     if out.exists() and not args.force:
-        raise Fail(f"이미 있습니다: {out} — 덮어쓰려면 --force")
+        raise Fail(
+            f"이미 있습니다: {out}\n"
+            f"  다른 곳에 받으려면  -o 받을위치\n"
+            f"  덮어쓰려면          --force"
+        )
 
     status, body = request(server, f"/api/files/{node['id']}", token=token)
     if status != 200 or not isinstance(body, bytes):
