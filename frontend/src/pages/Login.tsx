@@ -32,6 +32,20 @@ export default function Login() {
       .catch(() => setGoogleEnabled(false))
   }, [])
 
+  /** 로그인 후 돌아갈 곳. 기본은 /files.
+   *
+   * **같은 오리진의 경로만 받는다.** `?next=https://남의사이트` 를 그대로 따라가면
+   * 우리 로그인 화면이 남의 사이트로 보내는 발판(open redirect)이 된다. 그래서
+   * 슬래시 하나로 시작하되 `//`(스킴 생략 절대주소)는 아닌 것만 통과시킨다.
+   *
+   * CLI 로그인 승인 화면(/device)이 이걸 쓴다 — 로그인하고 돌아오면 터미널에서
+   * 옮겨 적은 코드가 그대로 남아 있어야 한다. 안 그러면 처음부터 다시 해야 한다.
+   */
+  function nextPath(): string {
+    const raw = params.get('next') ?? ''
+    return raw.startsWith('/') && !raw.startsWith('//') ? raw : '/files'
+  }
+
   async function submitLocal(e: FormEvent) {
     e.preventDefault()
     setBusy(true)
@@ -41,7 +55,7 @@ export default function Login() {
         method: 'POST',
         body: JSON.stringify({ email, password }),
       })
-      window.location.href = '/files'
+      window.location.href = nextPath()
     } catch (err) {
       setError(err instanceof Error ? err.message : '로그인에 실패했습니다.')
     } finally {
