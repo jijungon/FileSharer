@@ -1250,6 +1250,14 @@ export default function Files() {
             지금 있는 곳). 시연에서 그 지적을 받았다. */}
         <div className="topbar-right">
           <span className="muted">{me.email}</span>
+          {/* CLI 안내는 서버 전송 팝오버 안에만 링크돼 있어 찾기 어려웠다(사용자가 못 찾았다).
+              관리처럼 '가끔 쓰지만 있는 줄은 알아야 하는' 페이지라 여기 둔다 — 다만
+              관리와 달리 **모두에게** 보인다. 설치 방법을 알아야 할 사람이 관리자만은 아니다. */}
+          <Link to="/cli">
+            <button className="btn-utility" title="브라우저 없이 쓰기 — 설치·로그인·명령">
+              CLI
+            </button>
+          </Link>
           {me.role === 'admin' && (
             <Link to="/admin">
               <button className="btn-utility">관리</button>

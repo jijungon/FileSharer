@@ -41,6 +41,11 @@ DEFAULT_SERVER = "__FILESHARER_SERVER__"
 CONFIG_DIR = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "filesharer"
 CONFIG_PATH = CONFIG_DIR / "config.json"
 
+# **반드시 보낸다.** 안 보내면 urllib 이 "Python-urllib/3.x" 를 쓰는데, 앞단에 Cloudflare
+# 같은 게 있으면 그 서명을 봇으로 보고 막는다 — 실제로 프로덕션에서 403(CF 오류 1010)이
+# 났다. 우리 쪽 잘못이 아니라 '이름을 안 댄' 쪽 잘못이다. 자기 이름과 돌아올 주소를 댄다.
+USER_AGENT = "filesharer-cli/1 (+https://github.com/jijungon/FileSharer)"
+
 
 class Fail(SystemExit):
     """사람에게 보여줄 오류. 스택 트레이스 대신 한 줄로 말한다."""
@@ -110,7 +115,7 @@ def request(
     디바이스 플로우는 400 이 정상 흐름의 일부라서(authorization_pending)."""
     url = server + path
     data = raw_body
-    headers = {"Accept": "application/json"}
+    headers = {"Accept": "application/json", "User-Agent": USER_AGENT}
     if json_body is not None:
         data = json.dumps(json_body, ensure_ascii=False).encode("utf-8")
         headers["Content-Type"] = "application/json"
@@ -147,6 +152,22 @@ def detail_of(body: object, fallback: str) -> str:
     return fallback
 
 
+def blocked_hint(status: int, body: object) -> str | None:
+    """앞단(CDN·WAF)이 막은 것 같으면 그렇게 말해준다.
+
+    서버가 준 오류와 구분이 안 되면 사람은 자기 계정이나 토큰을 의심하며 헤맨다.
+    403 인데 우리 서버의 JSON 오류 모양이 아니면 중간에서 끊긴 것이다.
+    """
+    if status != 403:
+        return None
+    if isinstance(body, dict) and isinstance(body.get("detail"), str):
+        text = body["detail"]
+        if "signature" in text or "blocked" in text or "1010" in text:
+            return f"앞단에서 차단됐습니다 — {text}"
+        return None
+    return "앞단(CDN·방화벽)에서 차단된 것 같습니다 — 서버가 아니라 중간에서 끊겼습니다"
+
+
 # ── login ───────────────────────────────────────────────────────────────
 
 
@@ -158,7 +179,9 @@ def cmd_login(args) -> int:
         server, "/api/device/code", method="POST", json_body={"client_name": name}
     )
     if status != 201 or not isinstance(body, dict):
-        raise Fail(detail_of(body, f"코드를 받지 못했습니다 (HTTP {status})"))
+        raise Fail(
+            blocked_hint(status, body) or detail_of(body, f"코드를 받지 못했습니다 (HTTP {status})")
+        )
 
     uri, code = body["verification_uri"], body["user_code"]
     # 브라우저가 있으면 열어준다. **없어도 되는 게 핵심이다** — SSH 로 들어온 VM 에는
