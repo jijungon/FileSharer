@@ -46,9 +46,15 @@ CONFIG_PATH = CONFIG_DIR / "config.json"
 # 났다. 우리 쪽 잘못이 아니라 '이름을 안 댄' 쪽 잘못이다. 자기 이름과 돌아올 주소를 댄다.
 USER_AGENT = "filesharer-cli/1 (+https://github.com/jijungon/FileSharer)"
 
-# 서버가 내줄 때 이 한 줄만 바꿔 넣는다. 값은 **원본 소스의 해시**다 — 앱 버전을 쓰면
-# CLI 와 무관한 백엔드 배포마다 "새 버전" 이 떠서 금세 아무도 안 읽는 알림이 된다.
+# 서버가 내줄 때 이 두 줄을 바꿔 넣는다. **역할이 다르다:**
+#
+#   CLI_VERSION — 원본 소스의 해시. '낡았나' 를 가리는 **기계용** 값이다. CLI 와 무관한
+#                 백엔드 배포에서는 안 바뀌므로 쓸데없는 알림이 안 뜬다.
+#   APP_VERSION — 사람에게 보여줄 값(v1.0.17). 해시는 사람이 비교할 수 없고 화면
+#                 어디에도 안 나오는 숫자라, --version 에 그걸 찍으면 아무 도움이 안 된다.
+#                 실제로 그렇게 내보냈다가 "이 버전이 왜 이렇게 나오냐" 는 말을 들었다.
 CLI_VERSION = "__FILESHARER_CLI_VERSION__"
+APP_VERSION = "__FILESHARER_APP_VERSION__"
 
 # 낡았는지 확인하는 주기. 명령마다 물으면 느려지고, 아예 안 물으면 낡은 채로 쓴다.
 UPDATE_CHECK_SEC = 24 * 3600
@@ -287,17 +293,27 @@ def account_of(server: str, token: str) -> dict | None:
     return body if status == 200 and isinstance(body, dict) else None
 
 
-def server_cli_version(server: str, *, timeout: int = 5) -> str | None:
-    """서버가 내주는 CLI 버전. 못 물어보면 None — 이 때문에 명령이 실패하면 안 된다."""
+def version_label() -> str:
+    """사람이 읽을 버전. 뒤의 짧은 해시는 '정확히 어느 사본인가' 를 물을 때를 위한 것이다."""
+    shown = "dev" if _unfilled(APP_VERSION) else APP_VERSION
+    return shown if _unfilled(CLI_VERSION) else f"{shown} ({CLI_VERSION[:8]})"
+
+
+def server_cli_version(server: str, *, timeout: int = 5) -> tuple[str | None, str | None]:
+    """서버가 내주는 CLI 의 (해시, 앱버전). 못 물어보면 (None, None).
+
+    이 때문에 명령이 실패하면 안 된다 — 전부 삼킨다.
+    """
     try:
         req = urllib.request.Request(
             f"{server}/cli/version",
             headers={"Accept": "application/json", "User-Agent": USER_AGENT},
         )
         with urllib.request.urlopen(req, timeout=timeout) as res:
-            return json.loads(res.read().decode("utf-8")).get("version")
+            body = json.loads(res.read().decode("utf-8"))
+            return body.get("version"), body.get("app_version")
     except Exception:
-        return None
+        return None, None
 
 
 def nudge_if_stale(args) -> None:
@@ -317,7 +333,7 @@ def nudge_if_stale(args) -> None:
         server = server_of(args)
     except SystemExit:
         return
-    latest = server_cli_version(server, timeout=3)
+    latest, _ = server_cli_version(server, timeout=3)
     cfg["last_update_check"] = time.time()
     try:
         save_config(cfg)
@@ -332,6 +348,14 @@ def cmd_update(args) -> int:
     server = server_of(args)
     here = Path(sys.argv[0]).resolve()
 
+    # **본문이 아니라 해시로 가린다.** 서버는 내줄 때 주소·버전을 박아 넣으므로, CLI 가
+    # 한 글자도 안 바뀐 백엔드 배포에서도 본문은 달라진다. 그걸 '새 버전' 으로 보면
+    # 매번 20KB 를 받아 부질없이 갈아끼운다.
+    latest, latest_app = server_cli_version(server)
+    if latest and latest == CLI_VERSION and not args.force:
+        print(f"  이미 최신입니다 — {version_label()}")
+        return 0
+
     status, body = request(server, "/cli/filesharer")
     if status != 200 or not isinstance(body, bytes):
         raise Fail(
@@ -344,10 +368,6 @@ def cmd_update(args) -> int:
     # 망가지고, 고치려 해도 update 조차 못 돈다.
     if not text.startswith("#!/usr/bin/env python3") or len(text) < 4000:
         raise Fail(f"받은 내용이 CLI 가 아닙니다 ({len(text)} bytes) — 중간에서 바뀐 것 같습니다")
-
-    if here.read_text("utf-8") == text:
-        print(f"  이미 최신입니다 ({CLI_VERSION})")
-        return 0
 
     tmp = here.with_name(here.name + f".new{secrets.token_hex(3)}")
     try:
@@ -368,7 +388,8 @@ def cmd_update(args) -> int:
         save_config(cfg)
     except OSError:
         pass
-    print(f"  ✓ 새 CLI 로 바꿨습니다 → {here}")
+    now = f" ({latest_app})" if latest_app else ""
+    print(f"  ✓ 새 CLI 로 바꿨습니다{now} → {here}")
     return 0
 
 
@@ -633,7 +654,7 @@ def build_parser() -> argparse.ArgumentParser:
         prog="filesharer", description="FileSharer 명령줄 클라이언트 — 브라우저 없이 파일 주고받기"
     )
     p.add_argument("--server", help="서버 주소 (기본: 로그인할 때 쓴 곳)")
-    p.add_argument("--version", action="version", version=f"filesharer {CLI_VERSION}")
+    p.add_argument("--version", action="version", version=f"filesharer {version_label()}")
     sub = p.add_subparsers(dest="cmd", required=True)
 
     lg = sub.add_parser("login", help="브라우저로 로그인한다")
@@ -642,9 +663,9 @@ def build_parser() -> argparse.ArgumentParser:
     lg.set_defaults(func=cmd_login)
 
     sub.add_parser("logout", help="이 기기의 자격을 지운다").set_defaults(func=cmd_logout)
-    sub.add_parser("update", help="서버의 최신 CLI 로 자기 자신을 바꾼다").set_defaults(
-        func=cmd_update
-    )
+    upd = sub.add_parser("update", help="서버의 최신 CLI 로 자기 자신을 바꾼다")
+    upd.add_argument("--force", action="store_true", help="최신이어도 다시 받는다")
+    upd.set_defaults(func=cmd_update)
     sub.add_parser("whoami", help="지금 누구로, 어디까지, 언제까지").set_defaults(func=cmd_whoami)
 
     ls = sub.add_parser("ls", help="둘러본다")

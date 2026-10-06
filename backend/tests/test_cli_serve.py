@@ -324,15 +324,62 @@ def test_version_endpoint_matches_what_is_served(client, tmp_path):
     assert reported == served.CLI_VERSION
 
 
-def test_version_is_the_source_hash_not_the_app_version(client, tmp_path):
-    """앱 버전(v1.0.x)을 쓰면 CLI 와 무관한 백엔드 배포마다 '새 버전' 이 뜬다.
+def test_comparison_uses_the_hash_not_the_app_version(client, tmp_path):
+    """'낡았나' 는 **소스 해시**로 가린다.
 
-    몇 번 겪으면 아무도 안 읽는 알림이 된다. 소스가 실제로 바뀔 때만 달라져야 한다.
+    앱 버전(v1.0.x)으로 가리면 CLI 와 무관한 백엔드 배포마다 '새 버전' 이 뜨고,
+    몇 번 겪으면 아무도 안 읽는 알림이 된다.
     """
     module = load_served_cli(client, tmp_path)
     assert len(module.CLI_VERSION) == 12
-    assert not module.CLI_VERSION.startswith("v")
     assert all(c in "0123456789abcdef" for c in module.CLI_VERSION)
+    assert client.get("/cli/version").json()["version"] == module.CLI_VERSION
+
+
+def test_what_people_see_is_the_app_version(client, tmp_path):
+    """**보여주는 건 사람이 비교할 수 있는 값이어야 한다.**
+
+    해시(4e34571df821)를 --version 에 찍었더니 "이 버전이 왜 이렇게 나오냐" 는 말을
+    들었다. 화면 어디에도 안 나오는 숫자라 새 건지 낡은 건지 알 길이 없다.
+    뒤의 짧은 해시는 '정확히 어느 사본인가' 를 물을 때를 위해 남긴다.
+    """
+    module = load_served_cli(client, tmp_path)
+    label = module.version_label()
+
+    assert label.startswith("v") or label.startswith("dev"), label
+    assert module.CLI_VERSION[:8] in label, "어느 사본인지도 알 수 있어야 한다"
+    assert module.CLI_VERSION not in label, "전체 해시까지 보여줄 필요는 없다"
+
+    served_app = client.get("/cli/version").json()["app_version"]
+    assert served_app in label
+
+
+def test_update_does_not_redownload_when_only_the_app_version_moved(
+    client, tmp_path, monkeypatch, capsys
+):
+    """서버는 내줄 때 주소·버전을 박아 넣는다 — CLI 가 한 글자도 안 바뀐 배포에서도
+    **본문은 달라진다.** 본문으로 비교하면 매번 20KB 를 받아 부질없이 갈아끼운다.
+    """
+    module = load_served_cli(client, tmp_path)
+    target = tmp_path / "filesharer"
+    target.write_text("#!/usr/bin/env python3\n" + "# 아무거나\n" * 400, encoding="utf-8")
+    monkeypatch.setattr(module.sys, "argv", [str(target)])
+    # 해시는 같고 앱 버전만 올라간 상황
+    monkeypatch.setattr(
+        module, "server_cli_version", lambda *a, **k: (module.CLI_VERSION, "v9.9.9")
+    )
+
+    def boom(*a, **k):
+        raise AssertionError("해시가 같은데 본문을 받으러 갔다")
+
+    monkeypatch.setattr(module, "request", boom)
+
+    class Args:
+        server = "https://x.test"
+        force = False
+
+    assert module.cmd_update(Args()) == 0
+    assert "이미 최신입니다" in capsys.readouterr().out
 
 
 def test_update_refuses_anything_that_is_not_the_cli(client, tmp_path, monkeypatch):
@@ -356,6 +403,7 @@ def test_update_refuses_anything_that_is_not_the_cli(client, tmp_path, monkeypat
 
         class Args:
             server = "https://x.test"
+            force = True  # 해시 비교를 건너뛰고 받아오는 경로를 본다
 
         with pytest.raises(SystemExit):
             module.cmd_update(Args())
@@ -377,6 +425,7 @@ def test_update_replaces_itself_and_keeps_the_mode(client, tmp_path, monkeypatch
 
     class Args:
         server = "https://x.test"
+        force = True
 
     assert module.cmd_update(Args()) == 0
     assert target.read_text("utf-8") == fresh
@@ -385,28 +434,13 @@ def test_update_replaces_itself_and_keeps_the_mode(client, tmp_path, monkeypatch
     assert "새 CLI 로 바꿨습니다" in capsys.readouterr().out
 
 
-def test_update_says_so_when_already_current(client, tmp_path, monkeypatch, capsys):
-    module = load_served_cli(client, tmp_path)
-    target = tmp_path / "filesharer"
-    same = "#!/usr/bin/env python3\n" + "# 같음 — 길이를 채운다\n" * 400
-    target.write_text(same, encoding="utf-8")
-    monkeypatch.setattr(module.sys, "argv", [str(target)])
-    monkeypatch.setattr(module, "request", lambda *a, **k: (200, same.encode("utf-8")))
-
-    class Args:
-        server = "https://x.test"
-
-    assert module.cmd_update(Args()) == 0
-    assert "이미 최신입니다" in capsys.readouterr().out
-
-
 def test_stale_nudge_is_once_a_day_and_never_blocks(client, tmp_path, monkeypatch, capsys):
     """확인에 실패해도 하려던 일은 그대로 돼야 한다 — 본말이 전도되면 안 된다."""
     module = load_served_cli(client, tmp_path)
     cfg = tmp_path / "config.json"
     cfg.write_text('{"server": "https://x.test", "token": "t"}', encoding="utf-8")
     monkeypatch.setattr(module, "CONFIG_PATH", cfg)
-    monkeypatch.setattr(module, "server_cli_version", lambda *a, **k: "다른버전입니다")
+    monkeypatch.setattr(module, "server_cli_version", lambda *a, **k: ("다른버전", "v9.9.9"))
 
     class Args:
         server = None
@@ -421,6 +455,6 @@ def test_stale_nudge_is_once_a_day_and_never_blocks(client, tmp_path, monkeypatc
 
     # 서버에 못 물어봐도 터지지 않는다
     cfg.write_text('{"server": "https://x.test"}', encoding="utf-8")
-    monkeypatch.setattr(module, "server_cli_version", lambda *a, **k: None)
+    monkeypatch.setattr(module, "server_cli_version", lambda *a, **k: (None, None))
     module.nudge_if_stale(Args())
     assert capsys.readouterr().err == ""
