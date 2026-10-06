@@ -221,8 +221,15 @@ def cmd_login(args) -> int:
                 }
             )
             save_config(cfg)
+            who = account_of(server, cfg["token"])
             print()
-            print(f"  ✓ 로그인했습니다 — {cfg['label']}")
+            # **여기서 계정을 말해야 한다.** 승인은 브라우저가 했고, 그 브라우저가
+            # 누구로 로그인돼 있었는지는 터미널 쪽이 모른다. 틀린 계정으로 붙었으면
+            # 지금 알아차려야 한다 — 나중엔 왜 남의 파일이 보이는지로 겪는다.
+            if who:
+                print(f"  ✓ {who['email']} 로 로그인했습니다 (기기: {cfg['label']})")
+            else:
+                print(f"  ✓ 로그인했습니다 — {cfg['label']}")
             print(f"    자격은 {CONFIG_PATH} 에 두었습니다 (이 사용자만 읽을 수 있음)")
             if cfg.get("expires_at"):
                 print(f"    만료 {cfg['expires_at'][:10]} · 웹에서 언제든 회수할 수 있습니다")
@@ -262,6 +269,17 @@ def cmd_logout(args) -> int:
     return 0
 
 
+def account_of(server: str, token: str) -> dict | None:
+    """이 토큰이 **누구 것인지** 서버에 묻는다.
+
+    토큰은 승인한 브라우저 세션의 계정을 물려받는다. 터미널 쪽에서는 그게 누구인지
+    알 길이 없다 — 기기 이름(ubuntu@호스트)은 '어디서' 지 '누구' 가 아니다.
+    공용 브라우저에서 남의 계정으로 승인해 버려도 모르고 쓰게 된다.
+    """
+    status, body = request(server, "/api/me", token=token)
+    return body if status == 200 and isinstance(body, dict) else None
+
+
 def cmd_whoami(args) -> int:
     cfg = load_config()
     if not cfg.get("token"):
@@ -271,6 +289,10 @@ def cmd_whoami(args) -> int:
     status, spaces = request(server, "/api/spaces", token=cfg["token"])
     if status == 401:
         raise Fail("자격이 만료되거나 회수됐습니다 — filesharer login")
+
+    who = account_of(server, cfg["token"])
+    # 계정이 맨 위다. 이게 'whoami' 가 답해야 할 질문이다.
+    print(f"  계정    {who['email'] if who else '(확인 못 함)'}")
     print(f"  서버    {server}")
     print(f"  기기    {cfg.get('label', '')}")
     if cfg.get("expires_at"):
