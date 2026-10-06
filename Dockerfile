@@ -19,9 +19,11 @@ COPY frontend/ ./
 RUN npm run build
 
 # ── (이미지가 아님) 소스맵만 꺼내가는 출구 ────────────────────
-# CI 가 `--target sourcemaps --output type=local` 로 이 스테이지만 꺼내 Sentry 에 올린다.
-# web 스테이지는 방금 구운 것이 캐시에 그대로 있으니 다시 빌드되지 않는다 — 태그 배포가
-# 24초에서 느려지지 않는다. scratch 라 레지스트리에 올라가지도 않는다.
+# CI 가 `target: sourcemaps` + `outputs: type=local` 로 이 스테이지만 꺼내 Sentry 에 올린다.
+# web 스테이지는 바로 위에서 구운 것이 GHA 캐시에 있으니 다시 빌드되지 않는다 — 단,
+# **꺼내는 쪽도 build-push-action 으로 불러야** 그렇다. 맨 `docker buildx build` 로 했더니
+# 캐시 자격이 없어 npm ci 부터 통째로 다시 돌았다(v1.0.21, 이 단계만 55초).
+# scratch 라 레지스트리에 올라가지도 않는다.
 #
 # **반드시 마지막 스테이지보다 앞에 있어야 한다.** docker 는 타깃을 안 주면 맨 끝 스테이지를
 # 굽는다 — 이걸 파일 끝에 뒀더니 아무것도 없는 scratch 가 이미지가 됐다.
