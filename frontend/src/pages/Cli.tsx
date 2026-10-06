@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { api, ApiError } from '../lib/api'
 import { copyText } from '../lib/clipboard'
 import { formatAgo, formatDateTime } from '../lib/format'
@@ -78,6 +78,9 @@ export default function Cli() {
 
   return (
     <div className="cli-page">
+      <Link className="page-back" to="/files">
+        ← 파일로 돌아가기
+      </Link>
       <h2>CLI — 브라우저 없이 쓰기</h2>
       <p className="muted cli-lede">
         사내 VM·CI 처럼 브라우저가 없는 곳에서 파일을 주고받을 때 씁니다. 파이썬 3만 있으면

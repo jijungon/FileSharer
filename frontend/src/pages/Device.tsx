@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { api, ApiError, Me, SpaceInfo } from '../lib/api'
 import { formatAgo } from '../lib/format'
 import { ro } from '../lib/josa'
@@ -87,6 +87,9 @@ export default function Device() {
   if (done) {
     return (
       <div className="device-page">
+        <Link className="page-back" to="/files">
+          ← 파일로 돌아가기
+        </Link>
         <h2>{done === 'approved' ? '허용했습니다' : '거부했습니다'}</h2>
         <p className="muted">
           {done === 'approved'
@@ -99,6 +102,9 @@ export default function Device() {
 
   return (
     <div className="device-page">
+      <Link className="page-back" to="/files">
+        ← 파일로 돌아가기
+      </Link>
       <h2>CLI 로그인 승인</h2>
       <p className="muted device-lede">
         터미널에 뜬 코드를 그대로 옮겨 적으세요. 허용하면 그 터미널이 당신 자격으로 파일을
