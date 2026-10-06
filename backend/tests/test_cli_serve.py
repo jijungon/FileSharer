@@ -167,3 +167,89 @@ def test_blocked_by_proxy_is_named_as_such(client, tmp_path):
     # 우리 서버가 제대로 낸 403 은 그대로 둔다 — 범위 밖이라는 말을 덮으면 안 된다
     assert module.blocked_hint(403, {"detail": "토큰 범위 밖의 공간입니다"}) is None
     assert module.blocked_hint(401, {"detail": "로그인이 필요합니다"}) is None
+
+
+# ── 오류 메시지 (사용자가 '버그인가?' 하고 헷갈렸던 자리) ────────────────────
+
+
+def test_error_lists_contents_and_scope_hint(client, tmp_path, monkeypatch, capsys):
+    module = load_served_cli(client, tmp_path)
+    monkeypatch.setattr(module, "spaces", lambda *a, **k: [{"id": "s1", "name": "내 공간"}])
+    monkeypatch.setattr(
+        module, "children", lambda *a, **k: [{"id": "n1", "name": "보고서.md", "type": "file"}]
+    )
+
+    with pytest.raises(SystemExit):
+        module.resolve("https://x.test", "t", "내 공간/IDP/x.md")
+    err = capsys.readouterr().err
+
+    assert "'IDP'" in err
+    assert "여기 있는 것" in err and "보고서.md" in err
+    # 첫 칸에서 틀렸고 쓸 수 있는 공간이 하나뿐 → 다른 공간 이름을 적었을 가능성이 크다
+    assert "범위를 넓히세요" in err
+
+
+def test_scope_hint_only_when_it_helps(client, tmp_path, monkeypatch, capsys):
+    """두 번째 칸부터는 공간 이야기가 아니다 — 거기서 범위 안내를 하면 헛다리다."""
+    module = load_served_cli(client, tmp_path)
+    monkeypatch.setattr(module, "spaces", lambda *a, **k: [{"id": "s1", "name": "내 공간"}])
+    calls = {"n": 0}
+
+    def fake_children(*a, **k):
+        calls["n"] += 1
+        return [{"id": "f1", "name": "보관함", "type": "folder"}] if calls["n"] == 1 else []
+
+    monkeypatch.setattr(module, "children", fake_children)
+
+    with pytest.raises(SystemExit):
+        module.resolve("https://x.test", "t", "내 공간/보관함/없는것.md")
+    err = capsys.readouterr().err
+    assert "'내 공간/보관함' 안에" in err
+    assert "(비어 있음)" in err
+    assert "범위를 넓히세요" not in err
+
+
+@pytest.mark.parametrize(
+    "name, expected",
+    [
+        ("문서함", "이"),  # ㅁ 받침
+        ("백업", "이"),  # ㅂ 받침
+        ("보고서", "가"),  # 받침 없음
+        ("IDP", "가"),  # 피
+        ("TEAM", "이"),  # 엠
+        ("z", "가"),  # 제트
+        ("2025", "가"),  # 오
+        ("v1.0", "이"),  # 영
+        ("보고서.md", "가"),  # 디 — 확장자까지 보고 읽는다
+    ],
+)
+def test_josa_follows_the_name(client, tmp_path, name, expected):
+    """'(을)를' 로 피하면 틀리진 않지만 공문서 투다. 웹(lib/josa.ts)과 같은 규칙."""
+    module = load_served_cli(client, tmp_path)
+    assert module.josa(name, "이", "가") == expected
+
+
+def test_repeated_segment_reports_the_right_depth(client, tmp_path, monkeypatch, capsys):
+    """``a/b/a`` 처럼 같은 이름이 두 번 나오면 index() 는 첫 자리를 가리킨다 — 틀린 위치다."""
+    module = load_served_cli(client, tmp_path)
+    monkeypatch.setattr(module, "spaces", lambda *a, **k: [{"id": "s1", "name": "내 공간"}])
+    calls = {"n": 0}
+
+    def fake_children(*a, **k):
+        calls["n"] += 1
+        return [{"id": "f1", "name": "작업", "type": "folder"}] if calls["n"] == 1 else []
+
+    monkeypatch.setattr(module, "children", fake_children)
+
+    with pytest.raises(SystemExit):
+        module.resolve("https://x.test", "t", "내 공간/작업/작업")
+    err = capsys.readouterr().err
+    assert "'내 공간/작업' 안에" in err, err  # '내 공간' 이 아니라
+
+
+def test_get_offers_both_ways_out(client, tmp_path):
+    """덮어쓰기만 알려주면 원본을 날릴 각오를 해야 한다 — 다른 데 받는 길도 같이."""
+    src = (tmp_path / "filesharer.py")
+    src.write_text(fetch(client, "/cli/filesharer"), encoding="utf-8")
+    text = src.read_text("utf-8")
+    assert "-o 받을위치" in text and "--force" in text
