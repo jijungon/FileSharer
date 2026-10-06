@@ -3087,3 +3087,98 @@ button:focus-visible {
 .device-actions button {
   flex: 1;
 }
+
+/* --- CLI 안내 (/cli) ---------------------------------------------------- */
+.cli-page {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: var(--sp-xl) var(--sp-lg);
+}
+.cli-lede {
+  margin-bottom: var(--sp-xl);
+}
+.cli-step {
+  margin-bottom: var(--sp-xl);
+}
+.cli-step h3 {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-xs);
+  font-size: 16px;
+  margin: 0 0 var(--sp-sm);
+}
+/* 순서가 있는 작업이라 번호를 또렷하게 — 2번부터 읽고 헤매지 않게 */
+.cli-step-no {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--surface-tile);
+  border: 1px solid var(--hairline);
+  font-size: 13px;
+  font-weight: 600;
+}
+.cli-cmd {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-xs);
+  margin-bottom: var(--sp-xs);
+}
+.cli-cmd code {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  padding: 9px 11px;
+  border: 1px solid var(--divider-soft);
+  border-radius: var(--radius-sm);
+  background: var(--surface-pearl);
+  /* 명령은 접으면 뜻이 바뀐다 — 넘치면 이 칸 안에서 가로로 민다 */
+  overflow-x: auto;
+  white-space: nowrap;
+}
+.cli-note {
+  font-size: 13px;
+  line-height: 1.7;
+  margin: var(--sp-xs) 0 0;
+}
+.cli-devices {
+  margin-top: var(--sp-xl);
+  padding-top: var(--sp-lg);
+  border-top: 1px solid var(--hairline);
+}
+.cli-devices h3 {
+  font-size: 16px;
+  margin: 0 0 var(--sp-sm);
+}
+.cli-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+.cli-table th {
+  text-align: left;
+  font-weight: 600;
+  font-size: 12px;
+  color: var(--ink-muted-48);
+  padding: 0 var(--sp-sm) 6px 0;
+}
+.cli-table td {
+  padding: 8px var(--sp-sm) 8px 0;
+  border-top: 1px solid var(--divider-soft);
+  vertical-align: middle;
+}
+.cli-table td:last-child {
+  text-align: right;
+  padding-right: 0;
+}
+/* 좁아지면 표가 넘친다 — 가로로 밀 수 있게 (휴지통 표와 같은 방식) */
+@media (max-width: 640px) {
+  .cli-devices {
+    overflow-x: auto;
+  }
+  .cli-table {
+    min-width: 520px;
+  }
+}

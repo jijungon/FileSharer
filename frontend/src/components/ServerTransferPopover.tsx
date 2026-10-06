@@ -181,6 +181,16 @@ export default function ServerTransferPopover({
         단일 파일은 <code>-F file=@a.log</code> 하나 · <code>mydir</code>는 올릴 폴더 경로로 바꾸세요 ·
         토큰은 발급 직후 한 번만 표시되고 서버엔 해시만 저장됩니다.
       </p>
+
+      {/* 매번 이 팝오버를 열어 붙여넣는 게 이 화면의 한계다. 자주 쓰는 사람에겐
+          CLI 가 낫다 — 설명은 전용 페이지에 두고 여기선 가는 길만 알려준다
+          (여기에 설치·로그인·명령까지 다 넣으면 이 팝오버가 다시 빽빽해진다). */}
+      <p className="muted" style={{ margin: '8px 0 0', fontSize: 12 }}>
+        매번 붙여넣기가 번거로우면 →{' '}
+        <a href="/cli" target="_blank" rel="noreferrer">
+          CLI 쓰기
+        </a>
+      </p>
     </div>
   )
 }
