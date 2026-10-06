@@ -819,3 +819,63 @@ def test_search_denied_in_others_personal_space(admin_client, db):
     login(admin_client, ADMIN_EMAIL, ADMIN_PASSWORD)
     res = admin_client.get(f"/api/spaces/{other_pid}/search", params={"q": "x"})
     assert res.status_code in (403, 404)
+
+
+def test_patch_returns_where_it_came_from(admin_client):
+    """되돌리기는 '바뀌기 전'만 있으면 된다 — 그걸 PATCH 응답이 들고 온다.
+
+    감사 로그는 바뀐 *뒤*를 적는다(detail=새 이름). 그래서 되돌릴 때 못 쓴다.
+    클라이언트가 자기 목록에서 추측하게 두는 길도 있었지만, 끌어온 항목이 그 목록에
+    없을 수 있어(사이드바 트리·검색 결과) 조용히 틀린 자리로 돌아간다.
+    """
+    space = spaces_of(admin_client)["personal"]["id"]
+    folder = admin_client.post(
+        "/api/nodes", json={"space_id": space, "name": "보관함", "type": "folder"}
+    ).json()
+    node = upload(admin_client, f"/api/spaces/{space}/files", "보고서.md").json()
+
+    # ① 이동 — 전에 있던 자리(공간 루트)를 돌려준다
+    moved = admin_client.patch(
+        f"/api/nodes/{node['id']}", json={"move": True, "parent_id": folder["id"]}
+    ).json()
+    assert moved["parent_id"] == folder["id"]
+    assert moved["previous"] == {
+        "name": "보고서.md",
+        "parent_id": None,
+        "space_id": space,
+    }
+
+    # ② 그걸 그대로 돌려보내면 제자리로 온다
+    back = admin_client.patch(
+        f"/api/nodes/{node['id']}",
+        json={"move": True, **{k: v for k, v in moved["previous"].items() if k != "name"},
+              "name": moved["previous"]["name"]},
+    ).json()
+    assert back["parent_id"] is None
+    assert back["name"] == "보고서.md"
+
+    # ③ 이름 바꾸기 — 옛 이름을 돌려준다
+    renamed = admin_client.patch(f"/api/nodes/{node['id']}", json={"name": "최종본.md"}).json()
+    assert renamed["name"] == "최종본.md"
+    assert renamed["previous"]["name"] == "보고서.md"
+
+
+def test_patch_previous_carries_name_the_move_itself_changed(admin_client):
+    """이동만 해도 이름이 바뀔 수 있다 — 대상에 같은 이름이 있으면 "(2)" 가 붙는다.
+
+    자리만 되돌리면 '보고서 (2).md' 가 남아, 사람이 보기엔 되돌아가지 않은 것이다.
+    그래서 previous 는 이름도 함께 들고 있어야 한다.
+    """
+    space = spaces_of(admin_client)["personal"]["id"]
+    folder = admin_client.post(
+        "/api/nodes", json={"space_id": space, "name": "보관함", "type": "folder"}
+    ).json()
+    # 폴더 안에 같은 이름을 먼저 둔다
+    upload(admin_client, f"/api/nodes/{folder['id']}/files", "보고서.md")
+    node = upload(admin_client, f"/api/spaces/{space}/files", "보고서.md").json()
+
+    moved = admin_client.patch(
+        f"/api/nodes/{node['id']}", json={"move": True, "parent_id": folder["id"]}
+    ).json()
+    assert moved["name"] != "보고서.md"  # 서버가 이름을 바꿨다
+    assert moved["previous"]["name"] == "보고서.md"  # 되돌릴 이름은 그대로 들고 있다

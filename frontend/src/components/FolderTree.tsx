@@ -45,7 +45,10 @@ interface Props {
   onDropToFolder?: (
     draggedIds: string[], // 다중선택을 끌면 여러 개가 한 번에 온다
     targetFolderId: string | null,
-    ctx: { srcSpaceId: string; targetSpaceId: string },
+    // targetName: 되돌리기 띠가 '어디로 옮겼는지' 를 말하려면 이름이 필요하다.
+    // 폴더 id 만으로는 부르는 쪽이 그 이름을 알 길이 없다(사이드바 트리의 행이라
+    // 메인 목록에 없을 수 있다). 아는 쪽에서 같이 보낸다. 공간 루트면 undefined.
+    ctx: { srcSpaceId: string; targetSpaceId: string; targetName?: string },
   ) => void
   onUploadFiles?: (targetFolderId: string | null, e: React.DragEvent) => void // 로컬 파일/폴더 → 그 폴더(null=공간 루트)로 업로드
   // 행에서 바로 하는 것들 — 이름변경(고르고 Enter) · ★ 즐겨찾기 · 🗑 휴지통.
@@ -99,6 +102,11 @@ export default function FolderTree({
   }, [spaceId, version])
 
   // 현재 폴더까지의 조상은 자동으로 펼쳐 보이게
+  const nameOf = useMemo(() => {
+    const m = new Map<string, string>()
+    rows.forEach((r) => m.set(r.id, r.name))
+    return m
+  }, [rows])
   const parentOf = useMemo(() => {
     const m = new Map<string, string | null>()
     rows.forEach((r) => m.set(r.id, r.parent_id))
@@ -264,7 +272,11 @@ export default function FolderTree({
           const moving = srcSpace === spaceId
           const actual = moving ? ids.filter((n) => parentOf.get(n) !== targetId) : ids
           if (actual.length === 0) return
-          onDropToFolder?.(actual, targetId, { srcSpaceId: srcSpace, targetSpaceId: spaceId })
+          onDropToFolder?.(actual, targetId, {
+            srcSpaceId: srcSpace,
+            targetSpaceId: spaceId,
+            targetName: targetId ? nameOf.get(targetId) : undefined,
+          })
         } else if (e.dataTransfer.types.includes('Files')) {
           e.preventDefault()
           onUploadFiles?.(targetId, e) // 로컬 파일/폴더 → 이 폴더(targetId=null이면 공간 루트) 안으로 업로드

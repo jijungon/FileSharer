@@ -1075,6 +1075,17 @@ def patch_node(
 ) -> dict:
     node = get_node_checked(db, user, node_id)
 
+    # **바뀌기 전을 들고 간다 — 되돌리기의 전부다.**
+    # 감사 로그는 바뀐 *뒤*를 적는다(detail=새 이름 / 간 공간의 종류). 그래서 되돌릴 때
+    # 쓸 수가 없다. 클라이언트가 자기 목록에서 추측하게 두는 길도 있었지만, 끌어온 항목이
+    # 그 목록에 없을 수 있고(사이드바 트리·검색 결과) 그러면 조용히 틀린 자리로 돌아간다.
+    # 여기선 진짜 값을 알고 있으니 응답에 실어 보낸다 — 추가 요청도, 저장할 표도 필요 없다.
+    previous = {
+        "name": node.name,
+        "parent_id": node.parent_id,
+        "space_id": node.space_id,
+    }
+
     if body.name is not None:
         node.name = unique_name(
             db, node.space_id, node.parent_id, clean_name(body.name), exclude_id=node.id
@@ -1107,7 +1118,9 @@ def patch_node(
     node.updated_by = user.id  # 수정자 = 방금 리네임/이동한 사람
     db.flush()
     db.expire(node, ["editor"])  # updated_by가 바뀌었으니 editor 관계 캐시 갱신
-    return node_out(node)
+    # 이름은 이동만 해도 바뀔 수 있다(대상에 같은 이름이 있으면 unique_name 이 "(2)" 를
+    # 붙인다). 그래서 되돌리기는 자리와 이름을 **함께** 되돌려야 원래대로 온다.
+    return {**node_out(node), "previous": previous}
 
 
 def _move_subtree_space(db: Session, node: Node, space_id: str) -> None:

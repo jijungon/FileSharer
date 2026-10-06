@@ -10,6 +10,14 @@ import { api, ApiError, Me, SpaceInfo } from '../lib/api'
 import { IconFilePlus, IconFolderPlus, IconRefresh } from '../components/icons'
 import { attachDragChip } from '../lib/dragchip'
 import { ro } from '../lib/josa'
+import {
+  backTo,
+  movedLabel,
+  renamedLabel,
+  trashedLabel,
+  type Previous,
+  type Undoable,
+} from '../lib/undo'
 import { toggleTheme as applyToggle } from '../lib/theme'
 import { agoMs, formatAgo, formatBytes, formatDateTime, formatTrashRemaining } from '../lib/format'
 import {
@@ -35,6 +43,7 @@ import {
   listTrash,
   copyNode,
   moveNode,
+  patchNode,
   NodeInfo,
   purgeNode,
   TreeRow,
@@ -557,6 +566,44 @@ export default function Files() {
     setSearchIdx(-1)
   }
 
+  // ── 되돌리기(직전 한 번만) ──
+  // **왜 배너가 필요한가**: 드래그로 여러 개를 엉뚱한 폴더에 떨어뜨리면, 지금은 어디서
+  // 왔는지 아무도 기억하지 않는다. 하나씩 더듬어 되돌리는 수밖에 없었다.
+  // 배너는 되돌리는 길이기도 하지만 **방금 무슨 일이 있었는지 말해주는 자리**이기도 하다.
+  const [undoable, setUndoable] = useState<Undoable | null>(null)
+  const undoTimer = useRef<number | null>(null)
+  // 위 ⌘Z 리스너는 한 번만 달리므로(의존성 []), state 를 바로 읽으면 영원히 null 이다.
+  const undoableRef = useRef<Undoable | null>(null)
+  undoableRef.current = undoable
+
+  function offerUndo(entry: Undoable) {
+    if (undoTimer.current) window.clearTimeout(undoTimer.current)
+    setUndoable(entry)
+    // 12초. 너무 짧으면 '어?' 하는 사이에 사라지고, 계속 떠 있으면 한참 전 작업을
+    // 되돌려 더 놀라게 된다.
+    undoTimer.current = window.setTimeout(() => setUndoable(null), 12_000)
+  }
+
+  function dismissUndo() {
+    if (undoTimer.current) window.clearTimeout(undoTimer.current)
+    setUndoable(null)
+  }
+
+  async function runUndo() {
+    const entry = undoableRef.current
+    if (!entry) return
+    dismissUndo() // 두 번 눌러 두 번 돌아가지 않게 **먼저** 치운다
+    try {
+      await entry.run()
+      flash('되돌렸습니다')
+    } catch (err) {
+      flash(err instanceof Error ? err.message : '되돌리지 못했습니다')
+    } finally {
+      reload()
+      setTreeVersion((v) => v + 1)
+    }
+  }
+
   function flash(msg: string) {
     setNotice(msg)
     setTimeout(() => setNotice(''), 2500)
@@ -868,8 +915,16 @@ export default function Files() {
   // 드래그로 놓은 경우엔 확인창이 없다 — 복원할 수 있으므로.
   async function trashMany(ids: string[]) {
     if (ids.length === 0) return
+    // 지우기 **전에** 이름을 집어둔다 — 지우고 나면 목록에서 사라져 뭘 지웠는지 말할 수 없다.
+    const names = ids.map((id) => items.find((n) => n.id === id)?.name).filter((n): n is string => !!n)
     try {
       for (const id of ids) await deleteNode(id)
+      offerUndo({
+        label: trashedLabel(names, ids.length),
+        run: async () => {
+          for (const id of ids) await restoreNode(id)
+        },
+      })
     } catch (err) {
       flash(err instanceof Error ? err.message : '삭제에 실패했습니다')
     } finally {
@@ -932,6 +987,23 @@ export default function Files() {
     window.setTimeout(() => frame.remove(), 10 * 60_000)
   }
 
+  // ⌘Z — **선택과 무관하게** 듣는다. 아래 Esc·Delete 리스너는 고른 게 있을 때만 붙는데,
+  // 되돌릴 일(이동·삭제)은 끝나면서 선택을 비우므로 거기 얹으면 영영 안 먹는다.
+  // 글자를 치는 중이나 에디터 안에서는 가로채지 않는다 — 거기선 ⌘Z 가 글자 되돌리기다.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z')) return
+      const el = e.target as HTMLElement | null
+      if (el?.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el?.tagName ?? '')) return
+      if (el?.closest('.editor-shell')) return
+      if (!undoableRef.current) return
+      e.preventDefault()
+      void runUndo()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+
   // Esc=선택 해제, Delete/Backspace=고른 것 삭제. 글자를 치는 중에는 가로채지 않는다.
   useEffect(() => {
     if (checked.size === 0) return
@@ -966,6 +1038,14 @@ export default function Files() {
   async function renameCommit(row: TreeRow, name: string) {
     const fresh = await guard(() => renameNode(row.id, name))
     if (!fresh) return
+    if (fresh.previous.name !== fresh.name) {
+      offerUndo({
+        label: renamedLabel(fresh.previous.name, fresh.name),
+        run: async () => {
+          await patchNode(fresh.id, { name: fresh.previous.name })
+        },
+      })
+    }
     setOpenTabs((tabs) => tabs.map((t) => (t.id === fresh.id ? { ...t, name: fresh.name } : t)))
     setSelected((sel) => (sel?.id === fresh.id ? { ...sel, name: fresh.name } : sel))
     setPath((p) => p.map((f) => (f.id === fresh.id ? { ...f, name: fresh.name } : f)))
@@ -973,12 +1053,24 @@ export default function Files() {
   async function deleteFromTree(row: TreeRow) {
     if (!window.confirm(`"${row.name}"을(를) 휴지통으로 이동할까요?`)) return
     await guard(() => deleteNode(row.id))
+    offerUndo({
+      label: trashedLabel([row.name], 1),
+      run: async () => {
+        await restoreNode(row.id)
+      },
+    })
     closeTab(row.id, true) // 열려 있던 탭이면 닫기(활성이면 이웃으로 이동)
   }
   // 뷰어 액션 바의 🗑 삭제 — 그 파일을 휴지통으로 이동하고 해당 탭을 닫는다.
   async function deleteTab(node: NodeInfo) {
     if (!window.confirm(`"${node.name}"을(를) 휴지통으로 이동할까요?`)) return
     await guard(() => deleteNode(node.id))
+    offerUndo({
+      label: trashedLabel([node.name], 1),
+      run: async () => {
+        await restoreNode(node.id)
+      },
+    })
     closeTab(node.id, true)
   }
   function toggleFavFromTree(row: TreeRow) {
@@ -1002,10 +1094,30 @@ export default function Files() {
     const copying = !!srcSpaceId && srcSpaceId !== target.spaceId
     const where = folderId ? { parentId: folderId } : { spaceId: target.spaceId }
     let done = 0
+    // 옮긴 항목마다 '바뀌기 전'을 모은다 — 되돌릴 때 **항목별로 제자리**로 보내야 한다.
+    // 한 번에 끌었다고 다 같은 폴더에서 온 건 아니다(검색 결과에서 고르면 제각각이다).
+    const moved: { id: string; previous: Previous }[] = []
     try {
       for (const id of ids) {
-        await (copying ? copyNode(id, where) : moveNode(id, where))
+        // 분기를 삼항으로 합치면 두 반환형의 합집합이 되어 previous 를 못 읽는다.
+        if (copying) {
+          await copyNode(id, where)
+        } else {
+          const res = await moveNode(id, where)
+          moved.push({ id, previous: res.previous })
+        }
         done += 1
+      }
+      if (!copying && moved.length > 0) {
+        offerUndo({
+          label: movedLabel(
+            moved.map((m) => m.previous.name),
+            target.spaceName ?? null,
+          ),
+          run: async () => {
+            for (const m of moved) await patchNode(m.id, backTo(m.previous))
+          },
+        })
       }
       if (copying && done > 0) {
         const many = done > 1 ? `${done}개를 ` : ''
@@ -1410,7 +1522,15 @@ export default function Files() {
                   onOpenFolder={openFolderById}
                   onOpenFile={openFileFromTree}
                   onDropToFolder={(ids, target, ctx) =>
-                    dropNodes(ids, { spaceId: ctx.targetSpaceId, folderId: target }, ctx.srcSpaceId)
+                    dropNodes(
+                      ids,
+                      {
+                        spaceId: ctx.targetSpaceId,
+                        folderId: target,
+                        spaceName: ctx.targetName ?? s.name,
+                      },
+                      ctx.srcSpaceId,
+                    )
                   }
                   onUploadFiles={(folderId, e) =>
                     uploadToTarget({ spaceId: s.id, parentId: folderId }, e)
@@ -1797,6 +1917,27 @@ export default function Files() {
       {/* 둘 이상일 때만 띄운다. 이제 파일을 그냥 클릭해도 그 하나가 '선택된' 상태가
           되므로(FolderTree 의 activateRow 참고), 0개 초과로 두면 파일을 열 때마다
           바가 따라 올라와 화면을 가린다. 하나짜리 작업은 행의 ★·🗑 로 한다. */}
+      {/* 되돌리기 띠 — 방금 무슨 일이 있었는지 말하고, 한 번에 물린다.
+          고른 게 있어 하단 바가 떠 있으면 그 위로 올라간다(겹치면 둘 다 못 읽는다). */}
+      {undoable && (
+        <div
+          className={`undo-bar${checked.size > 1 ? ' is-stacked' : ''}`}
+          role="status"
+          aria-label="되돌리기"
+        >
+          <span className="undo-bar-text">{undoable.label}</span>
+          <button className="btn-utility undo-bar-go" onClick={() => void runUndo()}>
+            되돌리기
+          </button>
+          <button
+            className="icon-btn undo-bar-close"
+            aria-label="닫기"
+            onClick={dismissUndo}
+          >
+            ✕
+          </button>
+        </div>
+      )}
       {checked.size > 1 && (
         <div className="bulk-bar" role="status" aria-label="선택 항목">
           <strong>{checked.size}개 선택됨</strong>
