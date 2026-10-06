@@ -1,0 +1,92 @@
+# 되돌리기 — :latest 를 직전 릴리스 태그로 옮긴다.
+#
+# 굽는 게 아니라 **레지스트리 안에서 태그만 옮긴다**(몇 초). 직전 버전 이미지는 이미
+# 만들어져 있으므로, 되돌리기는 빌드가 아니라 가리키는 곳을 바꾸는 일이다.
+# 오리진의 watchtower 가 ~60초 안에 그걸 가져가 컨테이너를 되살린다.
+#
+# 두 가지로 불린다:
+#   · 사람이 직접 (Actions 탭에서 Run workflow)
+#   · ci.yml 의 verify 가 실패했을 때 자동으로
+name: rollback
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "되돌릴 태그 (비우면 직전 릴리스 태그)"
+        required: false
+        type: string
+      reason:
+        description: "왜 되돌리는지 (기록용)"
+        required: false
+        type: string
+  workflow_call:
+    inputs:
+      reason:
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  rollback:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0 # 태그 목록이 필요하다
+
+      - name: 되돌릴 태그 고르기
+        id: pick
+        env:
+          WANTED: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          if [ -n "${WANTED:-}" ]; then
+            TARGET="$WANTED"
+          else
+            # 버전 순으로 정렬해 **두 번째**를 고른다. 첫 번째는 지금 나가 있는(문제의) 태그다.
+            # -v:refname 은 v1.0.9 보다 v1.0.10 을 뒤로 둔다(사전순이면 반대가 된다).
+            TARGET=$(git tag --list 'v*' --sort=-v:refname | sed -n 2p)
+          fi
+          [ -n "$TARGET" ] || { echo "되돌릴 태그를 못 찾았습니다"; exit 1; }
+          git rev-parse -q --verify "refs/tags/$TARGET" >/dev/null \
+            || { echo "그런 태그가 없습니다: $TARGET"; exit 1; }
+          echo "target=$TARGET" >> "$GITHUB_OUTPUT"
+          echo "되돌릴 태그: $TARGET"
+
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: :latest 를 그 태그로 옮긴다
+        env:
+          TARGET: ${{ steps.pick.outputs.target }}
+          REASON: ${{ inputs.reason }}
+        run: |
+          set -euo pipefail
+          IMAGE=ghcr.io/jijungon/filesharer
+          # 그 태그의 이미지가 실제로 레지스트리에 있어야 한다. 없는 걸 가리키면
+          # watchtower 가 pull 에 실패하고, 지금 돌던 컨테이너도 못 살린다.
+          docker buildx imagetools inspect "$IMAGE:$TARGET" >/dev/null
+          docker buildx imagetools create --tag "$IMAGE:latest" "$IMAGE:$TARGET"
+          echo "::notice::$TARGET 으로 되돌렸습니다${REASON:+ — $REASON}"
+          echo "오리진의 watchtower 가 ~60초 안에 가져갑니다."
+
+      - name: 되돌아갔는지 확인
+        run: |
+          set -euo pipefail
+          TARGET="${{ steps.pick.outputs.target }}"
+          for _ in $(seq 1 30); do   # 최대 5분
+            NOW=$(curl -fsS --max-time 10 https://file.rgrg.im/api/health 2>/dev/null \
+                  | python3 -c 'import sys,json;print(json.load(sys.stdin).get("version",""))' 2>/dev/null || echo "")
+            [ "$NOW" = "$TARGET" ] && { echo "::notice::라이브가 $TARGET 입니다"; exit 0; }
+            echo "  아직 $NOW"
+            sleep 10
+          done
+          echo "::error::5분 안에 $TARGET 으로 안 돌아왔습니다 — 오리진을 직접 확인하세요"
+          exit 1
