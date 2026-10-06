@@ -43,3 +43,34 @@ export function ro(word: string | null | undefined): string {
   if (으로가되는영문.has(c.toLowerCase())) return '으로'
   return '로'
 }
+
+/** 이 이름 뒤에 붙일 조사 — '을' 또는 '를'. 이름 자체는 포함하지 않는다.
+ *
+ * '로/으로' 와 달리 규칙이 하나다: **받침이 있으면 을, 없으면 를.** (ㄹ 예외가 없다.)
+ *
+ * 한글이 아니면 역시 **한국어로 읽은 소리**를 따른다. 여기선 '로/으로' 보다 걸리는 게
+ * 많다 — ㄹ 받침도 받침이기 때문이다:
+ *   숫자 — 0 영 · 1 일 · 3 삼 · 6 육 · 7 칠 · 8 팔 이 받침으로 끝난다(→ 을).
+ *          2 이 · 4 사 · 5 오 · 9 구 는 모음으로 끝난다(→ 를).
+ *   영문 — l 엘 · m 엠 · n 엔 · r 알 넷뿐(→ 을). 나머지는 모음으로 끝난다
+ *          (x 는 '엑스', z 는 '제트' — 둘 다 받침 없이 끝난다).
+ *
+ * 파일 이름이라 확장자로 끝나는 일이 많다: '보고서.md' 는 d(디) 라 '를',
+ * '그림.png' 는 g(지) 라 '를', '자료.hwp' 는 p(피) 라 '를' 이다.
+ */
+const 을이되는숫자 = new Set(['0', '1', '3', '6', '7', '8'])
+const 을이되는영문 = new Set(['l', 'm', 'n', 'r'])
+
+export function eul(word: string | null | undefined): string {
+  const c = lastReadable(word ?? '')
+  if (c === null) return '를' // 읽을 글자가 없으면 짧은 쪽이 덜 어색하다
+
+  const code = c.charCodeAt(0)
+  if (code >= 0xac00 && code <= 0xd7a3) {
+    return (code - 0xac00) % 28 === 0 ? '를' : '을'
+  }
+
+  if (을이되는숫자.has(c)) return '을'
+  if (을이되는영문.has(c.toLowerCase())) return '을'
+  return '를'
+}

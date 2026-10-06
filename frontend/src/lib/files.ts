@@ -1,4 +1,5 @@
 import { api } from './api'
+import type { Previous } from './undo'
 
 export interface NodeInfo {
   id: string
@@ -140,11 +141,18 @@ export function uploadFile(
   })
 }
 
+/** 자리·이름을 바꾼 결과. previous 는 **바뀌기 전** — 되돌리기가 이것만 쓴다. */
+export type PatchedNode = NodeInfo & { previous: Previous }
+
+/** 되돌리기가 서버에 그대로 돌려보내는 몸통(undo.backTo 가 만든다). */
+export const patchNode = (id: string, body: Record<string, unknown>) =>
+  api<PatchedNode>(`/api/nodes/${id}`, { method: 'PATCH', body: JSON.stringify(body) })
+
 export const renameNode = (id: string, name: string) =>
-  api<NodeInfo>(`/api/nodes/${id}`, { method: 'PATCH', body: JSON.stringify({ name }) })
+  api<PatchedNode>(`/api/nodes/${id}`, { method: 'PATCH', body: JSON.stringify({ name }) })
 
 export const moveNode = (id: string, target: { parentId?: string; spaceId?: string }) =>
-  api<NodeInfo>(`/api/nodes/${id}`, {
+  api<PatchedNode>(`/api/nodes/${id}`, {
     method: 'PATCH',
     body: JSON.stringify({
       move: true,

@@ -2764,6 +2764,44 @@ button:focus-visible {
 /* 다중선택 하단 바 — 몇 개를 골랐고 무엇을 할 수 있는지.
    '무엇을' 골랐는지는 트리에서 그 행들이 직접 강조되므로 여기에 이름을 다시 늘어놓지 않는다.
    업로드 패널이 우하단이라 이건 가운데에 둔다(둘이 동시에 떠도 안 겹치게). */
+/* 되돌리기 띠 — 하단 바와 같은 말투(떠 있는 카드)로 둔다. 다른 모양이면 '또 뭐가
+   생겼나' 싶어 읽는 데 시간이 걸린다. 다만 **되돌리기 버튼이 눈에 먼저 들어와야** 해서
+   거기만 골드를 준다. */
+.undo-bar {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: var(--sp-md);
+  z-index: 61; /* 하단 바(60)보다 위 — 겹칠 일은 없지만 가려지면 쓸모가 없다 */
+  max-width: calc(100vw - 2 * var(--sp-md));
+  display: flex;
+  align-items: center;
+  gap: var(--sp-sm);
+  padding: var(--sp-sm) var(--sp-md);
+  background: var(--canvas);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+}
+/* 고른 게 있을 때 — 하단 바 높이만큼 위로. 둘이 겹치면 둘 다 못 읽는다. */
+.undo-bar.is-stacked {
+  bottom: calc(var(--sp-md) + 56px);
+}
+.undo-bar-text {
+  font-size: 14px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.undo-bar-go {
+  color: var(--primary);
+  font-weight: 600;
+  flex-shrink: 0;
+}
+.undo-bar-close {
+  flex-shrink: 0;
+}
+
 .bulk-bar {
   position: fixed;
   left: 50%;
