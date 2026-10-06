@@ -46,6 +46,13 @@ CONFIG_PATH = CONFIG_DIR / "config.json"
 # 났다. 우리 쪽 잘못이 아니라 '이름을 안 댄' 쪽 잘못이다. 자기 이름과 돌아올 주소를 댄다.
 USER_AGENT = "filesharer-cli/1 (+https://github.com/jijungon/FileSharer)"
 
+# 서버가 내줄 때 이 한 줄만 바꿔 넣는다. 값은 **원본 소스의 해시**다 — 앱 버전을 쓰면
+# CLI 와 무관한 백엔드 배포마다 "새 버전" 이 떠서 금세 아무도 안 읽는 알림이 된다.
+CLI_VERSION = "__FILESHARER_CLI_VERSION__"
+
+# 낡았는지 확인하는 주기. 명령마다 물으면 느려지고, 아예 안 물으면 낡은 채로 쓴다.
+UPDATE_CHECK_SEC = 24 * 3600
+
 
 class Fail(SystemExit):
     """사람에게 보여줄 오류. 스택 트레이스 대신 한 줄로 말한다."""
@@ -278,6 +285,91 @@ def account_of(server: str, token: str) -> dict | None:
     """
     status, body = request(server, "/api/me", token=token)
     return body if status == 200 and isinstance(body, dict) else None
+
+
+def server_cli_version(server: str, *, timeout: int = 5) -> str | None:
+    """서버가 내주는 CLI 버전. 못 물어보면 None — 이 때문에 명령이 실패하면 안 된다."""
+    try:
+        req = urllib.request.Request(
+            f"{server}/cli/version",
+            headers={"Accept": "application/json", "User-Agent": USER_AGENT},
+        )
+        with urllib.request.urlopen(req, timeout=timeout) as res:
+            return json.loads(res.read().decode("utf-8")).get("version")
+    except Exception:
+        return None
+
+
+def nudge_if_stale(args) -> None:
+    """하루에 한 번만 '낡았다' 고 알려준다.
+
+    명령마다 물으면 매번 네트워크를 타서 느려지고, 아예 안 물으면 낡은 CLI 로
+    계속 쓰게 된다. 확인에 실패해도 **조용히 넘어간다** — 업데이트 확인 때문에
+    하려던 일이 막히면 본말이 전도된다.
+    """
+    if _unfilled(CLI_VERSION):
+        return  # 서버가 안 채운 사본(개발 중) — 비교할 기준이 없다
+    cfg = load_config()
+    last = float(cfg.get("last_update_check") or 0)
+    if time.time() - last < UPDATE_CHECK_SEC:
+        return
+    try:
+        server = server_of(args)
+    except SystemExit:
+        return
+    latest = server_cli_version(server, timeout=3)
+    cfg["last_update_check"] = time.time()
+    try:
+        save_config(cfg)
+    except OSError:
+        pass
+    if latest and latest != CLI_VERSION:
+        print("  ※ 새 CLI 가 있습니다 — filesharer update", file=sys.stderr)
+
+
+def cmd_update(args) -> int:
+    """자기 자신을 서버의 최신본으로 바꾼다."""
+    server = server_of(args)
+    here = Path(sys.argv[0]).resolve()
+
+    status, body = request(server, "/cli/filesharer")
+    if status != 200 or not isinstance(body, bytes):
+        raise Fail(
+            blocked_hint(status, body) or f"새 CLI 를 받지 못했습니다 (HTTP {status})"
+        )
+    text = body.decode("utf-8", "replace")
+
+    # **받은 게 CLI 가 맞는지 보고 바꾼다.** 사내 프록시나 캡티브 포털이 HTML 안내
+    # 페이지를 200 으로 돌려주는 일이 흔하다 — 그걸 그대로 덮어쓰면 CLI 가 통째로
+    # 망가지고, 고치려 해도 update 조차 못 돈다.
+    if not text.startswith("#!/usr/bin/env python3") or len(text) < 4000:
+        raise Fail(f"받은 내용이 CLI 가 아닙니다 ({len(text)} bytes) — 중간에서 바뀐 것 같습니다")
+
+    if here.read_text("utf-8") == text:
+        print(f"  이미 최신입니다 ({CLI_VERSION})")
+        return 0
+
+    tmp = here.with_name(here.name + f".new{secrets.token_hex(3)}")
+    try:
+        tmp.write_text(text, encoding="utf-8")
+        tmp.chmod(here.stat().st_mode)  # 실행 권한을 그대로 물려준다
+        tmp.replace(here)  # 같은 디렉터리라 원자적이다 — 반쯤 쓰인 상태가 안 남는다
+    except OSError as exc:
+        tmp.unlink(missing_ok=True)
+        raise Fail(
+            f"{here} 를 바꾸지 못했습니다 — {exc}\n"
+            f"  설치 스크립트를 다시 돌리면 됩니다:\n"
+            f"    curl -fsSL {server}/cli/install.sh | sh"
+        ) from None
+
+    cfg = load_config()
+    cfg["last_update_check"] = time.time()
+    try:
+        save_config(cfg)
+    except OSError:
+        pass
+    print(f"  ✓ 새 CLI 로 바꿨습니다 → {here}")
+    return 0
 
 
 def cmd_whoami(args) -> int:
@@ -541,6 +633,7 @@ def build_parser() -> argparse.ArgumentParser:
         prog="filesharer", description="FileSharer 명령줄 클라이언트 — 브라우저 없이 파일 주고받기"
     )
     p.add_argument("--server", help="서버 주소 (기본: 로그인할 때 쓴 곳)")
+    p.add_argument("--version", action="version", version=f"filesharer {CLI_VERSION}")
     sub = p.add_subparsers(dest="cmd", required=True)
 
     lg = sub.add_parser("login", help="브라우저로 로그인한다")
@@ -549,6 +642,9 @@ def build_parser() -> argparse.ArgumentParser:
     lg.set_defaults(func=cmd_login)
 
     sub.add_parser("logout", help="이 기기의 자격을 지운다").set_defaults(func=cmd_logout)
+    sub.add_parser("update", help="서버의 최신 CLI 로 자기 자신을 바꾼다").set_defaults(
+        func=cmd_update
+    )
     sub.add_parser("whoami", help="지금 누구로, 어디까지, 언제까지").set_defaults(func=cmd_whoami)
 
     ls = sub.add_parser("ls", help="둘러본다")
@@ -574,6 +670,8 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    if args.cmd != "update":  # update 중엔 '새 게 있다' 는 말이 군더더기다
+        nudge_if_stale(args)
     try:
         return args.func(args)
     except KeyboardInterrupt:

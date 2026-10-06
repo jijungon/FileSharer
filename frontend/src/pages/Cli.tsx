@@ -108,8 +108,18 @@ export default function Cli() {
         <Copyable text="filesharer put 보고서.md '내 공간/IDP'" id="put" copied={copied} onCopy={copy} />
         <Copyable text="filesharer get '내 공간/IDP/보고서.md'" id="get" copied={copied} onCopy={copy} />
         <p className="muted cli-note">
-          <code>filesharer whoami</code> 로 지금 어디까지 쓸 수 있는지, <code>filesharer logout</code>{' '}
-          으로 이 기기의 자격을 지울 수 있습니다.
+          <code>filesharer whoami</code> 로 지금 어느 계정으로 어디까지 쓸 수 있는지,{' '}
+          <code>filesharer logout</code> 으로 이 기기의 자격을 지울 수 있습니다.
+        </p>
+      </section>
+
+      <section className="cli-step">
+        <h3>새 버전이 나오면</h3>
+        <Copyable text="filesharer update" id="update" copied={copied} onCopy={copy} />
+        <p className="muted cli-note">
+          설치 명령을 다시 칠 필요 없이 <strong>자기 자신만 바꿉니다.</strong> 자격(로그인)은
+          그대로라 다시 로그인하지 않아도 됩니다. 낡은 CLI 로 명령을 치면 하루에 한 번
+          알려주는데, <strong>받아서 바꾸는 건 이 명령을 칠 때만</strong> 일어납니다.
         </p>
       </section>
 
@@ -122,7 +132,7 @@ export default function Cli() {
             <code>--no-browser</code> 로 브라우저를 안 열게 할 수 있습니다.
           </dd>
           <dt>filesharer whoami</dt>
-          <dd>지금 누구로, 어디까지, 언제까지 쓸 수 있는지</dd>
+          <dd>지금 <strong>어느 계정</strong>으로, 어디까지, 언제까지 쓸 수 있는지</dd>
           <dt>filesharer ls [경로]</dt>
           <dd>경로를 빼면 쓸 수 있는 공간 목록이 나옵니다</dd>
           <dt>filesharer put &lt;파일…&gt; [경로]</dt>
@@ -136,6 +146,10 @@ export default function Cli() {
           </dd>
           <dt>filesharer logout</dt>
           <dd>이 기기의 자격을 지웁니다(서버의 토큰은 아래에서 회수하세요)</dd>
+          <dt>filesharer update</dt>
+          <dd>서버의 최신 CLI 로 자기 자신을 바꿉니다. 자격은 그대로입니다</dd>
+          <dt>filesharer --version</dt>
+          <dd>지금 쓰고 있는 CLI 의 버전</dd>
         </dl>
         <p className="muted cli-note">
           모든 명령에 <code>--server</code> 를 붙여 다른 서버를 가리킬 수 있습니다. 평소엔
