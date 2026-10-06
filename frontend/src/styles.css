@@ -60,12 +60,23 @@
    전환되고, 글씨/배경 대비를 각 역할에 맞게 정해 어느 모드에서도 안 묻히게 한다.
    (골드 액센트는 흰 배경에서 대비가 낮아 라이트에선 더 진한 골드를 쓴다) */
 :root[data-theme='light'] {
-  --primary: #9a7526; /* 진한 골드 — 흰 배경에서 버튼·링크 모두 대비 확보 */
+  /* 진한 골드. 흰 배경 5.67:1, 활성 공간 버튼 위 4.65:1.
+     #9a7526 이던 것을 낮췄다 — 주석엔 '대비 확보' 라고 적혀 있었지만 실제로는 흰 배경
+     4.25, 활성 버튼 3.54 였다. axe 를 **라이트 테마에서도** 돌리고서야 드러났다.
+
+     **이 값은 눈으로 고르면 안 된다.** 활성 버튼 배경이 `color-mix(primary 8%, 바탕)`
+     이라 글자를 어둡게 하면 배경도 같이 어두워진다 — 혼자서는 통과해 보이는데
+     제자리에선 모자라는 일이 생긴다(#856520 이 흰 배경 5.41 인데 버튼 위 4.46 이었다).
+     바꿀 땐 섞인 배경까지 같이 계산할 것. */
+  --primary: #816220;
   --primary-focus: #856322;
   --primary-on-dark: #7d5d20;
   --ink: #1d1d1f; /* 본문 — 짙은 회색 */
   --ink-muted-80: #48484d;
   --ink-muted-48: #6e6e75;
+  /* 라이트 값이 없어 다크용 금색(#c9a454)이 그대로 새어 흰 배경에서 2.35 였다.
+     '⛁ 없음' 백업 배지가 11px 라 특히 안 읽혔다. */
+  --pending: #91722e;
   --divider-soft: #ececef;
   --hairline: #dddde2;
   --hairline-strong: #c2c2ca;
@@ -746,7 +757,11 @@ button:focus-visible {
 }
 .browser-welcome-sub {
   font-size: 12.5px;
-  opacity: 0.8;
+  /* **opacity 를 쓰지 않는다.** 흐린 글자를 opacity 로 만들면 대비가 배경과 섞여
+     계산되어, 토큰은 멀쩡한데 화면에서만 기준에 미달한다(라이트 3.38 · 다크 4.47).
+     토큰 그대로 쓰면 라이트 5.06 · 다크 6.21 로 둘 다 넉넉하다.
+     12.5px 는 '작은 글자' 라 4.5:1 을 요구한다(18px 이상이면 3:1). */
+  color: var(--ink-muted-48);
 }
 
 .browser.drop-active {
@@ -3089,6 +3104,21 @@ button:focus-visible {
 }
 
 /* --- CLI 안내 (/cli) ---------------------------------------------------- */
+/* 앱 껍데기 **바깥** 에 있는 단독 페이지(/cli · /device · /admin)는 사이드바도 탭 줄도
+   없다. 돌아갈 길을 글로 적어두지 않으면 브라우저 뒤로가기를 모르는 사람은 갇힌다 —
+   실제로 /cli 에서 그랬다. 관리 화면엔 있던 것을 나머지에도 똑같이 둔다. */
+.page-back {
+  display: inline-block;
+  margin-bottom: var(--sp-md);
+  font-size: 13px;
+  color: var(--ink-muted-48);
+  text-decoration: none;
+}
+.page-back:hover {
+  color: var(--ink);
+  text-decoration: underline;
+}
+
 .cli-page {
   max-width: 760px;
   margin: 0 auto;
