@@ -102,6 +102,13 @@ export default function FolderTree({
   }, [spaceId, version])
 
   // 현재 폴더까지의 조상은 자동으로 펼쳐 보이게
+  // 행 하나를 id 로 집어오는 표(키보드가 '이게 폴더인가'를 물어본다).
+  // buildTree 안의 byId 는 거기서만 사는 지역 변수라 밖에서 못 쓴다.
+  const rowOf = useMemo(() => {
+    const m = new Map<string, TreeRow>()
+    rows.forEach((r) => m.set(r.id, r))
+    return m
+  }, [rows])
   const nameOf = useMemo(() => {
     const m = new Map<string, string>()
     rows.forEach((r) => m.set(r.id, r.name))
@@ -146,6 +153,23 @@ export default function FolderTree({
   const sel = checked ?? NO_SELECTION
   const anchorRef = useRef<string | null>(null) // Shift 범위의 기준점
 
+  // ── 키보드 ──
+  // **커서를 따로 만들지 않는다.** 행 이름이 이미 <button> 이라 브라우저 포커스가 곧
+  // 커서다. 별도 state 로 흉내 내면 화면의 파란 테두리와 실제 포커스가 어긋나고,
+  // 스크린리더는 흉내낸 쪽을 아예 못 본다.
+  //
+  // 대신 **로빙 탭인덱스**(ARIA 트리의 표준): 트리 전체에서 tabIndex=0 인 행은 하나뿐이고
+  // 나머지는 -1 이다. Tab 으로 트리에 한 번 들어오고, 그 안은 화살표로 움직인다.
+  // 이게 없으면 파일이 200개일 때 Tab 을 200번 눌러야 트리를 빠져나간다.
+  const [cursor, setCursor] = useState<string | null>(null)
+  const nameRefs = useRef(new Map<string, HTMLButtonElement>())
+
+  function focusRow(id: string | undefined) {
+    if (!id) return
+    setCursor(id)
+    nameRefs.current.get(id)?.focus()
+  }
+
   const visibleOrder = useMemo(() => {
     const out: string[] = []
     const walk = (nodes: TreeNode[]) => {
@@ -157,6 +181,13 @@ export default function FolderTree({
     walk(tree)
     return out
   }, [tree, expanded])
+
+  // 접거나 지워서 **커서가 가리키던 행이 화면에서 사라지면** 탭인덱스 0 인 행이 하나도
+  // 없어진다 — 그러면 Tab 으로 트리에 들어올 수가 없다. 첫 행으로 되돌린다.
+  useEffect(() => {
+    if (visibleOrder.length === 0) return
+    if (!cursor || !visibleOrder.includes(cursor)) setCursor(visibleOrder[0])
+  }, [visibleOrder, cursor])
 
   // 고른 것 안에 폴더가 몇 개인가. 폴더를 고르면 **그 안의 파일도 함께** 삭제·이동되는데,
   // 개수만 봐서는 그게 안 보인다("6개 선택됨"인데 파일 8개가 사라지는 식). 하단 바가
@@ -215,6 +246,104 @@ export default function FolderTree({
       toggle(node.id)
     } else {
       onOpenFile(node)
+    }
+  }
+
+  /** 트리 안에서의 키보드. 행 하나하나가 아니라 **트리 전체**가 듣는다 —
+   *  행마다 달면 움직일 때마다 리스너가 갈아끼워져 빠르게 누르면 키가 샌다.
+   *
+   *  Enter 는 **건드리지 않는다.** 여기선 이름 바꾸기다(Finder 방식, 아래 tree-name 참고).
+   *  그래서 여는 건 ⌘↓ 로 둔다 — Finder 와 같은 짝이다.
+   */
+  function onTreeKeyDown(e: React.KeyboardEvent) {
+    const el = e.target as HTMLElement | null
+    // 이름을 고쳐 치는 중이면 전부 그쪽 것이다
+    if (el && /^(INPUT|TEXTAREA)$/.test(el.tagName)) return
+
+    const id = cursor
+    if (!id) return
+    const at = visibleOrder.indexOf(id)
+    if (at === -1) return
+    const node = rowOf.get(id)
+    const isFolder = node?.type === 'folder'
+    const isOpen = expanded.has(id)
+
+    const extend = (to: number) => {
+      const target = visibleOrder[to]
+      if (!target) return
+      // Shift 로 움직이면 **지나온 줄을 전부** 담는다. 기준점이 없으면 지금 자리부터.
+      if (e.shiftKey && onChecked) {
+        const from = anchorRef.current ?? id
+        const a = visibleOrder.indexOf(from)
+        if (a !== -1) {
+          onChecked(spaceId, (prev) => {
+            const next = new Set(prev)
+            for (const x of visibleOrder.slice(Math.min(a, to), Math.max(a, to) + 1)) next.add(x)
+            return next
+          })
+        }
+      } else {
+        anchorRef.current = target
+      }
+      focusRow(target)
+    }
+
+    // ⌘↓ = 열기. **ArrowDown 보다 먼저 본다** — 아래 case 가 먼저 걸리면 커서만 내려간다.
+    if ((e.metaKey || e.ctrlKey) && e.key === 'ArrowDown') {
+      e.preventDefault()
+      if (isFolder) {
+        onOpenFolder(id)
+        if (!isOpen) toggle(id)
+      } else if (node) {
+        onOpenFile(node)
+      }
+      return
+    }
+
+    switch (e.key) {
+      case 'ArrowDown':
+        e.preventDefault()
+        extend(Math.min(at + 1, visibleOrder.length - 1))
+        break
+      case 'ArrowUp':
+        e.preventDefault()
+        extend(Math.max(at - 1, 0))
+        break
+      case 'ArrowRight':
+        e.preventDefault()
+        // 닫힌 폴더면 펼치고, 이미 펼쳤으면 **그 안 첫 줄로** 들어간다(트리의 표준 동작)
+        if (isFolder && !isOpen) toggle(id)
+        else if (isFolder && isOpen) focusRow(visibleOrder[at + 1])
+        break
+      case 'ArrowLeft':
+        e.preventDefault()
+        // 펼친 폴더면 접고, 아니면 **부모로** 올라간다 — 깊이 들어갔을 때 빠져나오는 길
+        if (isFolder && isOpen) toggle(id)
+        else focusRow(parentOf.get(id) ?? undefined)
+        break
+      case 'Home':
+        e.preventDefault()
+        focusRow(visibleOrder[0])
+        break
+      case 'End':
+        e.preventDefault()
+        focusRow(visibleOrder[visibleOrder.length - 1])
+        break
+      case ' ':
+        // 집기·놓기. 폴더는 담지 않는다 — 클릭과 같은 규칙이다(폴더를 담으면 화면에
+        // 없는 그 안의 파일까지 딸려간다).
+        if (!onChecked || isFolder) break
+        e.preventDefault()
+        onChecked(spaceId, (prev) => {
+          const next = new Set(prev)
+          if (next.has(id)) next.delete(id)
+          else next.add(id)
+          return next
+        })
+        anchorRef.current = id
+        break
+      default:
+        break
     }
   }
 
@@ -305,9 +434,16 @@ export default function FolderTree({
     const isOpen = expanded.has(node.id)
     const hasChildren = node.children.length > 0
     const active = isFolder ? node.id === currentFolderId : node.id === selectedFileId
+    // li 에 role="none" — tree 가 거느리는 것은 treeitem 이어야 한다. 그냥 두면 li 의
+    // 기본 역할(listitem)이 사이에 끼어 보조기술이 트리 구조를 못 읽는다.
+    // 실제 treeitem 은 그 안의 div 다(클래스·핸들러가 거기 붙어 있다).
     return (
-      <li key={node.id} className="tree-li">
+      <li key={node.id} className="tree-li" role="none">
         <div
+          role="treeitem"
+          aria-level={depth + 1}
+          aria-selected={sel.has(node.id)}
+          aria-expanded={isFolder ? isOpen : undefined}
           className={`tree-row${active ? ' active' : ''}${
             dragOverId === node.id ? ' drag-over' : ''
           }${
@@ -367,6 +503,15 @@ export default function FolderTree({
           ) : (
             <button
               className="tree-name"
+              // 로빙 탭인덱스 — 트리에서 Tab 으로 닿는 행은 **하나**뿐이다.
+              tabIndex={cursor === node.id ? 0 : -1}
+              ref={(el) => {
+                if (el) nameRefs.current.set(node.id, el)
+                else nameRefs.current.delete(node.id)
+              }}
+              // 마우스로 눌러 들어와도 커서가 거기 있어야 한다 — 그 다음 화살표가
+              // 엉뚱한 데서 출발하면 '방금 누른 줄'과 '움직이는 줄'이 달라진다.
+              onFocus={() => setCursor(node.id)}
               onClick={(e) => activateRow(e, node)}
               // Shift+클릭은 브라우저 기본 동작이 '텍스트 범위 선택'이라, 막지 않으면
               // 범위를 고를 때마다 파일 이름들이 파랗게 드래그된 것처럼 보인다.
@@ -398,7 +543,7 @@ export default function FolderTree({
           )}
         </div>
         {isFolder && isOpen && hasChildren && (
-          <ul className="tree-branch">
+          <ul className="tree-branch" role="group">
             {node.children.map((c) => renderNode(c, depth + 1))}
           </ul>
         )}
@@ -409,7 +554,15 @@ export default function FolderTree({
   return (
     <>
       {tree.length > 0 && (
-        <ul className="folder-tree tree-branch">{tree.map((n) => renderNode(n, 0))}</ul>
+        <ul
+          className="folder-tree tree-branch"
+          role="tree"
+          aria-label="공간·폴더"
+          aria-multiselectable={onChecked ? true : undefined}
+          onKeyDown={onTreeKeyDown}
+        >
+          {tree.map((n) => renderNode(n, 0))}
+        </ul>
       )}
     </>
   )
