@@ -18,6 +18,7 @@ router = APIRouter(prefix="/cli", tags=["cli"])
 # '아직 안 채워졌나' 비교문까지 같이 바뀌어 주소를 찾고도 멈추는 사본이 나갔다.
 _ASSIGN_SERVER = 'DEFAULT_SERVER = "__FILESHARER_SERVER__"'
 _ASSIGN_VERSION = 'CLI_VERSION = "__FILESHARER_CLI_VERSION__"'
+_ASSIGN_APP = 'APP_VERSION = "__FILESHARER_APP_VERSION__"'
 
 INSTALL_SH = """#!/bin/sh
 # FileSharer CLI 설치. 받아서 실행 권한만 준다 — 그 이상 하지 않는다.
@@ -74,13 +75,25 @@ def cli_source(request: Request) -> PlainTextResponse:
     server = _server(request)
     body = CLI_SOURCE.replace(_ASSIGN_SERVER, f'DEFAULT_SERVER = "{server}"', 1)
     body = body.replace(_ASSIGN_VERSION, f'CLI_VERSION = "{CLI_VERSION}"', 1)
+    body = body.replace(_ASSIGN_APP, f'APP_VERSION = "{_app_version()}"', 1)
     return PlainTextResponse(body, media_type="text/x-python; charset=utf-8")
+
+
+def _app_version() -> str:
+    return get_settings().app_version or "dev"
 
 
 @router.get("/version")
 def version() -> dict:
-    """지금 서버가 내주는 CLI 의 버전. CLI 가 '내가 낡았나' 를 묻는 곳이다.
+    """지금 서버가 내주는 CLI 의 버전.
+
+    두 가지를 함께 준다. 역할이 다르다:
+
+    * ``version`` — 원본 소스의 해시. **'낡았나' 를 가리는 기계용** 값이다. CLI 와
+      무관한 백엔드 배포에서는 안 바뀌므로, 쓸데없는 "새 버전" 알림이 안 뜬다.
+    * ``app_version`` — 사람에게 보여줄 값(v1.0.17). 해시는 사람이 비교할 수 없고
+      화면 어디에도 안 나오는 숫자라, 그걸 ``--version`` 에 찍으면 아무 도움이 안 된다.
 
     본문을 통째로 받아 비교하면 매번 20KB 를 끌어와야 한다. 여기는 몇 바이트다.
     """
-    return {"version": CLI_VERSION}
+    return {"version": CLI_VERSION, "app_version": _app_version()}
