@@ -2,7 +2,8 @@
 #
 # 배포(VM): CI가 GHCR로 밀어둔 이미지를 받아 쓴다 →  docker compose pull && docker compose up -d
 # 로컬/CI 스모크: 소스에서 빌드 →  docker compose up -d --build  (image/build 둘 다 있어 --build면 빌드)
-# 참고: GHCR 이미지는 linux/amd64. arm64 호스트에 배포하려면 CI 멀티아치 빌드 필요.
+# 참고: GHCR 이미지는 linux/amd64 뿐이다(오리진이 x86_64 — uname -m 으로 확인).
+# arm64 호스트로 옮기게 되면 ci.yml 의 platforms 에 linux/arm64 를 더해야 한다.
 services:
   app:
     image: ghcr.io/jijungon/filesharer:latest
