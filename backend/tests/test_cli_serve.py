@@ -308,3 +308,119 @@ def test_whoami_survives_a_server_that_wont_say(client, tmp_path, monkeypatch, c
     assert module.cmd_whoami(Args()) == 0
     out = capsys.readouterr().out
     assert "확인 못 함" in out and "box" in out
+
+
+# ── 자체 업데이트 ───────────────────────────────────────────────────────
+
+
+def test_version_endpoint_matches_what_is_served(client, tmp_path):
+    """``/cli/version`` 은 **지금 내주는 그 CLI** 의 버전이어야 한다.
+
+    어긋나면 '새 버전이 있다' 고 해놓고 받아보면 같은 것이 오는, 영원히 안 끝나는
+    업데이트가 된다.
+    """
+    served = load_served_cli(client, tmp_path)
+    reported = client.get("/cli/version").json()["version"]
+    assert reported == served.CLI_VERSION
+
+
+def test_version_is_the_source_hash_not_the_app_version(client, tmp_path):
+    """앱 버전(v1.0.x)을 쓰면 CLI 와 무관한 백엔드 배포마다 '새 버전' 이 뜬다.
+
+    몇 번 겪으면 아무도 안 읽는 알림이 된다. 소스가 실제로 바뀔 때만 달라져야 한다.
+    """
+    module = load_served_cli(client, tmp_path)
+    assert len(module.CLI_VERSION) == 12
+    assert not module.CLI_VERSION.startswith("v")
+    assert all(c in "0123456789abcdef" for c in module.CLI_VERSION)
+
+
+def test_update_refuses_anything_that_is_not_the_cli(client, tmp_path, monkeypatch):
+    """**사내 프록시·캡티브 포털이 HTML 안내 페이지를 200 으로 주는 일이 흔하다.**
+
+    그걸 그대로 덮어쓰면 CLI 가 통째로 망가지고, 고치려 해도 update 조차 못 돈다.
+    """
+    module = load_served_cli(client, tmp_path)
+    target = tmp_path / "filesharer"
+    original = "#!/usr/bin/env python3\n" + "# 진짜 CLI 입니다 — 길이를 채운다\n" * 400
+    target.write_text(original, encoding="utf-8")
+    target.chmod(0o755)
+    monkeypatch.setattr(module.sys, "argv", [str(target)])
+
+    for payload in (
+        b"<html><body>Captive portal</body></html>",
+        b"",
+        b"#!/usr/bin/env python3\nprint('hi')\n",  # 파이썬이지만 너무 짧다
+    ):
+        monkeypatch.setattr(module, "request", lambda *a, _p=payload, **k: (200, _p))
+
+        class Args:
+            server = "https://x.test"
+
+        with pytest.raises(SystemExit):
+            module.cmd_update(Args())
+        assert target.read_text("utf-8") == original, "거부했는데 파일이 바뀌었다"
+
+
+def test_update_replaces_itself_and_keeps_the_mode(client, tmp_path, monkeypatch, capsys):
+    module = load_served_cli(client, tmp_path)
+    target = tmp_path / "filesharer"
+    target.write_text(
+        "#!/usr/bin/env python3\n" + "# 옛것 — 길이를 채운다\n" * 400, encoding="utf-8"
+    )
+    target.chmod(0o755)
+    monkeypatch.setattr(module.sys, "argv", [str(target)])
+    monkeypatch.setattr(module, "CONFIG_PATH", tmp_path / "config.json")
+
+    fresh = "#!/usr/bin/env python3\n" + "# 새것 — 길이를 채운다\n" * 400
+    monkeypatch.setattr(module, "request", lambda *a, **k: (200, fresh.encode("utf-8")))
+
+    class Args:
+        server = "https://x.test"
+
+    assert module.cmd_update(Args()) == 0
+    assert target.read_text("utf-8") == fresh
+    # 실행 권한을 잃으면 다음부터 못 돈다
+    assert target.stat().st_mode & 0o111, "실행 권한이 사라졌다"
+    assert "새 CLI 로 바꿨습니다" in capsys.readouterr().out
+
+
+def test_update_says_so_when_already_current(client, tmp_path, monkeypatch, capsys):
+    module = load_served_cli(client, tmp_path)
+    target = tmp_path / "filesharer"
+    same = "#!/usr/bin/env python3\n" + "# 같음 — 길이를 채운다\n" * 400
+    target.write_text(same, encoding="utf-8")
+    monkeypatch.setattr(module.sys, "argv", [str(target)])
+    monkeypatch.setattr(module, "request", lambda *a, **k: (200, same.encode("utf-8")))
+
+    class Args:
+        server = "https://x.test"
+
+    assert module.cmd_update(Args()) == 0
+    assert "이미 최신입니다" in capsys.readouterr().out
+
+
+def test_stale_nudge_is_once_a_day_and_never_blocks(client, tmp_path, monkeypatch, capsys):
+    """확인에 실패해도 하려던 일은 그대로 돼야 한다 — 본말이 전도되면 안 된다."""
+    module = load_served_cli(client, tmp_path)
+    cfg = tmp_path / "config.json"
+    cfg.write_text('{"server": "https://x.test", "token": "t"}', encoding="utf-8")
+    monkeypatch.setattr(module, "CONFIG_PATH", cfg)
+    monkeypatch.setattr(module, "server_cli_version", lambda *a, **k: "다른버전입니다")
+
+    class Args:
+        server = None
+        cmd = "ls"
+
+    module.nudge_if_stale(Args())
+    assert "새 CLI 가 있습니다" in capsys.readouterr().err
+
+    # 곧바로 또 부르면 조용하다(하루 한 번)
+    module.nudge_if_stale(Args())
+    assert capsys.readouterr().err == ""
+
+    # 서버에 못 물어봐도 터지지 않는다
+    cfg.write_text('{"server": "https://x.test"}', encoding="utf-8")
+    monkeypatch.setattr(module, "server_cli_version", lambda *a, **k: None)
+    module.nudge_if_stale(Args())
+    assert capsys.readouterr().err == ""
