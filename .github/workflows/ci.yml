@@ -179,8 +179,6 @@ jobs:
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0 # 빌드 번호를 main 커밋 수로 뽑으므로 전체 히스토리가 필요하다
-      # arm64(오라클 Ampere 등)용 크로스 빌드를 위해 QEMU + buildx
-      - uses: docker/setup-qemu-action@v4
       - uses: docker/setup-buildx-action@v4
       - name: GHCR 로그인 (main push일 때만)
         if: github.event_name == 'push'
@@ -241,12 +239,21 @@ jobs:
           echo "src=$SRC" >> "$GITHUB_OUTPUT"
           { echo "tags<<EOF"; echo "$TAGS"; echo "EOF"; } >> "$GITHUB_OUTPUT"
           { echo "promote<<EOF"; echo "$PROMOTE"; echo "EOF"; } >> "$GITHUB_OUTPUT"
-      # PR은 amd64만 빌드해 빠르게 검증, main push면 amd64+arm64 멀티아치로 GHCR에 push
+      # **amd64 만 굽는다.** 예전엔 내보낼 때 arm64 도 같이 구웠는데, amd64 러너가 QEMU 로
+      # 에뮬레이션하느라 473MB 짜리 레이어(LibreOffice·JRE)를 설치하는 데만 10분이 더 걸렸다.
+      #
+      #   PR(amd64)         2분 35초 · 3분 13초 · 3분 24초
+      #   태그(amd64+arm64) 8분 10초 · 12분 09초 · 14분 08초
+      #
+      # 오리진은 x86_64 다(`uname -m` 으로 확인). 아무도 안 쓰는 아키텍처를 매번 굽고
+      # 레지스트리에 쌓고 있었다. 오리진을 Ampere 같은 arm64 로 옮기게 되면 platforms 에
+      # linux/arm64 를 더하면 되는데, 그때는 ubuntu-24.04-arm 네이티브 러너로 굽는 게 낫다
+      # (QEMU 는 느리다). 지금 그걸 미리 만들어 둘 이유는 없다.
       - name: 빌드 (main push면 GHCR push까지)
         uses: docker/build-push-action@v7
         with:
           context: .
-          platforms: ${{ github.event_name == 'push' && 'linux/amd64,linux/arm64' || 'linux/amd64' }}
+          platforms: linux/amd64
           push: ${{ github.event_name == 'push' }}
           build-args: |
             APP_VERSION=${{ steps.appver.outputs.version }}
@@ -275,7 +282,6 @@ jobs:
           SRC: ${{ needs.image.outputs.src }}
         run: |
           # imagetools 는 **다시 굽지 않는다** — 레지스트리 안에서 매니페스트만 복사한다.
-          # 멀티아치 매니페스트도 그대로 따라간다.
           ARGS=()
           while IFS= read -r tag; do
             [ -n "$tag" ] && ARGS+=(--tag "$tag")
