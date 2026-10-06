@@ -7,6 +7,12 @@ import { defineConfig } from 'vite'
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react()],
+  build: {
+    // **'hidden'** — .map 파일은 만들되 번들 끝에 `//# sourceMappingURL` 주석은 남기지
+    // 않는다. 주석을 남기면 브라우저가 공개 주소로 맵을 찾아가는데, 그 맵엔 원본 코드가
+    // 통째로 들어 있다. 맵은 이미지에 싣지 않고 Sentry 에만 올린다(Dockerfile 참고).
+    sourcemap: 'hidden',
+  },
   server: {
     port: 5173,
     proxy: {

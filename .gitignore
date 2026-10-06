@@ -71,3 +71,4 @@ CLAUDE.local.md
 
 # --- 10) 안전망: 레포 내부에 worktree를 만들 경우 대비 ---
 .worktrees/
+frontend/dist-sourcemaps/

@@ -264,6 +264,60 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      # 압축된 번들의 스택은 `t.a is not a function` 처럼 읽을 수가 없다. 소스맵을 Sentry 에
+      # 올려두면 같은 사건이 원본 파일·줄 번호로 풀려 보인다.
+      #
+      # **태그 배포일 때만 올린다.** main 머지는 아무데도 안 나가는 v0.0.<빌드> 라, 거기까지
+      # 올리면 Sentry 릴리스 목록이 배포되지도 않은 버전으로 덮인다.
+      #
+      # 맵은 이미지에 없다(Dockerfile 에서 빼뒀다). buildx 로 sourcemaps 스테이지만 꺼내는데,
+      # web 스테이지는 바로 위에서 구워 캐시에 있으니 다시 빌드되지 않는다.
+      #
+      # 릴리스 이름은 **실행 중인 앱이 말하는 것과 정확히 같아야** 한다 —
+      # 프런트 lib/sentry.ts 와 백엔드 observability.py 둘 다 `<버전>+<빌드>` 로 만든다.
+      # 한 글자만 달라도 Sentry 는 맵을 못 찾고 조용히 압축된 스택을 보여준다.
+      #
+      # **이 단계가 실패해도 배포는 나간다**(continue-on-error). 오류를 들여다보는 도구가
+      # 못 올라갔다고 해서 고친 코드가 사용자에게 못 가는 건 앞뒤가 바뀐 일이다.
+      # 실패하면 이 단계만 빨갛게 남아 눈에 띈다.
+      - name: 소스맵을 Sentry 로 (태그 배포 + 토큰이 있을 때만)
+        if: startsWith(github.ref, 'refs/tags/')
+        continue-on-error: true
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ vars.SENTRY_ORG }}
+          SENTRY_PROJECT: ${{ vars.SENTRY_PROJECT }}
+          # **리전 주소.** Sentry 조직은 미국(sentry.io)과 EU(de.sentry.io)로 나뉘어 있고,
+          # 우리 조직(parameta-21)은 EU 다. 읽기는 sentry.io 로 물어도 리전까지 알아서
+          # 넘겨주는 걸 확인했다(두 주소가 같은 결과를 줬다). 다만 **업로드까지 그런지는
+          # 확인하지 못했다** — 쓰기 권한이 있는 토큰이 아직 없어서다. 리전 주소를 직접
+          # 주면 그 의문이 없어지고, 비워두면 sentry.io 로 간다. 둘 다 맞으면 손해가 없다.
+          SENTRY_URL: ${{ vars.SENTRY_URL }}
+          RELEASE: ${{ steps.appver.outputs.version }}+${{ steps.appver.outputs.build }}
+        run: |
+          if [ -z "$SENTRY_AUTH_TOKEN" ] || [ -z "$SENTRY_ORG" ] || [ -z "$SENTRY_PROJECT" ]; then
+            echo "Sentry 설정이 없어 건너뜁니다 (secret SENTRY_AUTH_TOKEN · var SENTRY_ORG · var SENTRY_PROJECT)."
+            exit 0
+          fi
+          export SENTRY_URL="${SENTRY_URL:-https://sentry.io}"
+          echo "Sentry: $SENTRY_URL · $SENTRY_ORG/$SENTRY_PROJECT · 릴리스 $RELEASE"
+          docker buildx build --target sourcemaps \
+            --output type=local,dest=sourcemaps \
+            --platform linux/amd64 --cache-from type=gha .
+          ls -la sourcemaps
+
+          CLI="npx --yes @sentry/cli@2"
+          $CLI releases new "$RELEASE"
+          # --url-prefix: 브라우저가 보는 주소는 https://…/assets/index-abc.js 다.
+          # '~' 는 '어느 호스트든'. 이게 어긋나면 맵이 올라가도 연결되지 않는다.
+          $CLI releases files "$RELEASE" upload-sourcemaps sourcemaps --url-prefix '~/assets'
+          # 이 릴리스에 들어간 커밋 — Sentry 가 '어느 변경이 이 오류를 넣었나'를 짚어준다
+          $CLI releases set-commits "$RELEASE" --auto || echo "커밋 연결은 건너뜁니다"
+          $CLI releases finalize "$RELEASE"
+          # **맵은 지우고 간다.** 러너가 사라지니 사실 남지 않지만, 이 줄이 있어야
+          # 나중에 누가 artifact 업로드를 붙여도 맵이 딸려 나가지 않는다.
+          rm -rf sourcemaps
+
   # **여기가 배포다.** 굽는 건 이미 끝나 있고, 레지스트리에서 태그만 옮긴다(몇 초).
   # e2e·backend·frontend 가 초록이어야 돈다 — 하나라도 깨지면 :latest 는 제자리에 있다.
   promote:
