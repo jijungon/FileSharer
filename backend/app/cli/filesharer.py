@@ -20,11 +20,15 @@
 from __future__ import annotations
 
 import argparse
+import io
 import json
 import mimetypes
 import os
 import secrets
+import shutil
 import sys
+import tarfile
+import tempfile
 import time
 import urllib.error
 import urllib.parse
@@ -582,13 +586,29 @@ def split_put_args(items: list[str], to: str | None) -> tuple[list[Path], str]:
     return [Path(i) for i in items], ""
 
 
+def tar_bytes(folder: Path) -> bytes:
+    """폴더를 tar.gz 로 묶는다. 서버가 풀어서 구조까지 되살린다(?extract=tar).
+
+    **폴더 이름을 맨 위에 둔다.** 안 그러면 올린 곳에 내용물이 흩어진다 —
+    ``tar czf - mydir`` 와 같은 모양이어야 한다.
+
+    메모리에 담는 이유: 사내 VM 에서 올리는 건 대개 빌드 산출물이라 수십~수백 MB 다.
+    그 정도는 담아도 되고, 임시 파일을 만들면 중간에 끊겼을 때 치울 사람이 없다.
+    """
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w:gz") as tar:
+        tar.add(folder, arcname=folder.name)
+    return buf.getvalue()
+
+
 def cmd_put(args) -> int:
     server, token = server_of(args), token_of()
     sources, dest_path = split_put_args(args.files, args.to)
     for src in sources:
-        if not src.is_file():
-            hint = " — 올릴 곳을 적으려면 --to 를 쓰세요" if not src.exists() else ""
-            raise Fail(f"파일이 아닙니다: {src}{hint}")
+        if not src.exists():
+            raise Fail(f"없는 경로입니다: {src} — 올릴 곳을 적으려면 --to 를 쓰세요")
+        if not (src.is_file() or src.is_dir()):
+            raise Fail(f"파일도 폴더도 아닙니다: {src}")
 
     space, node = resolve(server, token, dest_path)
     if node and node["type"] != "folder":
@@ -600,6 +620,25 @@ def cmd_put(args) -> int:
     where = "/".join([space["name"], *dest_path.split("/")[1:]]).rstrip("/")
 
     for src in sources:
+        if src.is_dir():
+            # 폴더는 tar 로 묶어 한 번에 보낸다. 파일마다 따로 올리면 요청이 수백 번이 되고,
+            # 중간에 끊기면 절반만 올라간 폴더가 남는다. 서버가 풀어서 구조를 되살린다.
+            payload, filename = tar_bytes(src), f"{src.name}.tar.gz"
+            body, ctype = _multipart("file", filename, payload, "application/gzip")
+            status, got = request(
+                server,
+                f"{dest}?extract=tar",
+                method="POST",
+                raw_body=body,
+                content_type=ctype,
+                token=token,
+            )
+            if status != 201:
+                raise Fail(detail_of(got, f"{src.name} 올리기에 실패했습니다 (HTTP {status})"))
+            n = len(got) if isinstance(got, list) else 1
+            print(f"  ↑  {src.name}/ → {where}  (파일 {n}개, {human(len(payload))} 보냄)")
+            continue
+
         mime = mimetypes.guess_type(src.name)[0] or "application/octet-stream"
         body, ctype = _multipart("file", src.name, src.read_bytes(), mime)
         status, got = request(
@@ -614,16 +653,65 @@ def cmd_put(args) -> int:
     return 0
 
 
+def safe_members(tar: tarfile.TarFile, root: Path):
+    """tar 에서 **이 폴더 밖으로 나가지 않는 것만** 내준다.
+
+    서버가 만든 tar 라도 그대로 믿고 풀면 안 된다. 경로에 ``..`` 가 섞이거나 절대경로가
+    들어오면 받는 쪽 파일시스템 아무 데나 쓸 수 있다(zip slip). 심볼릭·하드 링크도 같은
+    길이라 아예 거른다 — 우리 서버가 만드는 tar 엔 애초에 링크가 없다.
+    """
+    root = root.resolve()
+    for member in tar.getmembers():
+        if member.issym() or member.islnk():
+            raise Fail(f"링크가 들어 있습니다: {member.name} — 받지 않았습니다")
+        target = (root / member.name).resolve()
+        if target != root and root not in target.parents:
+            raise Fail(f"폴더 밖을 가리킵니다: {member.name} — 받지 않았습니다")
+        yield member
+
+
+def get_folder(server: str, token: str, node: dict, args) -> int:
+    """폴더를 tar.gz 로 받아 푼다. 서버의 /nodes/{id}/tar 가 그걸 스트리밍한다."""
+    out = Path(args.output) if args.output else Path.cwd()
+    dest = out / node["name"] if out.is_dir() or args.output is None else out
+    if dest.exists() and not args.force:
+        raise Fail(
+            f"이미 있습니다: {dest}\n"
+            f"  다른 곳에 받으려면  -o 받을위치\n"
+            f"  덮어쓰려면          --force"
+        )
+
+    status, body = request(server, f"/api/nodes/{node['id']}/tar", token=token)
+    if status != 200 or not isinstance(body, bytes):
+        raise Fail(detail_of(body, f"받지 못했습니다 (HTTP {status})"))
+
+    # 다 풀고 나서 제자리로 옮긴다 — 중간에 끊겨도 반쪽짜리 폴더가 남지 않는다.
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    staging = Path(tempfile.mkdtemp(prefix=".filesharer-", dir=dest.parent))
+    try:
+        with tarfile.open(fileobj=io.BytesIO(body), mode="r:gz") as tar:
+            members = list(safe_members(tar, staging))
+            tar.extractall(staging, members=members, filter="data")
+        made = staging / node["name"]
+        root = made if made.is_dir() else staging
+        if dest.exists():
+            shutil.rmtree(dest)
+        root.replace(dest)
+        files = sum(1 for m in members if m.isfile())
+    finally:
+        shutil.rmtree(staging, ignore_errors=True)
+
+    print(f"  ↓  {node['name']}/ → {dest}  (파일 {files}개, {human(len(body))} 받음)")
+    return 0
+
+
 def cmd_get(args) -> int:
     server, token = server_of(args), token_of()
     space, node = resolve(server, token, args.path)
     if node is None:
         raise Fail("받을 대상을 경로에 적어주세요")
-    if node["type"] != "file":
-        name = node["name"]
-        raise Fail(
-            f"'{name}'{josa(name, '은', '는')} 폴더입니다 — 아직 폴더째 받기는 지원하지 않습니다"
-        )
+    if node["type"] == "folder":
+        return get_folder(server, token, node, args)
 
     out = Path(args.output) if args.output else Path(node["name"])
     if out.is_dir():
@@ -677,12 +765,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="올린다",
         description="예: filesharer put 보고서.md '내 공간/IDP'   (또는 --to 로 명시)",
     )
-    put.add_argument("files", nargs="+", help="올릴 파일 (마지막이 없는 이름이면 올릴 곳으로 본다)")
+    put.add_argument(
+        "files", nargs="+", help="올릴 파일 또는 폴더 (마지막이 없는 이름이면 올릴 곳으로 본다)"
+    )
     put.add_argument("--to", help="올릴 곳 (예: '내 공간/IDP'). 적으면 위치 인자는 전부 파일")
     put.set_defaults(func=cmd_put)
 
     get = sub.add_parser("get", help="받는다")
-    get.add_argument("path", help="예: '내 공간/IDP/보고서.md'")
+    get.add_argument("path", help="파일 또는 폴더. 예: '내 공간/IDP/보고서.md'")
     get.add_argument("-o", "--output", help="저장할 위치")
     get.add_argument("--force", action="store_true", help="같은 이름이 있어도 덮어쓴다")
     get.set_defaults(func=cmd_get)

@@ -108,6 +108,11 @@ export default function Cli() {
         <Copyable text="filesharer put 보고서.md '내 공간/IDP'" id="put" copied={copied} onCopy={copy} />
         <Copyable text="filesharer get '내 공간/IDP/보고서.md'" id="get" copied={copied} onCopy={copy} />
         <p className="muted cli-note">
+          <strong>폴더도 됩니다.</strong> <code>put</code> 에 폴더를 주면 통째로 묶어 올리고
+          서버가 풀어서 구조를 되살립니다. <code>get</code> 으로 폴더를 찍으면 그대로 받아
+          풉니다 — 파일마다 명령을 치지 않아도 됩니다.
+        </p>
+        <p className="muted cli-note">
           <code>filesharer whoami</code> 로 지금 어느 계정으로 어디까지 쓸 수 있는지,{' '}
           <code>filesharer logout</code> 으로 이 기기의 자격을 지울 수 있습니다.
         </p>
@@ -135,14 +140,16 @@ export default function Cli() {
           <dd>지금 <strong>어느 계정</strong>으로, 어디까지, 언제까지 쓸 수 있는지</dd>
           <dt>filesharer ls [경로]</dt>
           <dd>경로를 빼면 쓸 수 있는 공간 목록이 나옵니다</dd>
-          <dt>filesharer put &lt;파일…&gt; [경로]</dt>
+          <dt>filesharer put &lt;파일·폴더…&gt; [경로]</dt>
           <dd>
-            마지막 인자가 내 컴퓨터에 없는 이름이면 올릴 곳으로 봅니다. 헷갈리면{' '}
+            <strong>폴더도 됩니다</strong>(통째로 묶어 올리고 서버가 풉니다). 마지막 인자가
+            내 컴퓨터에 없는 이름이면 올릴 곳으로 봅니다. 헷갈리면{' '}
             <code>--to &apos;내 공간/IDP&apos;</code> 로 못박으세요.
           </dd>
           <dt>filesharer get &lt;경로&gt;</dt>
           <dd>
-            <code>-o</code> 로 저장 위치를, <code>--force</code> 로 덮어쓰기를 지정합니다
+            파일도 폴더도 받습니다. <code>-o</code> 로 저장 위치를, <code>--force</code> 로
+            덮어쓰기를 지정합니다
           </dd>
           <dt>filesharer logout</dt>
           <dd>이 기기의 자격을 지웁니다(서버의 토큰은 아래에서 회수하세요)</dd>

@@ -458,3 +458,104 @@ def test_stale_nudge_is_once_a_day_and_never_blocks(client, tmp_path, monkeypatc
     monkeypatch.setattr(module, "server_cli_version", lambda *a, **k: (None, None))
     module.nudge_if_stale(Args())
     assert capsys.readouterr().err == ""
+
+
+# ── 폴더째 올리기·받기 ──────────────────────────────────────────────────
+
+
+def _evil_tar(build) -> bytes:
+    import io as _io
+    import tarfile as _tar
+
+    buf = _io.BytesIO()
+    with _tar.open(fileobj=buf, mode="w:gz") as tar:
+        build(tar, _tar)
+    return buf.getvalue()
+
+
+def _add(tar, mod, name, data=b"PWNED"):
+    info = mod.TarInfo(name)
+    info.size = len(data)
+    import io as _io
+
+    tar.addfile(info, _io.BytesIO(data))
+
+
+@pytest.mark.parametrize(
+    "name, build",
+    [
+        ("상위로 탈출", lambda t, m: _add(t, m, "../../탈출.txt")),
+        ("절대경로", lambda t, m: _add(t, m, "/tmp/절대.txt")),
+        ("한참 위로", lambda t, m: _add(t, m, "a/../../../../etc/passwd")),
+    ],
+)
+def test_folder_download_refuses_paths_that_escape(client, tmp_path, name, build):
+    """**서버가 만든 tar 라도 그대로 믿고 풀면 안 된다.**
+
+    경로에 ``..`` 가 섞이거나 절대경로가 들어오면 받는 쪽 파일시스템 아무 데나 쓸 수
+    있다(zip slip). 중간에 누가 바꿔치기할 수도 있고, 서버가 언젠가 버그를 낼 수도 있다.
+    """
+    import io as _io
+    import tarfile as _tar
+
+    module = load_served_cli(client, tmp_path)
+    staging = tmp_path / "staging"
+    staging.mkdir()
+
+    with _tar.open(fileobj=_io.BytesIO(_evil_tar(build)), mode="r:gz") as tar:
+        with pytest.raises(SystemExit):
+            list(module.safe_members(tar, staging))
+
+
+def test_folder_download_refuses_links(client, tmp_path):
+    """심볼릭·하드 링크도 폴더 밖을 가리킬 수 있다. 우리 tar 엔 애초에 링크가 없다."""
+    import io as _io
+    import tarfile as _tar
+
+    module = load_served_cli(client, tmp_path)
+
+    def build(tar, mod):
+        info = mod.TarInfo("안/link")
+        info.type = mod.SYMTYPE
+        info.linkname = "/etc/passwd"
+        tar.addfile(info)
+
+    with _tar.open(fileobj=_io.BytesIO(_evil_tar(build)), mode="r:gz") as tar:
+        with pytest.raises(SystemExit):
+            list(module.safe_members(tar, tmp_path))
+
+
+def test_folder_download_allows_an_ordinary_tree(client, tmp_path):
+    import io as _io
+    import tarfile as _tar
+
+    module = load_served_cli(client, tmp_path)
+
+    def build(tar, mod):
+        _add(tar, mod, "빌드/README.md", b"x")
+        _add(tar, mod, "빌드/dist/app.js", b"y")
+
+    with _tar.open(fileobj=_io.BytesIO(_evil_tar(build)), mode="r:gz") as tar:
+        members = list(module.safe_members(tar, tmp_path))
+    assert {m.name for m in members} == {"빌드/README.md", "빌드/dist/app.js"}
+
+
+def test_folder_upload_keeps_the_folder_at_the_top(client, tmp_path):
+    """``tar czf - mydir`` 와 같은 모양이어야 한다.
+
+    폴더 이름을 빼고 내용만 담으면, 올린 곳에 파일이 **흩어진다**.
+    """
+    import io as _io
+    import tarfile as _tar
+
+    module = load_served_cli(client, tmp_path)
+    folder = tmp_path / "빌드산출물"
+    (folder / "dist").mkdir(parents=True)
+    (folder / "README.md").write_text("x", encoding="utf-8")
+    (folder / "dist" / "app.js").write_text("y", encoding="utf-8")
+
+    with _tar.open(fileobj=_io.BytesIO(module.tar_bytes(folder)), mode="r:gz") as tar:
+        names = tar.getnames()
+
+    assert all(n == "빌드산출물" or n.startswith("빌드산출물/") for n in names), names
+    assert "빌드산출물/dist/app.js" in names
