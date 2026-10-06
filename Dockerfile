@@ -12,7 +12,21 @@ COPY frontend/ ./
 # 버전 문자열을 번들에 박지 않는다 → 이 무거운 빌드 레이어가 버전과 무관해져 캐시가 그대로
 # 재사용되고(배포 속도), 동시에 "파일명은 같은데 내용만 다른" 번들이 사라져 CDN이 옛 버전을
 # 내주는 문제도 없어진다. 버전은 서버가 /api/health 로 말한다(아래 스테이지의 APP_VERSION).
+# 이 빌드는 dist 와 dist-sourcemaps 를 나눠 내놓는다 — 맵에는 원본 코드가 통째로 들어
+# 있는데 file.rgrg.im 은 공개 주소라, 배포되는 dist 에 같이 실으면 누구나 받아간다.
+# 떼어내는 일을 **빌드가** 한다(scripts/split-sourcemaps.mjs). 여기서 지우게 했더니
+# 이미지에는 없고 로컬·CI e2e 가 보는 dist 에는 남아, 새지 않는다는 걸 확인할 데가 없었다.
 RUN npm run build
+
+# ── (이미지가 아님) 소스맵만 꺼내가는 출구 ────────────────────
+# CI 가 `--target sourcemaps --output type=local` 로 이 스테이지만 꺼내 Sentry 에 올린다.
+# web 스테이지는 방금 구운 것이 캐시에 그대로 있으니 다시 빌드되지 않는다 — 태그 배포가
+# 24초에서 느려지지 않는다. scratch 라 레지스트리에 올라가지도 않는다.
+#
+# **반드시 마지막 스테이지보다 앞에 있어야 한다.** docker 는 타깃을 안 주면 맨 끝 스테이지를
+# 굽는다 — 이걸 파일 끝에 뒀더니 아무것도 없는 scratch 가 이미지가 됐다.
+FROM scratch AS sourcemaps
+COPY --from=web /web/dist-sourcemaps /
 
 # ── Stage 2: 백엔드 + 정적파일 → 단일 이미지 ───────────────
 FROM python:3.13-slim AS app
