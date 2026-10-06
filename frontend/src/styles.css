@@ -3182,3 +3182,32 @@ button:focus-visible {
     min-width: 520px;
   }
 }
+/* 명령 참고·문제 해결 — 용어와 설명을 좌우로 가르면 훑기 쉽다 */
+.cli-ref {
+  margin: 0;
+  display: grid;
+  gap: var(--sp-xs) var(--sp-md);
+}
+.cli-ref dt {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 13px;
+  font-weight: 600;
+  margin-top: var(--sp-xs);
+}
+.cli-ref dd {
+  margin: 0 0 var(--sp-xs);
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--ink-muted-48);
+}
+@media (min-width: 620px) {
+  .cli-ref {
+    grid-template-columns: minmax(180px, auto) 1fr;
+  }
+  .cli-ref dt,
+  .cli-ref dd {
+    margin-top: 0;
+    padding: 5px 0;
+    border-top: 1px solid var(--divider-soft);
+  }
+}

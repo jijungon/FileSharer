@@ -113,6 +113,63 @@ export default function Cli() {
         </p>
       </section>
 
+      <section className="cli-step">
+        <h3>명령 전체</h3>
+        <dl className="cli-ref">
+          <dt>filesharer login</dt>
+          <dd>
+            브라우저로 로그인. <code>--name</code> 으로 승인 화면에 뜰 기기 이름을,
+            <code>--no-browser</code> 로 브라우저를 안 열게 할 수 있습니다.
+          </dd>
+          <dt>filesharer whoami</dt>
+          <dd>지금 누구로, 어디까지, 언제까지 쓸 수 있는지</dd>
+          <dt>filesharer ls [경로]</dt>
+          <dd>경로를 빼면 쓸 수 있는 공간 목록이 나옵니다</dd>
+          <dt>filesharer put &lt;파일…&gt; [경로]</dt>
+          <dd>
+            마지막 인자가 내 컴퓨터에 없는 이름이면 올릴 곳으로 봅니다. 헷갈리면{' '}
+            <code>--to &apos;내 공간/IDP&apos;</code> 로 못박으세요.
+          </dd>
+          <dt>filesharer get &lt;경로&gt;</dt>
+          <dd>
+            <code>-o</code> 로 저장 위치를, <code>--force</code> 로 덮어쓰기를 지정합니다
+          </dd>
+          <dt>filesharer logout</dt>
+          <dd>이 기기의 자격을 지웁니다(서버의 토큰은 아래에서 회수하세요)</dd>
+        </dl>
+        <p className="muted cli-note">
+          모든 명령에 <code>--server</code> 를 붙여 다른 서버를 가리킬 수 있습니다. 평소엔
+          필요 없습니다 — 설치할 때 받은 주소가 이미 들어 있습니다.
+        </p>
+      </section>
+
+      <section className="cli-step">
+        <h3>막힐 때</h3>
+        <dl className="cli-ref">
+          <dt>command not found: filesharer</dt>
+          <dd>
+            설치한 곳이 <code>PATH</code> 에 없습니다. 설치할 때 안내가 나오는데, 셸 설정에{' '}
+            <code>export PATH=&quot;$HOME/.local/bin:$PATH&quot;</code> 를 더하거나{' '}
+            <code>~/.local/bin/filesharer</code> 로 직접 부르세요.
+          </dd>
+          <dt>앞단(CDN·방화벽)에서 차단됐습니다</dt>
+          <dd>
+            회사 프록시나 CDN 이 중간에서 끊은 것입니다. <strong>서버 문제가 아닙니다</strong> —
+            이 네트워크에서 그 주소로 나갈 수 있는지부터 보세요.
+          </dd>
+          <dt>로그인이 필요합니다</dt>
+          <dd>
+            아직 <code>login</code> 을 안 했거나, 자격이 만료·회수됐습니다. 아래 목록에서
+            이 기기가 보이는지 확인하세요.
+          </dd>
+          <dt>python3 가 필요합니다</dt>
+          <dd>
+            CLI 는 파이썬 3 로 돌아갑니다. 대부분의 리눅스엔 이미 있습니다 —
+            없으면 배포판 패키지로 설치하세요.
+          </dd>
+        </dl>
+      </section>
+
       <section className="cli-devices">
         <h3>지금 로그인된 기기</h3>
         {err && <p className="device-error">{err}</p>}

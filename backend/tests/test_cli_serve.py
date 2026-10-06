@@ -112,3 +112,58 @@ def test_put_keeps_an_existing_last_arg_as_a_file(client, tmp_path):
     files, dest = module.split_put_args(["a.txt", str(real)], None)
     assert [str(f) for f in files] == ["a.txt", str(real)]
     assert dest == ""
+
+
+def test_cli_identifies_itself(client, tmp_path):
+    """**모든 요청에 User-Agent 를 단다.**
+
+    안 달면 urllib 이 "Python-urllib/3.x" 를 쓰는데, 앞단에 Cloudflare 같은 게 있으면
+    그 서명을 봇으로 보고 막는다. 실제로 프로덕션에서 `filesharer login` 이
+
+        오류: The site owner has blocked access based on your browser's signature.
+
+    로 죽었다(CF 오류 1010). curl 은 되고 urllib 만 안 되는, 서버 로그엔 안 남는 종류다.
+    """
+    module = load_served_cli(client, tmp_path)
+    assert "Python-urllib" not in module.USER_AGENT
+    assert module.USER_AGENT.startswith("filesharer")
+
+    seen: dict = {}
+
+    class FakeResponse:
+        status = 200
+        headers = {"Content-Type": "application/json"}
+
+        def read(self):
+            return b"[]"
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    def fake_urlopen(req, timeout=None):
+        seen["ua"] = req.get_header("User-agent")
+        return FakeResponse()
+
+    module.urllib.request.urlopen = fake_urlopen
+    module.request("https://example.test", "/api/spaces", token="t")
+    assert seen["ua"] == module.USER_AGENT
+
+
+def test_blocked_by_proxy_is_named_as_such(client, tmp_path):
+    """앞단이 막은 걸 서버 오류처럼 보여주면, 사람은 제 계정·토큰을 의심하며 헤맨다."""
+    module = load_served_cli(client, tmp_path)
+
+    # Cloudflare 가 JSON 으로 돌려준 모양
+    cf = module.blocked_hint(403, {"detail": "blocked access based on your browser's signature"})
+    assert cf and "앞단" in cf
+
+    # 본문이 HTML 이라 파싱도 안 되는 경우
+    html = module.blocked_hint(403, b"<html>...</html>")
+    assert html and "앞단" in html
+
+    # 우리 서버가 제대로 낸 403 은 그대로 둔다 — 범위 밖이라는 말을 덮으면 안 된다
+    assert module.blocked_hint(403, {"detail": "토큰 범위 밖의 공간입니다"}) is None
+    assert module.blocked_hint(401, {"detail": "로그인이 필요합니다"}) is None
