@@ -168,27 +168,23 @@ jobs:
   # 배포 시간에 얹혔다**(태그 배포 8분 31초 = e2e 4분 54초 + image 3분 31초, 직렬).
   # 지금은 굽기가 e2e 뒤에 숨고, 남는 건 레지스트리에서 태그만 옮기는 몇 초다.
   # 게이트는 그대로다 — e2e 가 깨지면 promote 가 안 돌고 :latest 는 제자리에 있다.
-  image:
+  # 버전·태그만 뽑는다(몇 초). 굽는 잡들이 이걸 받아 쓴다 — 예전엔 amd64 빌드 잡 안에
+  # 같이 있어서, arm64 잡이 그걸 기다리려면 amd64 빌드까지 끝나길 기다려야 했다.
+  meta:
     needs: [secrets-scan]
     runs-on: ubuntu-24.04
     outputs:
       promote: ${{ steps.appver.outputs.promote }}
       version: ${{ steps.appver.outputs.version }}
+      build: ${{ steps.appver.outputs.build }}
+      pr: ${{ steps.appver.outputs.pr }}
+      built_at: ${{ steps.appver.outputs.built_at }}
       src: ${{ steps.appver.outputs.src }}
+      matrix: ${{ steps.appver.outputs.matrix }}
     steps:
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0 # 빌드 번호를 main 커밋 수로 뽑으므로 전체 히스토리가 필요하다
-      # arm64(오라클 Ampere 등)용 크로스 빌드를 위해 QEMU + buildx
-      - uses: docker/setup-qemu-action@v4
-      - uses: docker/setup-buildx-action@v4
-      - name: GHCR 로그인 (main push일 때만)
-        if: github.event_name == 'push'
-        uses: docker/login-action@v4
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
       # 머지와 배포가 갈려 있다. **태그를 밀어야 나간다.**
       #   머지        → v0.0.<빌드> · 이미지 :b<빌드> 만. 아무데도 안 나감.
       #   v0.* 태그   → dev 배포.  번호는 빌드 번호를 그대로(지금까지 세던 번호를 이어감).
@@ -241,26 +237,104 @@ jobs:
           echo "src=$SRC" >> "$GITHUB_OUTPUT"
           { echo "tags<<EOF"; echo "$TAGS"; echo "EOF"; } >> "$GITHUB_OUTPUT"
           { echo "promote<<EOF"; echo "$PROMOTE"; echo "EOF"; } >> "$GITHUB_OUTPUT"
-      # PR은 amd64만 빌드해 빠르게 검증, main push면 amd64+arm64 멀티아치로 GHCR에 push
-      - name: 빌드 (main push면 GHCR push까지)
+
+          # 어떤 아키텍처를 구울지. PR 은 amd64 만으로 빠르게 검증하고, 내보낼 때만 둘 다 굽는다.
+          # **각자 자기 아키텍처의 러너에서 굽는다** — 예전엔 amd64 러너가 QEMU 로 arm64 를
+          # 에뮬레이션해서, 473MB 짜리 레이어(LibreOffice·JRE)를 설치하느라 8~12분이 걸렸다.
+          # ubuntu-24.04-arm 은 공개 저장소에 무료다.
+          if [ "$GITHUB_EVENT_NAME" = "push" ]; then
+            MATRIX='[{"platform":"linux/amd64","runner":"ubuntu-24.04","slug":"amd64"},{"platform":"linux/arm64","runner":"ubuntu-24.04-arm","slug":"arm64"}]'
+          else
+            MATRIX='[{"platform":"linux/amd64","runner":"ubuntu-24.04","slug":"amd64"}]'
+          fi
+          echo "matrix=$MATRIX" >> "$GITHUB_OUTPUT"
+
+  # 아키텍처마다 **자기 러너에서** 굽는다. 둘이 병렬로 돌아 느린 쪽이 전체 시간이 된다.
+  # push 일 때는 태그 없이 다이제스트로만 올리고(push-by-digest), 아래 image-merge 가
+  # 그 둘을 묶어 하나의 멀티아치 매니페스트로 만든다.
+  image:
+    needs: [meta]
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.meta.outputs.matrix) }}
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: docker/setup-buildx-action@v4
+      - name: GHCR 로그인 (push일 때만)
+        if: github.event_name == 'push'
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: 빌드
+        id: build
         uses: docker/build-push-action@v7
         with:
           context: .
-          platforms: ${{ github.event_name == 'push' && 'linux/amd64,linux/arm64' || 'linux/amd64' }}
-          push: ${{ github.event_name == 'push' }}
+          platforms: ${{ matrix.platform }}
           build-args: |
-            APP_VERSION=${{ steps.appver.outputs.version }}
-            APP_BUILD=${{ steps.appver.outputs.build }}
-            APP_PR=${{ steps.appver.outputs.pr }}
-            APP_BUILT_AT=${{ steps.appver.outputs.built_at }}
-          tags: ${{ steps.appver.outputs.tags }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+            APP_VERSION=${{ needs.meta.outputs.version }}
+            APP_BUILD=${{ needs.meta.outputs.build }}
+            APP_PR=${{ needs.meta.outputs.pr }}
+            APP_BUILT_AT=${{ needs.meta.outputs.built_at }}
+          # push 면 다이제스트로만 올린다. 태그는 image-merge 가 붙인다 —
+          # 두 잡이 같은 태그에 밀면 나중 것이 앞의 것을 지운다.
+          outputs: ${{ github.event_name == 'push' && 'type=image,name=ghcr.io/jijungon/filesharer,push-by-digest=true,name-canonical=true,push=true' || 'type=cacheonly' }}
+          # 캐시는 아키텍처별로 나눈다. 한 통을 같이 쓰면 서로의 레이어를 밀어낸다.
+          cache-from: type=gha,scope=${{ matrix.slug }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.slug }}
+      - name: 다이제스트 남기기
+        if: github.event_name == 'push'
+        run: |
+          mkdir -p /tmp/digests
+          touch "/tmp/digests/${{ steps.build.outputs.digest }}"
+      - uses: actions/upload-artifact@v4
+        if: github.event_name == 'push'
+        with:
+          name: digest-${{ matrix.slug }}
+          path: /tmp/digests/*
+          retention-days: 1
+
+  # 아키텍처별 다이제스트를 하나의 멀티아치 매니페스트로 묶는다. 굽지 않고 레지스트리
+  # 안에서 매니페스트만 만든다(몇 초).
+  image-merge:
+    needs: [meta, image]
+    if: github.event_name == 'push'
+    runs-on: ubuntu-24.04
+    outputs:
+      promote: ${{ needs.meta.outputs.promote }}
+      version: ${{ needs.meta.outputs.version }}
+      src: ${{ needs.meta.outputs.src }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: /tmp/digests
+          pattern: digest-*
+          merge-multiple: true
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: 매니페스트 합치기
+        env:
+          SRC: ${{ needs.meta.outputs.src }}
+        run: |
+          cd /tmp/digests
+          ARGS=()
+          for d in *; do ARGS+=("ghcr.io/jijungon/filesharer@sha256:$d"); done
+          echo "묶을 다이제스트: ${ARGS[*]}"
+          docker buildx imagetools create --tag "$SRC" "${ARGS[@]}"
+          docker buildx imagetools inspect "$SRC"
 
   # **여기가 배포다.** 굽는 건 이미 끝나 있고, 레지스트리에서 태그만 옮긴다(몇 초).
   # e2e·backend·frontend 가 초록이어야 돈다 — 하나라도 깨지면 :latest 는 제자리에 있다.
   promote:
-    needs: [image, backend, frontend, e2e]
+    needs: [image-merge, backend, frontend, e2e]
     if: github.event_name == 'push'
     runs-on: ubuntu-24.04
     steps:
@@ -271,8 +345,8 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: 태그를 붙인다 (:latest 가 움직이면 watchtower 가 가져간다)
         env:
-          PROMOTE: ${{ needs.image.outputs.promote }}
-          SRC: ${{ needs.image.outputs.src }}
+          PROMOTE: ${{ needs['image-merge'].outputs.promote }}
+          SRC: ${{ needs['image-merge'].outputs.src }}
         run: |
           # imagetools 는 **다시 굽지 않는다** — 레지스트리 안에서 매니페스트만 복사한다.
           # 멀티아치 매니페스트도 그대로 따라간다.
@@ -284,7 +358,7 @@ jobs:
           # 출처는 **이 run 이 구운 것**이다. github.sha 로 쓰면 같은 커밋의 다른 run 이
           # 덮어쓴 이미지를 승격하게 된다(위 SRC 주석 참고).
           docker buildx imagetools create "${ARGS[@]}" "$SRC"
-          echo "${{ needs.image.outputs.version }} 승격 완료"
+          echo "${{ needs['image-merge'].outputs.version }} 승격 완료"
 
   # ── 자동 배포(CD): 오리진의 watchtower가 pull 방식으로 처리 ──
   # 오리진(Oracle)이 인바운드 SSH를 소스 IP로 제한 → GitHub 러너에서의 SSH 배포는
