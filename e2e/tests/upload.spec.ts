@@ -173,3 +173,46 @@ test('로컬 파일을 트리의 "파일" 위에 놓으면 그 파일이 든 폴
     )
     .toContain('onto-file.txt')
 })
+
+/** 다 보냈는데 답이 안 왔으면 **'저장 중…'** 이라고 말한다.
+ *
+ * 게이지는 바이트가 브라우저를 떠날 때 차고, 완료 숫자는 서버가 답해야 오른다. 그 사이에
+ * 서버가 할 일이 남아 있다 — 저장소에 쓰고(R2 면 거기로 다시 올린다), 체크섬을 내고,
+ * DB 에 쓰고, 텍스트면 내용 검색 인덱스에 적재한다.
+ *
+ * 그래서 게이지가 꽉 찬 채로 한참 머무는데 100% 라고만 적혀 있으면 **멈춘 것처럼 보인다.**
+ * 실제로 "게이지는 다 찼는데 숫자는 왜 1/3 → 2/3 로 따라오지?" 라는 질문을 받았다.
+ *
+ * **지연을 page.route 로 주면 안 된다.** route 는 요청이 **나가기 전에** 멈춰서,
+ * 보내기 자체가 시작되지 않는다 — 그 상태의 0% 는 거짓이 아니라 사실이다(그렇게
+ * 짰다가 "행을 못 찾는다" 로 헤맸다). 네트워크 왕복을 늦춰야 **보내기는 끝나고 답만
+ * 늦는** 진짜 그 구간이 생긴다.
+ */
+test('업로드: 다 보내고 서버를 기다리는 동안은 "저장 중"이라고 말한다', async ({
+  page,
+  context,
+}) => {
+  await loginAsAdmin(page)
+
+  const cdp = await context.newCDPSession(page)
+  await cdp.send('Network.enable')
+  await cdp.send('Network.emulateNetworkConditions', {
+    offline: false,
+    latency: 1500, // 보내기는 곧 끝나고, 답이 1.5초 뒤에 온다
+    downloadThroughput: -1,
+    uploadThroughput: -1,
+  })
+
+  const name = `저장중_${RUN_TAG}.txt`
+  await page.locator('input[type="file"]:not([webkitdirectory])').setInputFiles({
+    name,
+    mimeType: 'text/plain',
+    buffer: Buffer.from('x'.repeat(200000)),
+  })
+
+  const pct = page.locator('.upload-row').filter({ hasText: name }).locator('.upload-inline-pct')
+  await expect(pct).toHaveText('저장 중…')
+
+  // 답이 오면 100% 가 되고 실제 파일이 된다
+  await expect(page.locator('.tree-name').filter({ hasText: name })).toBeVisible()
+})

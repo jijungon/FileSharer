@@ -124,9 +124,18 @@ export function uploadFile(
     xhr.open('POST', url)
     xhr.responseType = 'json'
     if (onProgress) {
+      // 보내는 동안 — 바이트가 브라우저를 떠날 때마다
+      let sent = file.size
       xhr.upload.onprogress = (e) => {
-        if (e.lengthComputable) onProgress(e.loaded, e.total)
+        if (e.lengthComputable) {
+          sent = e.total
+          onProgress(e.loaded, e.total)
+        }
       }
+      // **보내기가 끝난 순간**을 따로 잡는다. 작은 파일은 progress 가 한 번도 안 오는
+      // 일이 있어서, 그것만 믿으면 다 보내놓고도 화면엔 0% 로 남는다.
+      // 여기서부터 서버 답이 올 때까지가 '저장 중' 구간이다(lib/upload.ts 의 isSaving).
+      xhr.upload.onloadend = () => onProgress(sent, sent)
     }
     xhr.onload = () => {
       if (xhr.status >= 200 && xhr.status < 300) {

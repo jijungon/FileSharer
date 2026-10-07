@@ -52,6 +52,32 @@ export function markUploadDone(list: UploadItem[], id: string, error = false): U
   )
 }
 
+/** 바이트는 다 보냈는데 **아직 서버 답이 안 온** 상태인가.
+ *
+ * 게이지(xhr.upload.onprogress)는 바이트가 브라우저를 떠날 때 차오르고, 완료(xhr.onload)는
+ * 서버가 201 로 답해야 찍힌다. 그 사이에 서버가 할 일이 남아 있다 — 받은 내용을 저장소에
+ * 쓰고(R2 면 거기로 다시 올린다), SHA-256 을 계산하고, DB 에 쓰고, 텍스트면 내용 검색
+ * 인덱스에 적재한다.
+ *
+ * 그래서 게이지 셋이 거의 동시에 100% 에 닿아도 숫자는 1/3 → 2/3 → 3/3 으로 따라온다.
+ * **화면이 100% 에서 멈춘 것처럼 보였다** — 실제로 "이건 뭐지?" 라는 질문을 받았다.
+ *
+ * **상태를 따로 두지 않는다.** loaded·total·done 이 이미 답을 갖고 있고, 별도 플래그를
+ * 두면 언젠가 실제와 어긋난다(바는 꽉 찼는데 '저장 중' 이 아니거나 그 반대).
+ *
+ * 0 바이트 파일은 보낼 것이 없으니 곧바로 이 상태다 — 0% 라고 적는 것보다 맞다.
+ */
+export function isSaving(u: UploadItem): boolean {
+  return !u.done && !u.error && u.loaded >= u.total
+}
+
+/** 그 줄에 적을 말. 퍼센트가 아니라 **지금 무슨 일이 벌어지는지**를 적는다. */
+export function statusLabel(u: UploadItem): string {
+  if (u.error) return '실패'
+  if (isSaving(u)) return '저장 중…'
+  return `${percent(u)}%`
+}
+
 /** 0~100 정수 퍼센트. total 0이면 0. */
 export function percent(u: { loaded: number; total: number }): number {
   return u.total > 0 ? Math.min(100, Math.round((u.loaded / u.total) * 100)) : 0
