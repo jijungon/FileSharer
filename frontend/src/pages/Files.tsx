@@ -503,21 +503,27 @@ export default function Files() {
     if (id) closeTabs(tabsToClose(openTabs, id, action))
   }
 
-  // 메뉴는 바깥을 누르거나 Esc 로 닫는다. 스크롤·리사이즈에도 닫는다 — 떠 있는 자리가
-  // 더는 그 탭 위가 아니게 되면, 보이는 것과 실제 대상이 어긋난다.
+  // 메뉴는 바깥을 누르거나 Esc 로 닫는다. 창 크기가 바뀌거나 **탭 줄이 스크롤되면**
+  // 닫는다 — 메뉴는 그 탭을 가리키고 있는데 탭이 움직이면 가리키는 대상이 어긋난다.
+  //
+  // **스크롤을 문서 전체(capture)로 듣지 않는다.** 처음엔 그렇게 했는데, 트리나 편집기가
+  // 조금만 움직여도 메뉴가 사라졌다 — 게다가 탭을 활성화하면 탭 줄이 그 탭을 보이게
+  // 스스로 스크롤하므로, **열자마자 그 스크롤에 닫히는** 일까지 있었다(e2e 가 잡았다).
+  // 어긋날 수 있는 건 탭 줄 하나뿐이니 거기만 듣는다.
   useEffect(() => {
     if (!tabMenu) return
     const close = () => setTabMenu(null)
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && close()
+    const strip = tabBarRef.current // 탭 줄에 이미 달려 있는 ref(휠 가로스크롤이 쓴다)
     window.addEventListener('pointerdown', close)
     window.addEventListener('keydown', onKey)
     window.addEventListener('resize', close)
-    window.addEventListener('scroll', close, true)
+    strip?.addEventListener('scroll', close)
     return () => {
       window.removeEventListener('pointerdown', close)
       window.removeEventListener('keydown', onKey)
       window.removeEventListener('resize', close)
-      window.removeEventListener('scroll', close, true)
+      strip?.removeEventListener('scroll', close)
     }
   }, [tabMenu])
 
@@ -1774,7 +1780,6 @@ export default function Files() {
                     [
                       ['this', '닫기'],
                       ['others', '다른 탭 모두 닫기'],
-                      ['right', '오른쪽 탭 모두 닫기'],
                       ['all', '모두 닫기'],
                     ] as [TabAction, string][]
                   ).map(([action, label]) => (

@@ -7,12 +7,7 @@ describe('tabsToClose — 무엇이 닫히나', () => {
   it('이 탭 / 다른 탭 모두 / 오른쪽 / 모두', () => {
     expect(tabsToClose(tabs, 'b', 'this')).toEqual(['b'])
     expect(tabsToClose(tabs, 'b', 'others')).toEqual(['a', 'c', 'd'])
-    expect(tabsToClose(tabs, 'b', 'right')).toEqual(['c', 'd'])
     expect(tabsToClose(tabs, 'b', 'all')).toEqual(['a', 'b', 'c', 'd'])
-  })
-
-  it('맨 오른쪽 탭에서는 "오른쪽" 이 빈다', () => {
-    expect(tabsToClose(tabs, 'd', 'right')).toEqual([])
   })
 
   it('탭이 하나면 "다른 탭 모두" 가 빈다 — 자기를 닫아버리면 안 된다', () => {
@@ -29,8 +24,6 @@ describe('tabsToClose — 무엇이 닫히나', () => {
 
 describe('canDo — 누를 수 있나', () => {
   it('닫을 게 없으면 못 누른다', () => {
-    expect(canDo(tabs, 'd', 'right')).toBe(false)
-    expect(canDo(tabs, 'b', 'right')).toBe(true)
     expect(canDo([{ id: 'a' }], 'a', 'others')).toBe(false)
   })
 })

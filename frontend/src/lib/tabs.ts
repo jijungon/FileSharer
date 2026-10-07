@@ -5,7 +5,7 @@
  */
 
 /** 메뉴에서 고를 수 있는 일. */
-export type TabAction = 'this' | 'others' | 'right' | 'all'
+export type TabAction = 'this' | 'others' | 'all'
 
 /** 그 일을 하면 닫히는 탭 id 들. 순서는 원래 탭 순서를 따른다. */
 export function tabsToClose<T extends { id: string }>(
@@ -13,15 +13,12 @@ export function tabsToClose<T extends { id: string }>(
   targetId: string,
   action: TabAction,
 ): string[] {
-  const at = tabs.findIndex((t) => t.id === targetId)
-  if (at === -1) return [] // 이미 닫힌 탭 위의 메뉴 — 아무것도 하지 않는다
+  if (!tabs.some((t) => t.id === targetId)) return [] // 이미 닫힌 탭 위의 메뉴 — 아무것도 안 한다
   switch (action) {
     case 'this':
       return [targetId]
     case 'others':
       return tabs.filter((t) => t.id !== targetId).map((t) => t.id)
-    case 'right':
-      return tabs.slice(at + 1).map((t) => t.id)
     case 'all':
       return tabs.map((t) => t.id)
   }
