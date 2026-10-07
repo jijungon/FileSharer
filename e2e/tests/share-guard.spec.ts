@@ -282,3 +282,61 @@ test('공유된 오피스 문서도 미리보기 경로를 탄다 — 규칙을 
 
   await anon.close()
 })
+
+/** 제목이 많아도 목차가 **읽을 수 있어야** 한다.
+ *
+ * `.share-toc` 는 flex column + max-height 다. 항목에 flex-shrink 를 막아두지 않으면,
+ * 넘칠 때 **스크롤되는 대신 항목이 눌려 들어간다** — 제목 76개짜리 문서에서 항목 높이가
+ * 13px 까지 내려갔다(줄 높이는 20.58px). 글자가 위아래로 잘려 회색 뭉개짐이 됐고,
+ * **제목이 많을수록 더 납작해졌다.** 목차가 길수록 못 읽게 되는 셈이었다.
+ *
+ * 그래서 "목차가 보이나" 로는 못 잡는다 — 보이긴 했다. **높이를 재야** 잡힌다.
+ */
+test('공유 페이지: 제목이 많아도 목차가 눌리지 않는다', async ({ page, browser }) => {
+  await loginAs(page, ACCOUNT)
+
+  // 목차가 칸을 넘치도록 충분히 많은 제목
+  const body = ['# 큰 문서\n']
+  for (let i = 1; i <= 15; i++) {
+    body.push(`\n## ${i}. 섹션 제목이 제법 긴 경우도 있습니다 ${i}\n\n본문.\n`)
+    for (let j = 1; j <= 4; j++) {
+      body.push(`\n### ${i}.${j} 하위 항목 — 여기도 꽤 길게 적히는 일이 많습니다\n\n내용.\n`)
+    }
+  }
+  const url = await share(page, '목차많음', { name: `목차많음_${RUN_TAG}.md`, body: body.join('') })
+  await closeSharePopover(page)
+
+  const anon = await browser.newContext({ viewport: { width: 1280, height: 900 } })
+  const view = await anon.newPage()
+  await view.goto(url)
+  await expect(view.locator('.share-toc-item').first()).toBeVisible()
+
+  const geom = await view.evaluate(() => {
+    const nav = document.querySelector('.share-toc') as HTMLElement
+    const items = [...document.querySelectorAll('.share-toc-item')] as HTMLElement[]
+    const line = parseFloat(getComputedStyle(items[0]).lineHeight)
+    return {
+      count: items.length,
+      minH: Math.min(...items.map((e) => e.getBoundingClientRect().height)),
+      line,
+      navH: nav.getBoundingClientRect().height,
+    }
+  })
+
+  // 이 테스트가 의미 있으려면 **눌리지 않았을 때 칸을 넘쳐야** 한다.
+  // scrollHeight 로 보면 안 된다 — 눌린 상태에선 딱 맞게 들어가서 안 넘치고,
+  // 그러면 이 안전장치가 **버그일 때 먼저 터져** 진짜 단언을 가린다(실제로 그랬다).
+  // 눌림과 무관한 값(항목 수 × 줄 높이)으로 본다.
+  expect(geom.count, '목차가 넘칠 만큼 많아야 한다').toBeGreaterThan(40)
+  expect(
+    geom.count * geom.line,
+    '제목이 더 많아야 이 테스트가 눌림을 드러낸다',
+  ).toBeGreaterThan(geom.navH)
+  // 핵심: 한 줄도 **줄 높이보다 낮아지면 안 된다**
+  expect(
+    geom.minH,
+    `목차 항목이 눌렸다 — 가장 낮은 항목 ${geom.minH}px, 줄 높이 ${geom.line}px`,
+  ).toBeGreaterThanOrEqual(geom.line)
+
+  await anon.close()
+})

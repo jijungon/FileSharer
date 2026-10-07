@@ -2168,6 +2168,7 @@ button:focus-visible {
 }
 
 .share-toc-title {
+  flex-shrink: 0; /* 항목과 같은 이유 — 눌리면 글자가 잘린다 */
   font-family: var(--mono);
   font-size: 11px;
   letter-spacing: 0.08em;
@@ -2188,6 +2189,11 @@ button:focus-visible {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  /* **줄이지 않는다.** 부모가 flex column + max-height 라, 이게 없으면 항목이 칸에
+     맞춰 눌린다 — overflow-y:auto 로 스크롤되는 대신에. 제목이 76개인 문서에서
+     항목 높이가 13px 까지 내려가(줄 높이는 20.58px) 글자가 위아래로 잘렸다.
+     제목이 많을수록 더 납작해지니, 목차가 길수록 못 읽게 되는 셈이었다. */
+  flex-shrink: 0;
   transition:
     background 0.12s,
     color 0.12s;
