@@ -149,6 +149,8 @@ class ApiToken(Base):
 
     범위(scope): node_id가 있으면 그 폴더(및 하위)로만, 없고 space_id가 있으면
     그 공간 전체로, 둘 다 없으면(null scope) 소유자의 개인 공간으로만 업로드 가능.
+
+    만료(expires_at)는 **비울 수 없다**. 공유 링크와 같은 규칙이다.
     """
 
     __tablename__ = "api_tokens"
@@ -163,7 +165,10 @@ class ApiToken(Base):
     node_id: Mapped[str | None] = mapped_column(ForeignKey("nodes.id"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     last_used_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-    expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # **반드시 만료한다** — 공유 링크(ShareLink.expires_at)와 같은 규칙이다.
+    # 예전엔 nullable 이라 '영원히 유효한 토큰' 이 만들어졌다. 본인만 자기 토큰을 볼 수
+    # 있으므로(관리자도 못 본다) 사람이 떠나면 그걸 회수할 길이 없었다.
+    expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
 
