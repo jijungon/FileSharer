@@ -24,9 +24,9 @@ import {
   dropUploads,
   markUploadDone,
   partitionBySize,
-  percent,
   runWithConcurrency,
   setProgress,
+  statusLabel,
   uploadSummary,
   UploadItem,
 } from '../lib/upload'
@@ -1988,7 +1988,10 @@ export default function Files() {
                   <span className="node-name">{u.name}</span>
                   <div className="upload-inline-wrap">
                     <progress className="upload-inline-bar" value={u.loaded} max={u.total || 1} />
-                    <span className="upload-inline-pct">{u.error ? '실패' : `${percent(u)}%`}</span>
+                    {/* 퍼센트가 아니라 **지금 무슨 일이 벌어지는지**를 적는다.
+                        바가 꽉 찼는데 숫자가 안 오르면 멈춘 것처럼 보인다 — 그 사이
+                        서버가 저장·체크섬·색인을 하고 있다(lib/upload.ts 의 isSaving). */}
+                    <span className="upload-inline-pct">{statusLabel(u)}</span>
                   </div>
                 </li>
               ))}

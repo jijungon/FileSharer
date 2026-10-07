@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  UploadItem,
   dropUpload,
   dropUploads,
   markUploadDone,
@@ -7,8 +8,8 @@ import {
   percent,
   runWithConcurrency,
   setProgress,
+  statusLabel,
   uploadSummary,
-  UploadItem,
 } from './upload'
 
 const f = (name: string, mb: number) => ({ name, size: mb * 1024 * 1024 })
@@ -123,5 +124,35 @@ describe('runWithConcurrency', () => {
       active -= 1
     })
     expect(peak).toBe(2)
+  })
+})
+
+describe('statusLabel — 그 줄에 적을 말', () => {
+  const base = { id: 'a', name: 'a.txt', loaded: 0, total: 100 }
+
+  it('보내는 중이면 퍼센트', () => {
+    expect(statusLabel({ ...base, loaded: 0 })).toBe('0%')
+    expect(statusLabel({ ...base, loaded: 42 })).toBe('42%')
+    expect(statusLabel({ ...base, loaded: 99 })).toBe('99%')
+  })
+
+  it('다 보냈는데 답이 안 왔으면 **저장 중**', () => {
+    // 게이지는 바이트가 떠날 때 차고, 완료는 서버가 답해야 찍힌다. 그 사이에 서버가
+    // 저장·체크섬·색인을 한다 — 100% 라고만 적으면 멈춘 것처럼 보인다.
+    expect(statusLabel({ ...base, loaded: 100 })).toBe('저장 중…')
+  })
+
+  it('서버가 답하면 100%', () => {
+    expect(statusLabel({ ...base, loaded: 100, done: true })).toBe('100%')
+  })
+
+  it('실패가 가장 세다 — 다 보냈어도 실패면 실패', () => {
+    expect(statusLabel({ ...base, loaded: 100, error: true })).toBe('실패')
+    expect(statusLabel({ ...base, loaded: 100, done: true, error: true })).toBe('실패')
+  })
+
+  it('0 바이트 파일은 보낼 것이 없으니 곧바로 저장 중', () => {
+    // 0% 라고 적으면 아무 일도 안 일어나는 것처럼 보인다 — 실제로는 서버가 일하는 중이다
+    expect(statusLabel({ id: 'z', name: 'empty.txt', loaded: 0, total: 0 })).toBe('저장 중…')
   })
 })
