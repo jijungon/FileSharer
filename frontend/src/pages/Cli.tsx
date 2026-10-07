@@ -11,6 +11,8 @@ interface TokenRow {
   created_at: string
   last_used_at: string | null
   expires_at: string | null
+  /** 서버가 판정한다 — 화면이 expires_at 을 파싱해 비교하면 시간대에서 틀어진다. */
+  expired: boolean
 }
 
 function Copyable({ text, id, copied, onCopy }: {
@@ -26,6 +28,51 @@ function Copyable({ text, id, copied, onCopy }: {
         {copied === id ? '복사됨 ✓' : '복사'}
       </button>
     </div>
+  )
+}
+
+function TokenTable({
+  rows,
+  onRevoke,
+  expired = false,
+}: {
+  rows: TokenRow[]
+  onRevoke: (row: TokenRow) => void
+  expired?: boolean
+}) {
+  return (
+    <table className={`cli-table${expired ? ' is-expired' : ''}`}>
+      <thead>
+        <tr>
+          <th>기기</th>
+          <th>어디까지</th>
+          <th>마지막 사용</th>
+          <th>{expired ? '만료된 날' : '만료'}</th>
+          <th />
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((r) => (
+          <tr key={r.id}>
+            <td>{r.label || <span className="muted">(이름 없음)</span>}</td>
+            <td className="muted">{r.scope_label}</td>
+            {/* 안 쓰이는 자격이 남아 있으면 그게 정리 대상이다 — 그래서 '마지막 사용'을 보여준다 */}
+            <td className="muted">
+              {r.last_used_at ? formatAgo(r.last_used_at) : '쓰인 적 없음'}
+            </td>
+            <td className="muted">
+              {r.expires_at ? formatDateTime(r.expires_at).slice(0, 10) : '없음'}
+            </td>
+            <td>
+              {/* 만료된 것도 지울 수 있어야 한다 — 아니면 이 목록은 영원히 길어지기만 한다 */}
+              <button className="btn-utility btn-danger-ghost" onClick={() => onRevoke(r)}>
+                {expired ? '지우기' : '회수'}
+              </button>
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
   )
 }
 
@@ -52,6 +99,10 @@ export default function Cli() {
 
   useEffect(reload, [reload])
 
+  // 살아 있는 것과 만료된 것. 만료 판정은 서버가 했다(r.expired).
+  const live = (rows ?? []).filter((r) => !r.expired)
+  const dead = (rows ?? []).filter((r) => r.expired)
+
   async function copy(text: string, id: string) {
     if (await copyText(text)) {
       setCopied(id)
@@ -62,7 +113,12 @@ export default function Cli() {
   }
 
   async function revoke(row: TokenRow) {
-    if (!confirm(`'${row.label || row.id}' 를 회수할까요? 그 기기는 바로 못 쓰게 됩니다.`)) return
+    // 만료된 것에 '바로 못 쓰게 됩니다' 라고 하면 틀린 말이다 — 이미 못 쓴다.
+    // 목록에서 치우는 것뿐이라고 말해줘야 누르는 사람이 안 망설인다.
+    const ask = row.expired
+      ? `'${row.label || row.id}' 를 목록에서 지울까요? 이미 만료돼 쓸 수 없는 자격입니다.`
+      : `'${row.label || row.id}' 를 회수할까요? 그 기기는 바로 못 쓰게 됩니다.`
+    if (!confirm(ask)) return
     try {
       await api(`/api/tokens/${row.id}`, { method: 'DELETE' })
       reload()
@@ -201,38 +257,21 @@ export default function Cli() {
         {rows !== null && rows.length === 0 && (
           <p className="muted">아직 없습니다. 위 1·2번을 따라 하면 여기에 나타납니다.</p>
         )}
-        {rows !== null && rows.length > 0 && (
-          <table className="cli-table">
-            <thead>
-              <tr>
-                <th>기기</th>
-                <th>어디까지</th>
-                <th>마지막 사용</th>
-                <th>만료</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((r) => (
-                <tr key={r.id}>
-                  <td>{r.label || <span className="muted">(이름 없음)</span>}</td>
-                  <td className="muted">{r.scope_label}</td>
-                  {/* 안 쓰이는 자격이 남아 있으면 그게 정리 대상이다 — 그래서 '마지막 사용'을 보여준다 */}
-                  <td className="muted">
-                    {r.last_used_at ? formatAgo(r.last_used_at) : '쓰인 적 없음'}
-                  </td>
-                  <td className="muted">
-                    {r.expires_at ? formatDateTime(r.expires_at).slice(0, 10) : '없음'}
-                  </td>
-                  <td>
-                    <button className="btn-utility btn-danger-ghost" onClick={() => revoke(r)}>
-                      회수
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        {live.length > 0 && <TokenTable rows={live} onRevoke={revoke} />}
+        {live.length === 0 && rows !== null && rows.length > 0 && (
+          <p className="muted">지금 쓸 수 있는 자격이 없습니다 — 아래는 전부 만료됐습니다.</p>
+        )}
+
+        {/* **갈라서 보여준다.** 한 표에 섞고 뱃지만 달면, 줄이 길어질수록 사람이
+            읽기를 포기한다 — 그러면 진짜 수상한 줄 하나도 못 본다.
+            숨기지는 않는다. '전에 뭘 만들었나' 는 남는 게 낫다. */}
+        {dead.length > 0 && (
+          <details className="cli-expired">
+            <summary>
+              만료된 자격 {dead.length}개 — 더는 쓸 수 없습니다
+            </summary>
+            <TokenTable rows={dead} onRevoke={revoke} expired />
+          </details>
         )}
       </section>
     </div>

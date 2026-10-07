@@ -59,6 +59,10 @@ def _token_out(db: Session, token: ApiToken) -> dict:
         "created_at": _iso(token.created_at),
         "last_used_at": _iso(token.last_used_at),
         "expires_at": _iso(token.expires_at),
+        # **만료 여부는 서버가 말한다.** 화면이 expires_at 을 파싱해 지금과 비교하게 두면
+        # 시간대에서 틀어진다 — 이 레포에서 '요청 시각 9시간 전' 으로 이미 한 번 겪었다.
+        # 판정은 인증이 쓰는 규칙과 같아야 한다(services/tokens.py 의 만료 검사).
+        "expired": token.expires_at is not None and as_utc(token.expires_at) < utcnow(),
     }
 
 
@@ -102,7 +106,13 @@ def create(
 def list_tokens(
     user: User = Depends(current_user), db: Session = Depends(get_db)
 ) -> list[dict]:
-    """내 토큰(회수되지 않은 것)만. 원문/해시는 절대 반환하지 않는다."""
+    """내 토큰(회수되지 않은 것)만. 원문/해시는 절대 반환하지 않는다.
+
+    **만료된 것도 돌려준다(expired=true 로 표시해서).** 숨기면 '내가 전에 뭘 만들었나'
+    를 볼 데가 없어진다. 대신 화면이 살아 있는 것과 갈라 보여준다 — 섞어 놓으면
+    이 목록이 '지금 뭐가 돌아다니나' 를 말해주지 못한다(실제로 10줄 중 4줄이
+    이미 죽은 토큰이었는데 살아 있는 것처럼 보였다).
+    """
     rows = db.scalars(
         select(ApiToken)
         .where(ApiToken.user_id == user.id, ApiToken.revoked_at.is_(None))
