@@ -604,3 +604,37 @@ def test_revoked_token_cannot_ask_who_it_is(admin_client):
 
     admin_client.delete(f"/api/tokens/{created['id']}")
     assert anon.get("/api/me", headers=auth).status_code == 401
+
+
+def test_list_marks_expired_instead_of_pretending_they_are_live(admin_client, db):
+    """목록은 '지금 뭐가 돌아다니나' 를 말하는 자리다 — 죽은 걸 살아 있다고 하면 안 된다.
+
+    예전엔 revoked_at 만 걸러서, **인증은 401 로 막는 토큰이 '지금 로그인된 기기' 에
+    그대로 떠 있었다.** 실제 화면에서 10줄 중 4줄이 그랬다(쓰고 버린 '임시 업로드'
+    토큰들). 사람이 읽기를 포기하면 진짜 수상한 줄 하나도 못 보게 된다.
+
+    숨기지는 않는다 — '전에 뭘 만들었나' 가 보이는 게 낫다. 대신 **서버가** 죽었다고
+    말해준다. 화면이 expires_at 을 파싱해 비교하면 시간대에서 틀어진다.
+    """
+    live = make_token(admin_client, expires_in_days=30)
+    dead = make_token(admin_client, expires_in_days=1)
+    db.get(ApiToken, dead["id"]).expires_at = utcnow() - timedelta(days=1)
+    db.commit()
+
+    rows = {r["id"]: r for r in admin_client.get("/api/tokens").json()}
+    assert rows[live["id"]]["expired"] is False
+    assert rows[dead["id"]]["expired"] is True, "만료된 토큰이 살아 있는 것으로 나온다"
+
+    # 만료 판정은 **인증이 쓰는 규칙과 같아야** 한다 — 목록은 죽었다는데 업로드는
+    # 되거나, 그 반대면 둘 중 하나가 거짓말이다.
+    bare = bare_client(admin_client)
+    pid = spaces_of(admin_client)["personal"]["id"]
+    assert upload_with_token(bare, f"/api/spaces/{pid}/files", dead["token"]).status_code == 401
+
+
+def test_list_has_no_expiry_means_not_expired(admin_client):
+    """만료를 안 정한 토큰(expires_at=null)은 영원히 유효하다 — 죽었다고 하면 안 된다."""
+    tok = make_token(admin_client)
+    row = next(r for r in admin_client.get("/api/tokens").json() if r["id"] == tok["id"])
+    assert row["expires_at"] is None
+    assert row["expired"] is False

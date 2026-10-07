@@ -3159,6 +3159,30 @@ button:focus-visible {
   text-decoration: underline;
 }
 
+/* 만료된 자격 — 접어 둔다. 펼치면 같은 표지만 흐리게.
+   **숨기지 않는 이유**: '전에 뭘 만들었나' 가 보이는 게 낫다.
+   **섞지 않는 이유**: 한 표에 뱃지만 달면 줄이 길어질수록 읽기를 포기하게 되고,
+   그러면 진짜 수상한 줄 하나도 못 본다(실제로 10줄 중 4줄이 죽은 토큰이었다). */
+.cli-expired {
+  margin-top: var(--sp-md);
+}
+.cli-expired > summary {
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--ink-muted-48);
+  padding: var(--sp-xs) 0;
+}
+.cli-expired > summary:hover {
+  color: var(--ink);
+}
+.cli-table.is-expired td {
+  color: var(--ink-muted-48);
+}
+.cli-table.is-expired td:first-child {
+  text-decoration: line-through;
+  text-decoration-color: var(--hairline);
+}
+
 .cli-page {
   max-width: 760px;
   margin: 0 auto;
