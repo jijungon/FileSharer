@@ -60,25 +60,14 @@ test('탭 우클릭: 다른 탭 모두 닫기 — 누른 탭만 남는다', asyn
   await expect(page.locator('.tab')).toContainText(names[1])
 })
 
-test('탭 우클릭: 오른쪽 탭 모두 닫기 — 왼쪽은 그대로', async ({ page }) => {
-  await login(page)
-  const names = await openTabs(page, 3)
-
-  await page.locator('.tab').filter({ hasText: names[0] }).click({ button: 'right' })
-  await menu(page).getByRole('menuitem', { name: '오른쪽 탭 모두 닫기' }).click()
-
-  await expect(page.locator('.tab')).toHaveCount(1)
-  await expect(page.locator('.tab')).toContainText(names[0])
-})
-
 /** 못 누르는 항목은 **지우지 않고 흐리게** 둔다 — 메뉴 모양이 상황마다 달라지면
  *  같은 자리에 다른 것이 와서 잘못 누른다. */
-test('탭 우클릭: 맨 오른쪽 탭에서는 "오른쪽 탭 모두 닫기" 가 눌리지 않는다', async ({ page }) => {
+test('탭 우클릭: 탭이 하나면 "다른 탭 모두 닫기" 가 눌리지 않는다', async ({ page }) => {
   await login(page)
-  const names = await openTabs(page, 2)
+  await openTabs(page, 1)
 
-  await page.locator('.tab').filter({ hasText: names[1] }).click({ button: 'right' })
-  const item = menu(page).getByRole('menuitem', { name: '오른쪽 탭 모두 닫기' })
+  await page.locator('.tab').first().click({ button: 'right' })
+  const item = menu(page).getByRole('menuitem', { name: '다른 탭 모두 닫기' })
   await expect(item).toBeVisible() // 사라지지 않는다
   await expect(item).toBeDisabled()
 })
@@ -112,11 +101,23 @@ test('탭 우클릭: 화면 가장자리에서도 메뉴가 잘리지 않는다'
   await login(page)
   const names = await openTabs(page, 3)
 
-  // 가장 오른쪽 탭의 오른쪽 끝 — 여기서 펼치면 메뉴가 화면 밖으로 나간다
+  // 가장 오른쪽 탭의 오른쪽 끝 — 여기서 펼치면 메뉴가 화면 밖으로 나간다.
+  // **스크롤은 직접, 즉시 끝낸다.** scrollIntoViewIfNeeded 는 부드럽게 움직일 수 있는데
+  // 그 스크롤이 아직 흐르는 중에 우클릭하면 **메뉴가 열리자마자 그 스크롤에 닫힌다**
+  // (탭 줄이 움직이면 메뉴가 가리키는 대상이 어긋나므로 닫는 게 맞다).
+  const strip = page.locator('.tab-strip')
+  await strip.evaluate((el) => {
+    el.scrollLeft = el.scrollWidth
+  })
+  // **요소 기준으로, 그 안에서 가장 오른쪽을 누른다.**
+  //  - 화면 좌표(page.mouse)로 짚었더니 탭이 스트립 가장자리에 걸려 잘린 부분을 가리켜
+  //    클릭이 탭 밖에 떨어졌다(메뉴가 아예 안 떴다).
+  //  - 그렇다고 가운데를 누르면 **보정을 꺼도 메뉴가 화면 안에 들어가** 아무것도
+  //    지키지 못한다. 넘치는 건 오른쪽 끝에서 펼칠 때다.
+  // position 은 요소 기준이라 Playwright 가 스크롤·레이아웃을 알아서 맞춘다.
   const tab = page.locator('.tab').filter({ hasText: names[2] })
-  await tab.scrollIntoViewIfNeeded()
   const box = await tab.boundingBox()
-  await page.mouse.click(box!.x + box!.width - 2, box!.y + box!.height / 2, { button: 'right' })
+  await tab.click({ button: 'right', position: { x: box!.width - 4, y: box!.height / 2 } })
   await expect(menu(page)).toBeVisible()
 
   const geom = await menu(page).evaluate((el) => {
