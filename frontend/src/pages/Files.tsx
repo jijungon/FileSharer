@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import FolderTree from '../components/FolderTree'
@@ -10,6 +10,7 @@ import { api, ApiError, Me, SpaceInfo } from '../lib/api'
 import { IconFilePlus, IconFolderPlus, IconRefresh } from '../components/icons'
 import { attachDragChip } from '../lib/dragchip'
 import { ro } from '../lib/josa'
+import { canDo, nextActive, tabsToClose, type TabAction } from '../lib/tabs'
 import {
   backTo,
   movedLabel,
@@ -444,6 +445,81 @@ export default function Files() {
       }
     }
   }
+
+  // 탭 우클릭 메뉴 — 어느 탭 위에서, 화면 어디에 떴나.
+  // 위치는 **화면 기준(fixed)** 으로 잡는다. 예전에 공유 팝오버를 position:absolute 로
+  // 뒀다가, 기준이 되는 조상이 뷰어 열림 여부에 따라 바뀌면서 좌우로 튀었다(v1.0.7).
+  const [tabMenu, setTabMenu] = useState<{ id: string; x: number; y: number } | null>(null)
+  const tabMenuRef = useRef<HTMLDivElement>(null)
+
+  // **화면 밖으로 나가지 않게 당겨 넣는다.** 포인터 자리에 그대로 띄우면 오른쪽·아래
+  // 가장자리에서 메뉴 절반이 잘린다. 크기를 짐작하지 않고 **그려진 뒤 재서** 옮긴다 —
+  // 항목 글자가 길어지거나 하나 늘면 짐작은 바로 틀린다.
+  useLayoutEffect(() => {
+    const el = tabMenuRef.current
+    if (!el || !tabMenu) return
+    const r = el.getBoundingClientRect()
+    const pad = 8
+    const x = Math.max(pad, Math.min(tabMenu.x, window.innerWidth - r.width - pad))
+    const y = Math.max(pad, Math.min(tabMenu.y, window.innerHeight - r.height - pad))
+    if (x !== tabMenu.x || y !== tabMenu.y) setTabMenu({ ...tabMenu, x, y })
+  }, [tabMenu])
+
+  /** 여러 탭을 **한 번에** 닫는다.
+   *
+   * closeTab 을 반복해서 부르면 안 된다 — 매 호출이 그때의 openTabs 를 보고 다음 목록을
+   * 만드는데, 그 사이 state 는 아직 안 바뀌어 있어 마지막 호출이 앞의 것을 전부 되살린다.
+   *
+   * 미저장 확인도 **한 번만** 묻는다. 탭마다 물으면 열 개를 닫을 때 창이 세 번 뜬다.
+   */
+  function closeTabs(ids: string[]) {
+    if (ids.length === 0) return
+    const closing = new Set(ids)
+    const unsaved = ids.filter((id) => dirtyTabs.has(id))
+    if (unsaved.length > 0) {
+      const what =
+        unsaved.length === 1
+          ? `'${openTabs.find((t) => t.id === unsaved[0])?.name ?? ''}'`
+          : `${unsaved.length}개`
+      if (!window.confirm(`저장하지 않은 변경이 ${what} 있습니다. 그래도 닫을까요?`)) return
+    }
+
+    const goTo = selected ? nextActive(openTabs, closing, selected.id) : null
+    setOpenTabs((tabs) => tabs.filter((t) => !closing.has(t.id)))
+    setDirtyTabs((d) => {
+      const n = new Set(d)
+      for (const id of ids) n.delete(id)
+      return n
+    })
+    if (selected && closing.has(selected.id)) {
+      setSelected(goTo)
+      navigate(goTo ? `/files/${goTo.id}` : currentFolder ? `/files/${currentFolder.id}` : '/files')
+    }
+  }
+
+  function runTabAction(action: TabAction) {
+    const id = tabMenu?.id
+    setTabMenu(null)
+    if (id) closeTabs(tabsToClose(openTabs, id, action))
+  }
+
+  // 메뉴는 바깥을 누르거나 Esc 로 닫는다. 스크롤·리사이즈에도 닫는다 — 떠 있는 자리가
+  // 더는 그 탭 위가 아니게 되면, 보이는 것과 실제 대상이 어긋난다.
+  useEffect(() => {
+    if (!tabMenu) return
+    const close = () => setTabMenu(null)
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && close()
+    window.addEventListener('pointerdown', close)
+    window.addEventListener('keydown', onKey)
+    window.addEventListener('resize', close)
+    window.addEventListener('scroll', close, true)
+    return () => {
+      window.removeEventListener('pointerdown', close)
+      window.removeEventListener('keydown', onKey)
+      window.removeEventListener('resize', close)
+      window.removeEventListener('scroll', close, true)
+    }
+  }, [tabMenu])
 
   // 외부/동시 삭제(다른 세션·API·e2e reset)로 노드가 사라진 걸 편집기가 감지하면 호출된다.
   // 미저장이 아니면 탭을 조용히 닫아(삭제된 노드로 하트비트가 계속 404를 쏘지 않게) 목록·트리도 갱신.
@@ -1657,6 +1733,10 @@ export default function Files() {
                         closeTab(tab.id)
                       }
                     }}
+                    onContextMenu={(e) => {
+                      e.preventDefault() // 브라우저 기본 메뉴 대신 우리 것
+                      setTabMenu({ id: tab.id, x: e.clientX, y: e.clientY })
+                    }}
                   >
                     <span className="tab-name">{tab.name}</span>
                     <button
@@ -1675,6 +1755,44 @@ export default function Files() {
                 )
               })}
               </div>
+              {/* 탭 우클릭 메뉴. 탭마다 ✕ 가 있고 가운데클릭으로도 닫히지만, **여러 개를
+                  한꺼번에** 닫을 길이 없었다 — 열 개를 열어두면 ✕ 를 열 번 눌러야 했다.
+                  (트리 행의 우클릭 메뉴는 예전에 없앴는데, 그건 같은 일을 행에서 바로
+                  할 수 있어서였다. 여기는 그 대안이 아예 없다.) */}
+              {tabMenu && (
+                <div
+                  className="tab-menu"
+                  ref={tabMenuRef}
+                  role="menu"
+                  aria-label="탭"
+                  style={{ left: tabMenu.x, top: tabMenu.y }}
+                  // 메뉴 안을 누르는 건 '바깥 클릭' 이 아니다 — 안 막으면 항목을 누르는
+                  // 순간 메뉴가 먼저 닫혀 클릭이 허공에 떨어진다.
+                  onPointerDown={(e) => e.stopPropagation()}
+                >
+                  {(
+                    [
+                      ['this', '닫기'],
+                      ['others', '다른 탭 모두 닫기'],
+                      ['right', '오른쪽 탭 모두 닫기'],
+                      ['all', '모두 닫기'],
+                    ] as [TabAction, string][]
+                  ).map(([action, label]) => (
+                    <button
+                      key={action}
+                      role="menuitem"
+                      className="tab-menu-item"
+                      // 누를 수 없는 항목도 **지우지 않고 흐리게** 둔다. 메뉴 모양이
+                      // 상황마다 달라지면 같은 자리에 다른 것이 와서 잘못 누르게 된다.
+                      disabled={!canDo(openTabs, tabMenu.id, action)}
+                      onClick={() => runTabAction(action)}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              )}
+
               {/* Stage B: 탭 줄 오른쪽 — 파일 액션 + | 칸막이 + (활성 편집기가 portal로 넣는 저장/자동저장) + 삭제 + 닫기 */}
               <div className="tab-actions">
                 {/* 파일 액션 — 자동저장·저장 **왼쪽**. 삭제·닫기와 한 줄에 모여 있어야
