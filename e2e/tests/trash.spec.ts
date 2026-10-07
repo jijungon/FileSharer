@@ -335,10 +335,15 @@ test('지우고 바로 휴지통을 눌러도, 늦게 온 옛 목록이 덮어�
   const trashRow = page.locator('.file-table tbody tr').filter({ hasText: name })
   await expect(trashRow).toBeVisible()
 
-  // **늦은 응답이 도착한 뒤에 본다.** toBeVisible 은 지금 보이면 바로 통과하지,
+  // **늦은 응답이 전부 도착한 뒤에 본다.** toBeVisible 은 지금 보이면 바로 통과하지,
   // 나중에 사라지는지는 보지 않는다 — 처음엔 그렇게 짰다가, 고장난 코드에서도
   // 테스트가 통과하는 걸 보고 알았다.
+  //
+  // 그리고 **첫 응답만 기다리면 모자란다.** 휴지통으로 넘어간 뒤에 일반 목록 요청이
+  // 한 번 더 나가는데(계측으로 확인), 그게 늦게 도착해 덮는다. 그래서 운 좋으면
+  // 통과하고 아니면 터지는 테스트였다. 네트워크가 잠잠해질 때까지 기다린다.
   await slowList
+  await page.waitForLoadState('networkidle')
   await expect(trashRow, '늦게 온 일반 목록이 휴지통 목록을 덮었다').toBeVisible()
   await expect(page.locator('.sidebar-trash')).toHaveClass(/active/)
 })
