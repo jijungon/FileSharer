@@ -173,23 +173,28 @@ test('없는 토큰은 404 — 링크를 찍어볼 수 없다', async ({ page, b
   await anon.close()
 })
 
-test('공유 페이지가 HTML·코드·영상을 미리보기로 보여준다', async ({ page, browser }) => {
-  // 예전엔 md·txt·이미지·PDF 만 보여주고 나머지는 "미리보기를 지원하지 않는 형식"이었다.
-  // 앱 안 뷰어는 진작 보여주고 있었으니 같은 파일이 두 화면에서 다르게 보였다.
+// 예전엔 md·txt·이미지·PDF 만 보여주고 나머지는 "미리보기를 지원하지 않는 형식"이었다.
+// 앱 안 뷰어는 진작 보여주고 있었으니 같은 파일이 두 화면에서 다르게 보였다.
+//
+// **셋을 한 테스트에 묶었다가 쪼갰다.** 묶으니 12초 넘게 걸렸고, 무엇보다 실패하면
+// `toContainText 실패` 한 줄만 남아 **HTML·코드·영상 중 뭐가 깨졌는지 알 수 없었다.**
+// 쪼개면 제목이 곧 답이다. 셋은 서로 아무것도 공유하지 않으니 나누는 비용도 없다.
+
+test('공유 페이지: HTML 은 **격리해서** 보여준다 — 심어둔 스크립트가 돌면 안 된다', async ({
+  page,
+  browser,
+}) => {
   await loginAs(page, ACCOUNT)
-
-  const anon = await browser.newContext()
-
-  // ① HTML — **격리해서** 보여준다. 심어둔 스크립트가 돌면 안 된다.
-  const htmlUrl = await share(page, '리포트', {
+  const url = await share(page, '리포트', {
     name: `리포트_${RUN_TAG}.html`,
     body: '<h1>공유된 리포트</h1><script>document.body.innerHTML="RAN"</script>',
     mime: 'application/octet-stream', // 업로더가 일반 mime 을 보내도 확장자로 되짚는다
   })
   await closeSharePopover(page)
 
+  const anon = await browser.newContext()
   const htmlPage = await anon.newPage()
-  await htmlPage.goto(htmlUrl)
+  await htmlPage.goto(url)
   const frame = htmlPage.locator('iframe')
   await expect(frame).toHaveAttribute('sandbox', '')
   // sandbox 라 부모에서 안을 들여다볼 수 없다 — srcdoc 에 원문이 그대로 있는지로 확인한다
@@ -197,34 +202,47 @@ test('공유 페이지가 HTML·코드·영상을 미리보기로 보여준다',
   await expect(htmlPage.getByText('미리보기를 지원하지 않는')).toHaveCount(0)
 
   // 서버도 같은 걸 막아준다(iframe 과 이중 방어) — 주소창에 /raw 를 직접 열어도 안전해야 한다
-  const raw = await anon.request.get(`${htmlUrl}/raw`)
+  const raw = await anon.request.get(`${url}/raw`)
   expect(raw.headers()['content-security-policy']).toBe('sandbox')
   expect(raw.headers()['x-content-type-options']).toBe('nosniff')
 
-  // ② 코드 — 마크다운이 아니라 코드블록으로. `#` 주석이 제목으로 잡히면 안 된다.
-  const codeUrl = await share(page, '코드', {
+  await anon.close()
+})
+
+test('공유 페이지: 코드는 코드블록으로 — `#` 주석이 제목으로 잡히면 안 된다', async ({
+  page,
+  browser,
+}) => {
+  await loginAs(page, ACCOUNT)
+  const url = await share(page, '코드', {
     name: `설정_${RUN_TAG}.py`,
     body: 'def f():\n    return 1\n\n# 주석은 제목이 아니다\n',
     mime: 'application/octet-stream',
   })
   await closeSharePopover(page)
 
+  const anon = await browser.newContext()
   const codePage = await anon.newPage()
-  await codePage.goto(codeUrl)
+  await codePage.goto(url)
   await expect(codePage.locator('pre code')).toContainText('def f():')
   await expect(codePage.locator('.share-toc')).toHaveCount(0) // 목차가 서면 안 된다
 
-  // ③ 영상 — 통째로 받지 않고 주소를 직접 문다.
-  //    원본(/raw)이 아니라 변환 경로다 — 브라우저가 못 읽는 오디오 코덱이면 서버가 AAC 로 바꾼다.
-  const vidUrl = await share(page, '영상', {
+  await anon.close()
+})
+
+test('공유 페이지: 영상은 통째로 받지 않고 주소를 직접 문다', async ({ page, browser }) => {
+  await loginAs(page, ACCOUNT)
+  const url = await share(page, '영상', {
     name: `영상_${RUN_TAG}.mp4`,
     body: '\u0000\u0000\u0000 ftypisom',
     mime: 'application/octet-stream',
   })
   await closeSharePopover(page)
 
+  const anon = await browser.newContext()
   const vidPage = await anon.newPage()
-  await vidPage.goto(vidUrl)
+  await vidPage.goto(url)
+  // 원본(/raw)이 아니라 변환 경로다 — 브라우저가 못 읽는 오디오 코덱이면 서버가 AAC 로 바꾼다.
   await expect(vidPage.locator('video')).toHaveAttribute('src', /\/preview\.mp4$/)
 
   await anon.close()
