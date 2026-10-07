@@ -10,7 +10,8 @@ interface TokenRow {
   scope_label: string
   created_at: string
   last_used_at: string | null
-  expires_at: string | null
+  /** **반드시 있다.** 공유 링크와 같은 규칙으로, 만료 없는 토큰은 만들 수 없다. */
+  expires_at: string
   /** 서버가 판정한다 — 화면이 expires_at 을 파싱해 비교하면 시간대에서 틀어진다. */
   expired: boolean
 }
@@ -61,7 +62,7 @@ function TokenTable({
               {r.last_used_at ? formatAgo(r.last_used_at) : '쓰인 적 없음'}
             </td>
             <td className="muted">
-              {r.expires_at ? formatDateTime(r.expires_at).slice(0, 10) : '없음'}
+              {formatDateTime(r.expires_at).slice(0, 10)}
             </td>
             <td>
               {/* 만료된 것도 지울 수 있어야 한다 — 아니면 이 목록은 영원히 길어지기만 한다 */}

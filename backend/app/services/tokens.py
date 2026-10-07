@@ -17,6 +17,7 @@ from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from ..config import get_settings
 from ..models import ApiToken, Node, Space, User, as_utc, new_id, utcnow
 from ..security import hash_password, verify_password
 from .permissions import is_descendant
@@ -47,20 +48,24 @@ def _split(raw: str) -> tuple[str | None, str]:
 def _resolve_expiry(days: int | None, minutes: int | None):
     """만료 시각 계산. 분(minutes)이 우선 — 서버 업로드용 짧은 '임시 토큰'에 쓴다.
     (예: 10분 발급 → 그 창 안에서 여러 파일 업로드 가능, 지나면 자동 만료.)
-    분·일 모두 없으면 무기한(None)."""
+
+    **무기한은 없다.** 분·일을 모두 비우면 설정값(token_default_days, 기본 90일)이 붙는다.
+    예전엔 둘 다 없으면 None(영원히 유효)이었다 — 공유 링크는 처음부터 만료가 필수였는데
+    토큰만 빠져 있었다. 같은 설계를 두 곳에 다르게 적용한 셈이고, 그래서 한 번도 안 쓰인
+    토큰이 영원히 살아 있었다. 게다가 본인만 자기 토큰을 볼 수 있어서(관리자도 못 본다)
+    사람이 떠나면 **회수할 길이 없다.**"""
     if minutes is not None:
         if not 1 <= minutes <= _MAX_EXPIRES_MINUTES:
             raise HTTPException(
                 status_code=422, detail=f"만료(분)는 1~{_MAX_EXPIRES_MINUTES} 사이여야 합니다"
             )
         return utcnow() + timedelta(minutes=minutes)
-    if days is not None:
-        if not 1 <= days <= _MAX_EXPIRES_DAYS:
-            raise HTTPException(
-                status_code=422, detail=f"만료는 1~{_MAX_EXPIRES_DAYS}일 사이여야 합니다"
-            )
-        return utcnow() + timedelta(days=days)
-    return None
+    days = days if days is not None else get_settings().token_default_days
+    if not 1 <= days <= _MAX_EXPIRES_DAYS:
+        raise HTTPException(
+            status_code=422, detail=f"만료는 1~{_MAX_EXPIRES_DAYS}일 사이여야 합니다"
+        )
+    return utcnow() + timedelta(days=days)
 
 
 def create_token(

@@ -7,7 +7,7 @@ from datetime import UTC, datetime, timedelta
 
 from fastapi.testclient import TestClient
 
-from app.models import ApiToken, utcnow
+from app.models import ApiToken, as_utc, utcnow
 
 
 def spaces_of(client):
@@ -180,7 +180,12 @@ def test_cannot_revoke_others_token(admin_client, db):
 
     other = create_user(db, email="dev@corp.example", password="pw-123456")
     db.commit()
-    tok = ApiToken(user_id=other.id, label="theirs", token_hash="x")
+    tok = ApiToken(
+        user_id=other.id,
+        label="theirs",
+        token_hash="x",
+        expires_at=utcnow() + timedelta(days=1),  # 만료는 이제 필수다
+    )
     db.add(tok)
     db.commit()
     res = admin_client.delete(f"/api/tokens/{tok.id}")
@@ -632,9 +637,24 @@ def test_list_marks_expired_instead_of_pretending_they_are_live(admin_client, db
     assert upload_with_token(bare, f"/api/spaces/{pid}/files", dead["token"]).status_code == 401
 
 
-def test_list_has_no_expiry_means_not_expired(admin_client):
-    """만료를 안 정한 토큰(expires_at=null)은 영원히 유효하다 — 죽었다고 하면 안 된다."""
-    tok = make_token(admin_client)
+def test_token_always_expires_even_when_not_asked(admin_client):
+    """**무기한 토큰은 만들 수 없다.** 공유 링크와 같은 규칙이다.
+
+    예전엔 만료를 비우면 영원히 유효한 토큰이 나왔다. 본인만 자기 토큰을 볼 수 있어서
+    (관리자도 못 본다) 사람이 떠나면 그걸 회수할 길이 없었다. 비우면 설정값이 붙는다.
+    """
+    tok = make_token(admin_client)  # 만료를 아예 안 준다
     row = next(r for r in admin_client.get("/api/tokens").json() if r["id"] == tok["id"])
-    assert row["expires_at"] is None
+    assert row["expires_at"] is not None, "만료 없는 토큰이 만들어졌다"
     assert row["expired"] is False
+
+    # 기본값은 설정에서 온다 — 디바이스 플로우(CLI 로그인)가 쓰던 90일과 같다
+    days = (as_utc(datetime.fromisoformat(row["expires_at"])) - utcnow()).days
+    assert 88 <= days <= 90, f"기본 만료가 90일 언저리여야 한다 (지금 {days}일)"
+
+
+def test_token_expiry_days_out_of_range_rejected(admin_client):
+    """1~365일 밖은 거절한다 — 비워서 우회하는 길도 이제 없다."""
+    for bad in (0, -1, 366):
+        res = admin_client.post("/api/tokens", json={"label": "x", "expires_in_days": bad})
+        assert res.status_code == 422, bad

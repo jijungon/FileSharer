@@ -62,6 +62,10 @@ class Settings(BaseSettings):
     backup_keep_monthly: int = 12  # 그보다 오래된 건 월 단위로 1년치
     backup_tick_minutes: int = 60  # 회차가 비었는지 확인하는 주기
 
+    # API 토큰도 **반드시 만료한다** — 공유 링크와 같은 규칙이다.
+    # 비워서 만들면 이 값이 붙는다. 디바이스 플로우(CLI 로그인)가 쓰던 90일과 맞췄다.
+    token_default_days: int = 90
+
     share_default_days: int = 7
     share_max_days: int = 30
     # 휴지통(soft delete) 보존 기간(일). 이보다 오래된 항목은 자동으로 완전삭제(purge).
