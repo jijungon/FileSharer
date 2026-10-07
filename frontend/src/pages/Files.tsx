@@ -10,7 +10,7 @@ import { api, ApiError, Me, SpaceInfo } from '../lib/api'
 import { IconFilePlus, IconFolderPlus, IconRefresh } from '../components/icons'
 import { attachDragChip } from '../lib/dragchip'
 import { ro } from '../lib/josa'
-import { canDo, nextActive, tabsToClose, type TabAction } from '../lib/tabs'
+import { canDo, nextActive, tabsToClose, unsavedPrompt, type TabAction } from '../lib/tabs'
 import {
   backTo,
   movedLabel,
@@ -475,14 +475,10 @@ export default function Files() {
   function closeTabs(ids: string[]) {
     if (ids.length === 0) return
     const closing = new Set(ids)
-    const unsaved = ids.filter((id) => dirtyTabs.has(id))
-    if (unsaved.length > 0) {
-      const what =
-        unsaved.length === 1
-          ? `'${openTabs.find((t) => t.id === unsaved[0])?.name ?? ''}'`
-          : `${unsaved.length}개`
-      if (!window.confirm(`저장하지 않은 변경이 ${what} 있습니다. 그래도 닫을까요?`)) return
-    }
+    const unsaved = ids
+      .filter((id) => dirtyTabs.has(id))
+      .map((id) => openTabs.find((t) => t.id === id)?.name ?? '')
+    if (unsaved.length > 0 && !window.confirm(unsavedPrompt(unsaved))) return
 
     const goTo = selected ? nextActive(openTabs, closing, selected.id) : null
     setOpenTabs((tabs) => tabs.filter((t) => !closing.has(t.id)))
