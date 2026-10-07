@@ -136,3 +136,41 @@ test('탭 우클릭: 화면 가장자리에서도 메뉴가 잘리지 않는다'
   expect(geom.right, `오른쪽이 화면 밖 (${geom.right} > ${geom.w})`).toBeLessThanOrEqual(geom.w)
   expect(geom.bottom, '아래쪽이 화면 밖').toBeLessThanOrEqual(geom.h)
 })
+
+/** 미저장 탭을 닫을 때 — **한 번만** 묻고, 몇 개인지 말한다.
+ *
+ * 탭마다 물으면 열 개를 닫을 때 창이 세 번 뜨고, 두 번째부터는 읽지 않고 누르게 된다.
+ * 그래서 이 한 문장이 유일한 방어선이다. 취소하면 **하나도** 닫히지 않아야 한다.
+ */
+test('탭 우클릭: 미저장이 있으면 한 번 묻고, 취소하면 하나도 안 닫힌다', async ({ page }) => {
+  await login(page)
+  const names = await openTabs(page, 3)
+
+  // 첫 탭을 고쳐 미저장으로 만든다
+  await page.locator('.tab').filter({ hasText: names[0] }).click()
+  // 열린 탭마다 편집기가 **살아 있다**(비활성은 display:none). 그냥 .cm-content 로
+  // 집으면 셋이 잡힌다 — 보이는 것만 고른다.
+  await page.locator('.viewer-area:visible .cm-content').click()
+  await page.keyboard.type('고침')
+  await expect(page.locator('.tab.dirty').filter({ hasText: names[0] })).toBeVisible()
+
+  // ① 취소 — 아무것도 닫히지 않는다
+  const asked: string[] = []
+  page.once('dialog', (d) => {
+    asked.push(d.message())
+    void d.dismiss()
+  })
+  await page.locator('.tab').filter({ hasText: names[1] }).click({ button: 'right' })
+  await menu(page).getByRole('menuitem', { name: '모두 닫기', exact: true }).click()
+
+  await expect(page.locator('.tab')).toHaveCount(3)
+  expect(asked, '확인창이 한 번만 떠야 한다').toHaveLength(1)
+  expect(asked[0]).toContain('저장하지 않은 변경')
+  expect(asked[0]).toContain(names[0]) // 하나뿐이면 어느 파일인지 말한다
+
+  // ② 확인 — 전부 닫힌다
+  page.once('dialog', (d) => void d.accept())
+  await page.locator('.tab').filter({ hasText: names[1] }).click({ button: 'right' })
+  await menu(page).getByRole('menuitem', { name: '모두 닫기', exact: true }).click()
+  await expect(page.locator('.tab')).toHaveCount(0)
+})

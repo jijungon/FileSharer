@@ -61,3 +61,19 @@ export function nextActive<T extends { id: string }>(
   const before = tabs.slice(0, at).filter((t) => !closing.has(t.id))
   return before[before.length - 1] ?? null
 }
+
+/** 미저장 탭을 닫기 전에 띄울 말.
+ *
+ * **한 번만 묻는다.** 탭마다 물으면 열 개를 닫을 때 창이 세 번 뜨고, 두 번째부터는
+ * 읽지 않고 누르게 된다 — 그게 사고가 나는 지점이다. 그래서 이 한 문장이 유일한
+ * 방어선이고, **몇 개인지**를 반드시 말해야 한다.
+ *
+ * 하나일 때 "저장하지 않은 변경이 '보고서.md' 있습니다" 는 말이 안 된다. 이름이
+ * 앞으로 나와야 문장이 선다.
+ */
+export function unsavedPrompt(names: string[]): string {
+  if (names.length === 1) {
+    return `'${names[0]}' 에 저장하지 않은 변경이 있습니다. 그래도 닫을까요?`
+  }
+  return `저장하지 않은 변경이 ${names.length}개 있습니다. 그래도 닫을까요?`
+}
