@@ -359,23 +359,37 @@ export default function Files() {
   // 사람이 빠르게 눌러도 똑같이 생긴다).
   const reloadSeq = useRef(0)
 
+  // **어느 화면의 목록인가.** 순서만 봐서는 못 막는 경우가 있다 — 휴지통으로 넘어간
+  // *뒤에* 일반 목록 요청이 새로 나가면, 그게 '가장 새로운' 요청이라 순서 검사를
+  // 통과해 휴지통 목록을 덮는다. 계측해보니 실제로 그랬다:
+  //
+  //   seq=1 root  APPLIED(62)  →  seq=2 trash APPLIED(8)  →  seq=3 root ...
+  //
+  // 그래서 "더 새 요청이 있나" 와 "지금 그 화면을 보고 있나" 를 **둘 다** 본다.
+  const viewKey = `${spaceId ?? ''}|${currentFolder?.id ?? ''}|${trashMode}`
+  const viewRef = useRef(viewKey)
+  viewRef.current = viewKey
+
   const reload = useCallback(async () => {
     if (!spaceId) return
     const seq = ++reloadSeq.current
+    const mine = viewKey // 이 요청을 띄운 화면
     try {
       const list = trashMode
         ? await listTrash(spaceId)
         : currentFolder
           ? await listNodeChildren(currentFolder.id)
           : await listSpaceChildren(spaceId)
-      if (seq !== reloadSeq.current) return // 더 최신 요청이 떠 있다 — 이 응답은 버린다
+      // 더 새 요청이 떠 있거나, 그 사이 다른 화면으로 옮겼으면 이 응답은 버린다
+      if (seq !== reloadSeq.current || mine !== viewRef.current) return
       setItems(list)
     } catch (err) {
-      if (seq !== reloadSeq.current) return // 옛 요청의 실패로 새 화면에 경고를 띄우지 않는다
+      // 옛 요청·지나간 화면의 실패로 지금 화면에 경고를 띄우지 않는다
+      if (seq !== reloadSeq.current || mine !== viewRef.current) return
       if (err instanceof ApiError && err.status === 401) navigate('/login', { replace: true })
       else setNotice(err instanceof Error ? err.message : '목록을 불러오지 못했습니다')
     }
-  }, [spaceId, currentFolder, trashMode, navigate])
+  }, [spaceId, currentFolder, trashMode, navigate, viewKey])
 
   useEffect(() => {
     reload()
