@@ -16,24 +16,21 @@ async function trashFromTree(page: import('@playwright/test').Page, item: import
 /**
  * 휴지통 행의 '완전 삭제'를 누른다.
  *
- * 예전엔 그 버튼이 `visibility: hidden` 이라 **행에 마우스를 올려야만** 존재했다.
- * hover 와 click 사이에 목록이 다시 그려지면 hover 가 풀려 버튼이 사라지고, click 은
- * 보이기를 기다리다 예산을 태웠다(부하가 걸리면 4회 중 1회꼴). hover+click 을 묶어
- * 재시도하는 것으로 덮어뒀지만, 재시도가 다 실패하면 그대로 터졌다.
+ * **hover 도 재시도도 걷어냈다.** 예전엔 그 버튼이 `visibility: hidden` 이라 행에
+ * 마우스를 올려야만 존재했고, hover 와 click 사이에 목록이 다시 그려지면 hover 가
+ * 풀려 버튼이 사라졌다. 그래서 hover+click 을 20초까지 두드리는 고리로 덮어뒀다.
  *
- * 이제 `opacity: 0` 이라 **숨겨진 게 아니라 옅을 뿐**이다(트리의 🗑 과 같은 방식).
- * 그래서 "hover 가 풀려 버튼이 사라진다" 쪽 절반은 없어졌다.
+ * 지금은 `.file-table .row-action { opacity: 0 }` 이다 — **숨겨진 게 아니라 옅을
+ * 뿐이고**, pointer-events 도 안 잠겨 있다(styles.css 의 그 주석 참고). Playwright 의
+ * 보임 판정은 opacity 를 보지 않으므로 hover 없이 그냥 눌린다. 트리의 🗑 을 누르는
+ * trashFromTree 가 이미 그렇게 하고 있었다.
  *
- * 하지만 나머지 절반이 남아 있다 — **목록이 다시 그려지면 행 자체가 떨어져 나간다.**
- * 그때는 클릭이 기본 30초를 다 태우고 터진다(재시도를 걷어냈다가 실제로 그랬다).
- * locator 는 시도할 때마다 다시 찾으므로, 짧게 여러 번 두드리는 편이 확실하다.
- * 근본 해결은 목록을 덜 다시 그리는 것이지만 그건 별건이다.
+ * 남아 있던 고리는 **실패를 20초 동안 숨기기만** 했다 — 간헐 실패가 나면 "20초를
+ * 태우고 터졌다" 는 것 말고는 아무것도 알려주지 않았다. 진짜 원인(목록 다시 그리기)은
+ * 따로 고쳤다 — reload 가 늦게 온 옛 응답으로 새 목록을 덮던 것(Files.tsx).
  */
 async function purge(row: import('@playwright/test').Locator) {
-  await expect(async () => {
-    await row.hover() // 사람이 하는 그대로 — 행에 올리면 버튼이 드러난다
-    await row.getByRole('button', { name: '완전 삭제' }).click({ timeout: 1500 })
-  }).toPass({ timeout: 20_000 })
+  await row.getByRole('button', { name: '완전 삭제' }).click()
 }
 
 
@@ -292,10 +289,56 @@ test('열어보고 별표까지 단 파일도 완전 삭제된다', async ({ pag
   await expect(page.locator('.tree-name').filter({ hasText: name })).toHaveCount(0)
 
   await page.locator('.sidebar-trash').click()
-  const trashRow = page.getByRole('row', { name: new RegExp(name.replace('.', '\\.')) })
+  // 행은 **글자로** 집는다. getByRole('row', {name}) 은 칸을 전부 이어 붙여 이름을
+  // 만드는데, 휴지통엔 '삭제 예정'(남은 시간) 칸이 있어 그 글자가 바뀌면 통째로 어긋난다.
+  const trashRow = page.locator('.file-table tbody tr').filter({ hasText: name })
   await expect(trashRow).toBeVisible()
 
   await purge(trashRow)
   // 실패하면 행이 그대로 남는다(guard가 에러를 띄우고 목록을 다시 읽으므로)
-  await expect(page.getByRole('cell', { name: new RegExp(name.replace('.', '\\.')) })).toHaveCount(0)
+  await expect(page.locator('.file-table tbody tr').filter({ hasText: name })).toHaveCount(0)
+})
+
+/** 늦게 온 옛 목록이 **휴지통 목록을 덮지 않는다.**
+ *
+ * 파일을 지우면 guard 가 reload 를 한 번 돌리고(일반 목록), 바로 휴지통을 누르면
+ * 또 돈다(휴지통 목록). 둘 중 **먼저 보낸 쪽이 늦게 도착하면** 휴지통 화면에 일반
+ * 목록이 들어앉아, 방금 지운 파일이 휴지통에 없는 것처럼 보였다.
+ *
+ * 실제로 이것 때문에 위 테스트가 간헐 실패했다. 그런데 간헐 실패는 **고쳤다는 증거가
+ * 되지 못한다** — 초록이어도 그날 운이 좋았을 수 있다. 그래서 여기서는 일반 목록
+ * 응답을 일부러 늦춰 **경쟁을 확실히 만들어 놓고** 본다.
+ */
+test('지우고 바로 휴지통을 눌러도, 늦게 온 옛 목록이 덮어쓰지 않는다', async ({ page }) => {
+  page.on('dialog', (d) => d.accept())
+  await login(page)
+
+  const name = `경쟁_${Date.now()}.txt`
+  await page.locator('input[type="file"]:not([webkitdirectory])').setInputFiles({
+    name,
+    mimeType: 'text/plain',
+    buffer: Buffer.from('x'),
+  })
+  const item = page.locator('.tree-name').filter({ hasText: name })
+  await expect(item).toBeVisible()
+
+  // **일반 목록만** 늦춘다. 휴지통 목록은 그대로라 반드시 뒤집힌다.
+  await page.route('**/api/spaces/*/children', async (route) => {
+    await new Promise((r) => setTimeout(r, 1500))
+    await route.continue()
+  })
+  const slowList = page.waitForResponse((r) => r.url().includes('/children'))
+
+  await trashFromTree(page, item)
+  await page.locator('.sidebar-trash').click()
+
+  const trashRow = page.locator('.file-table tbody tr').filter({ hasText: name })
+  await expect(trashRow).toBeVisible()
+
+  // **늦은 응답이 도착한 뒤에 본다.** toBeVisible 은 지금 보이면 바로 통과하지,
+  // 나중에 사라지는지는 보지 않는다 — 처음엔 그렇게 짰다가, 고장난 코드에서도
+  // 테스트가 통과하는 걸 보고 알았다.
+  await slowList
+  await expect(trashRow, '늦게 온 일반 목록이 휴지통 목록을 덮었다').toBeVisible()
+  await expect(page.locator('.sidebar-trash')).toHaveClass(/active/)
 })

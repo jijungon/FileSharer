@@ -351,16 +351,26 @@ export default function Files() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nodeId])
 
+  // **늦게 온 옛 응답이 새 목록을 덮지 않게 한다.**
+  // 파일을 지우면 guard 가 reload 를 한 번 돌리고, 바로 휴지통을 누르면 또 돈다.
+  // 둘 중 먼저 보낸 쪽이 늦게 도착하면 휴지통 목록이 일반 목록으로 덮였다 —
+  // 방금 지운 파일이 휴지통에 없는 것처럼 보인다(e2e 가 그걸로 간헐 실패했고,
+  // 사람이 빠르게 눌러도 똑같이 생긴다).
+  const reloadSeq = useRef(0)
+
   const reload = useCallback(async () => {
     if (!spaceId) return
+    const seq = ++reloadSeq.current
     try {
       const list = trashMode
         ? await listTrash(spaceId)
         : currentFolder
           ? await listNodeChildren(currentFolder.id)
           : await listSpaceChildren(spaceId)
+      if (seq !== reloadSeq.current) return // 더 최신 요청이 떠 있다 — 이 응답은 버린다
       setItems(list)
     } catch (err) {
+      if (seq !== reloadSeq.current) return // 옛 요청의 실패로 새 화면에 경고를 띄우지 않는다
       if (err instanceof ApiError && err.status === 401) navigate('/login', { replace: true })
       else setNotice(err instanceof Error ? err.message : '목록을 불러오지 못했습니다')
     }
