@@ -2,7 +2,7 @@ import { LanguageDescription } from '@codemirror/language'
 import { languages } from '@codemirror/language-data'
 import { markdown } from '@codemirror/lang-markdown'
 import type { Extension } from '@codemirror/state'
-import CodeMirror, { EditorView } from '@uiw/react-codemirror'
+import CodeMirror from '@uiw/react-codemirror'
 import { useScrollSync } from '../lib/scrollsync'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
@@ -10,40 +10,8 @@ import { ApiError, SpaceInfo } from '../lib/api'
 import { acquireLock, downloadUrl, LockState, NodeInfo, releaseLock } from '../lib/files'
 import { formatBytes } from '../lib/format'
 import { useAppTheme } from '../lib/theme'
+import { editorThemeFor } from '../lib/editorTheme'
 
-// DnX풍 다크 에디터 테마 (near-black base + 골드 커서/활성줄)
-const EDITOR_DARK = EditorView.theme(
-  {
-    '&': { color: '#dedce4', backgroundColor: '#131315' },
-    '.cm-content': { caretColor: '#cba85a', padding: '8px 0' },
-    '.cm-cursor, .cm-dropCursor': { borderLeftColor: '#cba85a' },
-    '.cm-selectionBackground, &.cm-focused .cm-selectionBackground, .cm-content ::selection': {
-      backgroundColor: '#3a3427',
-    },
-    '.cm-gutters': { backgroundColor: '#131315', color: '#57565d', border: 'none' },
-    '.cm-activeLine': { backgroundColor: 'rgba(203, 168, 90, 0.045)' },
-    '.cm-activeLineGutter': { backgroundColor: 'rgba(203, 168, 90, 0.05)', color: '#cba85a' },
-    '.cm-selectionMatch': { backgroundColor: 'rgba(203, 168, 90, 0.14)' },
-  },
-  { dark: true },
-)
-
-// 라이트 모드 에디터 테마 (흰 바탕 + 진한 골드 커서/활성줄, 어두운 글자로 대비 확보)
-const EDITOR_LIGHT = EditorView.theme(
-  {
-    '&': { color: '#1d1d1f', backgroundColor: '#ffffff' },
-    '.cm-content': { caretColor: '#9a7526', padding: '8px 0' },
-    '.cm-cursor, .cm-dropCursor': { borderLeftColor: '#9a7526' },
-    '.cm-selectionBackground, &.cm-focused .cm-selectionBackground, .cm-content ::selection': {
-      backgroundColor: '#ece0c4',
-    },
-    '.cm-gutters': { backgroundColor: '#ffffff', color: '#adacb4', border: 'none' },
-    '.cm-activeLine': { backgroundColor: 'rgba(154, 117, 38, 0.06)' },
-    '.cm-activeLineGutter': { backgroundColor: 'rgba(154, 117, 38, 0.09)', color: '#9a7526' },
-    '.cm-selectionMatch': { backgroundColor: 'rgba(154, 117, 38, 0.18)' },
-  },
-  { dark: false },
-)
 import {
   fetchText,
   isAudio,
@@ -582,7 +550,7 @@ function TextEditor({ node, onNodeUpdated, onDirtyChange, active, actionSlot, on
             <CodeMirror
               value={text}
               height="100%"
-              theme={appTheme === 'light' ? EDITOR_LIGHT : EDITOR_DARK}
+              theme={editorThemeFor(appTheme)}
               extensions={langExt}
               onChange={onChange}
               editable={!readOnly}

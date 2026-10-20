@@ -1,7 +1,9 @@
 import { markdown } from '@codemirror/lang-markdown'
 import CodeMirror from '@uiw/react-codemirror'
 import { useEffect, useRef, useState } from 'react'
+import { editorThemeFor } from '../lib/editorTheme'
 import { useScrollSync } from '../lib/scrollsync'
+import { useAppTheme } from '../lib/theme'
 import MarkdownPreview from './MarkdownPreview'
 
 /** '새 MD' 편집 모달. 저장 전까지 파일을 만들지 않고, 저장/취소를 선택한다. */
@@ -14,6 +16,7 @@ export default function NewMarkdownModal({
   onCreate: (content: string) => Promise<void>
   onCancel: () => void
 }) {
+  const appTheme = useAppTheme() // 본 편집기와 같은 색 — 이게 빠져 다크 모드에서 글씨가 안 보였다
   const title = name.replace(/\.md$/i, '')
   const [text, setText] = useState(`# ${title}\n\n`)
   const [saving, setSaving] = useState(false)
@@ -64,6 +67,7 @@ export default function NewMarkdownModal({
               value={text}
               height="100%"
               autoFocus
+              theme={editorThemeFor(appTheme)}
               extensions={[markdown()]}
               onChange={setText}
               basicSetup={{ lineNumbers: true, foldGutter: false }}
