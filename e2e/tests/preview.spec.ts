@@ -1,3 +1,4 @@
+import { forEachTheme } from './a11y'
 import { ACCOUNT, RUN_TAG, expect, test } from './fixtures'
 
 import { fileCell, newMd } from './helpers'
@@ -55,4 +56,53 @@ test('new MD: cancel discards without creating a file', async ({ page }) => {
   await expect(modal).toBeHidden()
   // 파일이 생성되지 않았다(트리에도 없음)
   await expect(page.locator('.tree-name').filter({ hasText: /버리는문서\.md/ })).toHaveCount(0)
+})
+
+/** 새 문서 모달의 편집기도 **테마를 따라가야** 한다.
+ *
+ * 테마가 본 편집기(ViewerPanel)에만 걸려 있어서, 모달 편집기는 CodeMirror 기본(흰 바탕)
+ * 으로 뜨고 다크 모드의 밝은 글자색만 물려받았다 — **흰 바탕에 연한 회색 글씨**라 쓴 글이
+ * 안 보였다. "편집기가 보이나" 로는 못 잡는다(보이긴 했다). **대비를 재야** 잡힌다.
+ */
+test('new MD: 모달 편집기 글씨가 라이트·다크 모두에서 읽힌다', async ({ page }) => {
+  await loginAsAdmin(page)
+  await newMd(page, '대비확인')
+  const modal = page.locator('.new-md-modal')
+  await expect(modal.locator('.cm-content')).toBeVisible()
+  await modal.locator('.cm-content').click()
+  await page.keyboard.type('여기 쓴 글이 보여야 한다')
+
+  await forEachTheme(page, async (theme) => {
+    // 테마가 바뀐 뒤 편집기가 다시 그려질 틈을 준다
+    await expect
+      .poll(() => page.evaluate(() => document.documentElement.dataset.theme))
+      .toBe(theme)
+    const ratio = await modal.evaluate((root) => {
+      const rgb = (c: string) => (c.match(/[\d.]+/g) || []).map(Number)
+      const lum = ([r, g, b]: number[]) => {
+        const f = (v: number) => {
+          v /= 255
+          return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4
+        }
+        return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b)
+      }
+      const line = root.querySelector('.cm-line') as HTMLElement
+      const fg = rgb(getComputedStyle(line).color)
+      // 투명하지 않은 첫 배경을 위로 올라가며 찾는다
+      let el: HTMLElement | null = line
+      let bg = [255, 255, 255]
+      while (el) {
+        const c = getComputedStyle(el).backgroundColor
+        const v = rgb(c)
+        if (v.length >= 3 && (v.length < 4 || v[3] > 0) && c !== 'transparent') {
+          bg = v.slice(0, 3)
+          break
+        }
+        el = el.parentElement
+      }
+      const [a, b] = [lum(fg), lum(bg)].sort((x, y) => y - x)
+      return (a + 0.05) / (b + 0.05)
+    })
+    expect(ratio, `${theme}: 편집기 글씨 대비 ${ratio.toFixed(2)} — 4.5 이상이어야 읽힌다`).toBeGreaterThanOrEqual(4.5)
+  })
 })
