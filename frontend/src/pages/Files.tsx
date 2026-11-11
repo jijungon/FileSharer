@@ -1003,6 +1003,27 @@ export default function Files() {
     return { entries, files: Array.from(e.dataTransfer.files) }
   }
 
+  // 본문(파일 목록 · 열린 문서)에 로컬 파일/폴더를 놓으면 '지금 보고 있는 폴더'로 올린다.
+  // 내부 항목 끌기(x-node-id)는 Files 타입이 아니라서 여기서 건드리지 않는다.
+  function onBodyDragOver(e: React.DragEvent) {
+    if (!e.dataTransfer.types.includes('Files')) return
+    e.preventDefault()
+    e.stopPropagation()
+    setDropActive(true)
+  }
+
+  function onBodyDrop(e: React.DragEvent) {
+    if (!e.dataTransfer.types.includes('Files')) return
+    // 폴더 드롭 지원: items에서 동기적으로 entry를 먼저 확보(핸들러 종료 후 무효화됨)
+    const { entries, files } = extractDrop(e)
+    if (entries.length === 0 && files.length === 0) return
+    e.preventDefault()
+    e.stopPropagation()
+    setDropActive(false)
+    if (entries.length > 0) uploadDropped(entries)
+    else uploadAll(files)
+  }
+
   // 트리의 특정 폴더·공간 위로 로컬 파일/폴더를 드롭 → 그 위치로 업로드(다중·폴더 재귀 지원).
   function uploadToTarget(
     target: { spaceId: string; parentId: string | null },
@@ -1848,30 +1869,9 @@ export default function Files() {
         {!viewerOpen && (
           <main
           className={`browser${dropActive ? ' drop-active' : ''}`}
-          onDragOver={(e) => {
-            if (e.dataTransfer.types.includes('Files')) {
-              e.preventDefault()
-              setDropActive(true)
-            }
-          }}
+          onDragOver={onBodyDragOver}
           onDragLeave={() => setDropActive(false)}
-          onDrop={(e) => {
-            // 폴더 드롭 지원: items에서 동기적으로 entry를 먼저 확보(핸들러 종료 후 무효화됨)
-            const entries = e.dataTransfer.items
-              ? Array.from(e.dataTransfer.items)
-                  .map((it) => it.webkitGetAsEntry?.() ?? null)
-                  .filter((x): x is FileSystemEntry => x !== null)
-              : []
-            if (entries.length > 0) {
-              e.preventDefault()
-              setDropActive(false)
-              uploadDropped(entries)
-            } else if (e.dataTransfer.files.length > 0) {
-              e.preventDefault()
-              setDropActive(false)
-              uploadAll(e.dataTransfer.files)
-            }
-          }}
+          onDrop={onBodyDrop}
         >
           {/* 알림·업로드 진행이 있을 때만 렌더 — 검색창을 사이드바로 옮긴 뒤 빈 툴바로 생기는 여백 방지 */}
           {(trashMode || favMode || uploads.length > 0 || notice) && (
@@ -2030,8 +2030,14 @@ export default function Files() {
         {openTabs.map((tab) => (
           <div
             key={tab.id}
-            className="viewer-area"
+            className={`viewer-area${dropActive ? ' drop-active' : ''}`}
             style={{ display: viewerOpen && selected?.id === tab.id ? undefined : 'none' }}
+            // 문서를 열어 둔 채로도 놓을 수 있어야 한다 — 전엔 목록 화면에만 걸려 있어서
+            // 여기 놓으면 아무 일도 없었다. **캡처 단계**에서 잡는다: 편집기(CodeMirror)가
+            // 먼저 받으면 놓은 파일의 글자를 문서 안에 쏟아붓는다.
+            onDragOverCapture={onBodyDragOver}
+            onDragLeave={() => setDropActive(false)}
+            onDropCapture={onBodyDrop}
           >
             <ViewerPanel
               node={tab}

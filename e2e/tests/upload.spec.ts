@@ -216,3 +216,53 @@ test('업로드: 다 보내고 서버를 기다리는 동안은 "저장 중"이�
   // 답이 오면 100% 가 되고 실제 파일이 된다
   await expect(page.locator('.tree-name').filter({ hasText: name })).toBeVisible()
 })
+
+/** 문서를 열어 둔 채로 놓아도 올라간다.
+ *
+ * 놓는 영역이 파일 목록 화면에만 걸려 있어서, 문서를 하나 열어 두면 본문에 놓은 파일·폴더가
+ * **아무 일 없이 사라졌다**(왼쪽 트리 위에 놓을 때만 올라갔다). 실제로 폴더를 통째로
+ * 끌어다 놓았는데 "안 올라간다" 는 말이 나왔다.
+ */
+test('문서를 열어 둔 상태에서 본문에 파일을 놓아도 지금 폴더로 업로드된다', async ({ page }) => {
+  await loginAsAdmin(page)
+  const spaces = await page.request.get('/api/spaces').then((r) => r.json())
+  const pid = spaces.find((s: { type: string }) => s.type === 'personal').id
+  const fname = `열어둔폴더-${Date.now()}`
+  const folder = await page.request
+    .post('/api/nodes', { data: { space_id: pid, name: fname } })
+    .then((r) => r.json())
+  const docName = `opened_${RUN_TAG}.md`
+  await page.request.post(`/api/nodes/${folder.id}/files`, {
+    multipart: {
+      file: { name: docName, mimeType: 'text/markdown', buffer: Buffer.from('# 열어 둔 문서') },
+    },
+  })
+
+  // 그 폴더로 들어가 문서를 연다 → 목록 화면(.browser)이 사라지고 뷰어만 남는다
+  await page.reload()
+  await page.locator('button.space-root').filter({ hasText: '내 공간' }).click()
+  await page.locator('.tree-name').filter({ hasText: fname }).click()
+  await page.locator('.tree-row').filter({ hasText: docName }).click()
+  const viewer = page.locator('.viewer-area:visible')
+  await expect(viewer).toBeVisible()
+  await expect(page.locator('main.browser')).toHaveCount(0)
+
+  const dt = await page.evaluateHandle(() => {
+    const d = new DataTransfer()
+    d.items.add(new File(['dropped-while-viewing'], 'while-viewing.tar.gz', { type: 'application/gzip' }))
+    return d
+  })
+  await viewer.dispatchEvent('dragover', { dataTransfer: dt })
+  await viewer.dispatchEvent('drop', { dataTransfer: dt })
+
+  await expect
+    .poll(
+      () =>
+        page.request
+          .get(`/api/nodes/${folder.id}/children`)
+          .then((r) => r.json())
+          .then((kids: { name: string }[]) => kids.map((n) => n.name)),
+      { timeout: 6000 },
+    )
+    .toContain('while-viewing.tar.gz')
+})
