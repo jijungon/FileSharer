@@ -52,6 +52,8 @@ def invite_user(
         raise HTTPException(status_code=422, detail="role은 admin 또는 member")
     if db.scalar(select(User).where(User.email == email)):
         raise HTTPException(status_code=409, detail="이미 존재하는 이메일입니다")
+    if body.password and not get_settings().local_login_enabled:
+        raise HTTPException(status_code=422, detail="비밀번호 로그인은 꺼져 있습니다")
     user = create_user(db, email=email, name=body.name, role=body.role, password=body.password)
     return _user_out(user)
 

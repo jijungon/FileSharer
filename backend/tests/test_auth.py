@@ -48,3 +48,40 @@ def test_login_rate_limited_after_repeated_failures(client):
     for _ in range(10):
         assert login(client, email, "bad").status_code == 401
     assert login(client, email, "bad").status_code == 429
+
+
+# ---------- 비밀번호(로컬) 로그인은 테스트·개발 전용 ----------
+
+
+def test_local_login_off_by_default(app_factory):
+    """플래그를 안 켜면 비밀번호 로그인은 '없는 주소'고, 비밀번호 관리자도 만들어지지 않는다."""
+    from fastapi.testclient import TestClient
+    from sqlalchemy import func, select
+
+    app = app_factory(
+        ADMIN_EMAIL=ADMIN_EMAIL, ADMIN_PASSWORD=ADMIN_PASSWORD, ENABLE_LOCAL_LOGIN="0"
+    )
+    with TestClient(app) as c:
+        assert login(c, ADMIN_EMAIL, ADMIN_PASSWORD).status_code == 404
+        assert c.get("/api/auth/config").json()["local_login_enabled"] is False
+        with c.app.state.sessionmaker() as s:
+            assert s.scalar(select(func.count()).select_from(User)) == 0
+
+
+def test_local_login_ignored_in_prod_even_when_flag_set(app_factory):
+    """운영에선 켜도 무시한다 — 비밀번호가 맞는 계정이 DB에 남아 있어도 못 들어온다."""
+    from fastapi.testclient import TestClient
+
+    app = app_factory(
+        APP_ENV="prod", SECRET_KEY="a-real-prod-secret-key-0123456789", ENABLE_LOCAL_LOGIN="1"
+    )
+    with TestClient(app) as c:
+        with c.app.state.sessionmaker() as s:
+            create_user(s, email="old-admin@test.local", role="admin", password="old-pass-123")
+            s.commit()
+        assert login(c, "old-admin@test.local", "old-pass-123").status_code == 404
+        assert c.get("/api/auth/config").json()["local_login_enabled"] is False
+
+
+def test_local_login_enabled_reported_in_config(client):
+    assert client.get("/api/auth/config").json()["local_login_enabled"] is True

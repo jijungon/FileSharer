@@ -125,13 +125,21 @@ function UsersTab({
 }) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  // 비밀번호 로그인이 꺼진 서버(운영)에선 비밀번호 칸을 그리지 않는다 — 넣어도 서버가 거절한다.
+  const [localLogin, setLocalLogin] = useState(false)
+  useEffect(() => {
+    api<{ local_login_enabled?: boolean }>('/api/auth/config')
+      .then((cfg) => setLocalLogin(cfg.local_login_enabled === true))
+      .catch(() => setLocalLogin(false))
+  }, [])
 
   return (
     <>
       <Card>
         <h3 style={{ fontSize: 21, marginBottom: 'var(--sp-sm)' }}>사용자 초대</h3>
         <p style={{ color: 'var(--ink-muted-48)', fontSize: 14, marginTop: 0 }}>
-          사내 구글 계정은 초대 없이 첫 로그인 시 자동 생성됩니다. 초대는 로컬(비상용) 계정 전용.
+          사내 구글 계정은 초대 없이 첫 로그인 시 자동 생성됩니다. 초대는 계정을 미리 만들어 둘 때만
+          씁니다.
         </p>
         <form
           style={{ display: 'flex', gap: 'var(--sp-sm)', flexWrap: 'wrap' }}
@@ -155,13 +163,15 @@ function UsersTab({
             onChange={(e) => setEmail(e.target.value)}
             required
           />
-          <input
-            style={inputStyle}
-            type="password"
-            placeholder="비밀번호 (로컬 로그인용, 선택)"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-          />
+          {localLogin && (
+            <input
+              style={inputStyle}
+              type="password"
+              placeholder="비밀번호 (로컬 로그인용, 선택)"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+            />
+          )}
           <button className="btn-primary" type="submit">
             초대
           </button>

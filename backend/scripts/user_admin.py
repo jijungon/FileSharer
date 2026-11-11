@@ -4,7 +4,9 @@
   * 부트스트랩 관리자는 `users` 테이블이 **비어 있을 때만** 만들어진다.
   * 구글 로그인은 **최초 1인만** admin, 그 뒤는 member.
   * 역할 변경은 **관리자만** 할 수 있다.
-따라서 **관리자 비밀번호를 잃으면 관리자 기능에 영영 못 들어간다.** 이 스크립트가 그 탈출구다.
+따라서 **관리자가 한 명도 안 남으면 관리자 기능에 영영 못 들어간다.** 이 스크립트가 그 탈출구다.
+운영은 비밀번호 로그인이 없으므로(구글 전용) 탈출구는 `promote` 다. `create` 는 비밀번호 없이
+계정만 만들고, `reset-password` 는 로컬 로그인이 켜진 곳(테스트·개발)에서만 동작한다.
 
 **보안**: 새로 뚫는 구멍이 아니다. 서버 셸 + DB 파일 접근 권한이 있어야 실행되는데,
 그 권한이 있으면 이미 최고 권한이다. 웹으로는 닿지 않는다.
@@ -119,13 +121,18 @@ def cmd_create(args) -> None:  # noqa: ANN001
         if db.scalar(select(User).where(User.email == email)):
             print(f"이미 있는 계정입니다: {email}")
             raise SystemExit(1)
-        password = _ask_password(email)
+        # 비밀번호 로그인이 꺼진 곳에선 비밀번호 없이 만든다 — 그 사람이 구글로 처음
+        # 들어올 때 이 계정(과 역할)을 그대로 쓴다.
+        password = _ask_password(email) if get_settings().local_login_enabled else None
         user = create_user(db, email=email, role=args.role, password=password)
         db.commit()
         print(f"만들었습니다: {user.email} ({user.role}) · 개인 공간도 함께 생성")
 
 
 def cmd_reset_password(args) -> None:  # noqa: ANN001
+    if not get_settings().local_login_enabled:
+        print("비밀번호 로그인이 꺼져 있습니다. 관리자가 필요하면 promote 를 쓰세요.")
+        raise SystemExit(1)
     with _session()() as db:
         user = _find(db, args.email)
         user.password_hash = hash_password(_ask_password(user.email))

@@ -35,6 +35,9 @@ class Settings(BaseSettings):
     sentry_traces_sample_rate: float = 0.0  # 성능 추적은 끔(무료 한도 보호)
     # True일 때만 /api/test/reset 라우트 마운트(테스트 격리 전용). 프로덕션 금지.
     enable_test_reset: bool = False
+    # True일 때만 비밀번호(로컬) 로그인이 '존재'한다 — 테스트·로컬 개발 전용.
+    # 기본은 꺼짐이고 **프로덕션에선 켜도 무시한다**(local_login_enabled). 사람은 구글로만 들어온다.
+    enable_local_login: bool = False
     secret_key: str = "dev-only-not-for-prod"
     base_url: str = "http://localhost:8000"
     # 로그인 후 돌아갈 프론트 오리진. dev(SPA=5173, API=8642)처럼 오리진이 다를 때만 지정.
@@ -80,6 +83,10 @@ class Settings(BaseSettings):
     @property
     def is_prod(self) -> bool:
         return self.app_env == "prod"
+
+    @property
+    def local_login_enabled(self) -> bool:
+        return self.enable_local_login and not self.is_prod
 
     def validate_prod(self) -> None:
         if self.is_prod and self.secret_key in PLACEHOLDER_SECRETS:

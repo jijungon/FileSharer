@@ -37,7 +37,7 @@ GHCR 이미지를 받아 구동한다.
 | `STORAGE_BACKEND` | `r2` |
 | `R2_*` | R2 버킷/키 (대시보드에서) |
 | `GOOGLE_CLIENT_ID` / `_SECRET` | Google OAuth 클라이언트 |
-| `ADMIN_EMAIL` / `ADMIN_PASSWORD` | 초기 관리자 |
+| `ADMIN_EMAIL` / `ADMIN_PASSWORD` | **운영에선 쓰지 않는다.** 비밀번호 로그인은 `APP_ENV=prod` 에서 꺼져 있다(구글 전용). 첫 관리자는 구글로 처음 로그인한 사람 |
 | `ALLOWED_GOOGLE_DOMAIN` | 회사 도메인 |
 
 **백업은 따로 설정할 게 없다.** `APP_ENV=prod` 면 앱이 알아서 주 1회·월 1회
@@ -77,8 +77,7 @@ docker compose exec app python scripts/r2_orphans.py
 cd /home/ubuntu/filesharer          # compose.yml 이 있는 곳
 docker compose exec app python scripts/user_admin.py list
 docker compose exec app python scripts/user_admin.py promote joji@parametacorp.com
-docker compose exec -it app python scripts/user_admin.py create test@parametacorp.com --role member
-docker compose exec -it app python scripts/user_admin.py reset-password admin@parametacorp.com
+docker compose exec app python scripts/user_admin.py create someone@parametacorp.com --role member
 ```
 
 compose.yml 이 있는 디렉터리가 아니면 컨테이너 이름으로 직접 부른다:
@@ -87,8 +86,8 @@ compose.yml 이 있는 디렉터리가 아니면 컨테이너 이름으로 직�
 docker exec filesharer-app-1 python scripts/user_admin.py list
 ```
 
-- 비밀번호를 받는 명령(`create`, `reset-password`)은 **`-it`** 로 실행한다(입력을 물어본다).
-  인자로 받지 않는 이유: 셸 히스토리와 `ps` 에 남기지 않기 위해서다.
+- **운영엔 비밀번호 로그인이 없다.** `create` 는 비밀번호 없이 계정만 미리 만들고(그 사람은 구글로
+  들어온다), `reset-password` 는 거절한다. 관리자가 필요하면 `promote` 를 쓴다.
 - **마지막 관리자는 강등되지 않는다** — 그러면 아무도 되돌릴 수 없기 때문.
 - 새로 뚫는 구멍이 아니다. 서버 셸 + DB 접근이 있어야 실행되는데, 그 권한이면 이미 최고 권한이다.
 

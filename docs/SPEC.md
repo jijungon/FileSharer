@@ -18,7 +18,7 @@
 
 | 대상 | 접근 방법 | 할 수 있는 것 |
 |---|---|---|
-| 사내 구성원 | Google 로그인(도메인 제한) 또는 로컬 계정 | 전부 |
+| 사내 구성원 | Google 로그인(도메인 제한). 로컬 계정은 테스트·개발 서버에만 있다 | 전부 |
 | 관리자 | 위 + `admin` 역할 | 사용자·팀 관리, 디스크·감사 로그 |
 | 외부(비로그인) | 공유 링크(`/s/<token>`)만 | 그 링크의 파일만 미리보기·다운로드 |
 | 서버·CI(무인) | API 토큰(`fsk_…`) | **업로드만** |
@@ -139,7 +139,8 @@ PK는 모두 uuid4 hex 32자 문자열(`new_id()`). 시각은 UTC.
 
 ### 3.1 인증 · 권한
 
-- **로컬 로그인** — 이메일+비밀번호(scrypt). 비활성 계정·비밀번호 없는 계정(Google 전용)은 거부. 실패 메시지는 **하나로 통일**(계정 존재 여부 노출 금지).
+- **로컬 로그인은 테스트·개발 전용** — `ENABLE_LOCAL_LOGIN=1` 이고 `APP_ENV` 가 prod 가 아닐 때만 존재한다. 꺼져 있으면 `/api/auth/login` 은 404, 로그인 화면엔 폼이 없고, 부트스트랩 관리자도 만들지 않으며, 초대에 비밀번호를 넣으면 422. 운영은 구글로만 들어온다. 테스트가 전부 이 길로 로그인하므로 코드는 남겨 두고 문을 잠갔다.
+- **로컬 로그인(켜진 곳)** — 이메일+비밀번호(scrypt). 비활성 계정·비밀번호 없는 계정(Google 전용)은 거부. 실패 메시지는 **하나로 통일**(계정 존재 여부 노출 금지).
 - **레이트 리밋** — 이메일당 60초 10회 초과 시 429. 로그인에만 적용(프로세스 로컬).
 - **Google OAuth(OIDC)** — `allowed_google_domain`이 **설정돼 있고** 이메일 도메인이 일치해야 한다(`hd` 클레임도 검사). 처음 보는 이메일은 자동 생성되며 **최초 1인은 admin**, 이후는 member.
 - **세션** — 쿠키 세션(`SameSite=Lax`, prod에서만 `Secure`). 사용자가 삭제·비활성이면 세션을 비우고 401.
@@ -587,7 +588,7 @@ gh release create v1.0.1 --generate-notes
 
 ### 7.1 설정
 
-루트 `.env`(gitignored)를 cwd와 무관하게 읽는다. 주요 키: `APP_ENV`, `SECRET_KEY`, `BASE_URL`, `FRONTEND_URL`, `DATA_DIR`, `DATABASE_URL`, `STORAGE_BACKEND`, `R2_*`(+ **`R2_PREFIX`로 dev/prod 오브젝트 분리**), `MAX_UPLOAD_MB`, `SHARE_*`, `TRASH_RETENTION_DAYS`, `DISK_WARN_RATIO`, `ADMIN_*`, `GOOGLE_*`, `ALLOWED_GOOGLE_DOMAIN`.
+루트 `.env`(gitignored)를 cwd와 무관하게 읽는다. 주요 키: `APP_ENV`, `SECRET_KEY`, `BASE_URL`, `FRONTEND_URL`, `DATA_DIR`, `DATABASE_URL`, `STORAGE_BACKEND`, `R2_*`(+ **`R2_PREFIX`로 dev/prod 오브젝트 분리**), `MAX_UPLOAD_MB`, `SHARE_*`, `TRASH_RETENTION_DAYS`, `DISK_WARN_RATIO`, `ENABLE_LOCAL_LOGIN`, `ADMIN_*`, `GOOGLE_*`, `ALLOWED_GOOGLE_DOMAIN`.
 
 ### 7.2 한계값(기본)
 

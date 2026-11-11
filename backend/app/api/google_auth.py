@@ -62,6 +62,7 @@ def resolve_google_user(db: Session, claims: dict, allowed_domain: str) -> User:
 def auth_config(settings: Settings = Depends(get_settings)) -> dict:
     return {
         "google_enabled": bool(settings.google_client_id and settings.google_client_secret),
+        "local_login_enabled": settings.local_login_enabled,
         "max_upload_mb": settings.max_upload_mb,
     }
 

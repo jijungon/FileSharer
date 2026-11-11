@@ -20,6 +20,8 @@ const CALLBACK_ERRORS: Record<string, string> = {
 export default function Login() {
   const [params] = useSearchParams()
   const [googleEnabled, setGoogleEnabled] = useState(true)
+  // 비밀번호 로그인은 테스트·로컬 개발 서버에서만 켜진다. 운영에선 폼 자체를 그리지 않는다.
+  const [localEnabled, setLocalEnabled] = useState(false)
   const [showLocal, setShowLocal] = useState(false)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -27,8 +29,11 @@ export default function Login() {
   const [busy, setBusy] = useState(false)
 
   useEffect(() => {
-    api<{ google_enabled: boolean }>('/api/auth/config')
-      .then((cfg) => setGoogleEnabled(cfg.google_enabled))
+    api<{ google_enabled: boolean; local_login_enabled?: boolean }>('/api/auth/config')
+      .then((cfg) => {
+        setGoogleEnabled(cfg.google_enabled)
+        setLocalEnabled(cfg.local_login_enabled === true)
+      })
       .catch(() => setGoogleEnabled(false))
   }, [])
 
@@ -81,9 +86,9 @@ export default function Login() {
           </p>
         )}
 
-        <div className="login-divider">또는</div>
+        {localEnabled && <div className="login-divider">또는</div>}
 
-        {showLocal ? (
+        {!localEnabled ? null : showLocal ? (
           <form className="login-local" onSubmit={submitLocal}>
             <input
               type="email"
@@ -107,7 +112,7 @@ export default function Login() {
           </form>
         ) : (
           <button className="login-local-toggle" type="button" onClick={() => setShowLocal(true)}>
-            로컬 계정으로 로그인 (관리자·비상용)
+            로컬 계정으로 로그인 (테스트·개발용)
           </button>
         )}
         <div className="login-error">{error}</div>

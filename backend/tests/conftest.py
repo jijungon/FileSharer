@@ -9,7 +9,9 @@ from fastapi.testclient import TestClient
 def _clean_env(monkeypatch):
     """로컬 .env의 실제 값이 테스트로 새지 않도록 관련 변수 제거."""
     for key in list(os.environ):
-        if key.startswith(("GOOGLE_", "ADMIN_", "SHARE_", "APP_", "SECRET_", "DATA_", "DATABASE_")):
+        if key.startswith(
+            ("GOOGLE_", "ADMIN_", "ENABLE_", "SHARE_", "APP_", "SECRET_", "DATA_", "DATABASE_")
+        ):
             monkeypatch.delenv(key, raising=False)
     yield
 
@@ -28,6 +30,8 @@ def app_factory(tmp_path, monkeypatch) -> Callable:
         monkeypatch.setenv("GOOGLE_CLIENT_ID", "")
         monkeypatch.setenv("GOOGLE_CLIENT_SECRET", "")
         monkeypatch.setenv("FRONTEND_URL", "")
+        # 테스트는 비밀번호로 로그인한다. 기본(꺼짐)·운영 동작은 test_auth 가 따로 확인한다.
+        monkeypatch.setenv("ENABLE_LOCAL_LOGIN", "1")
         for key, value in env.items():
             monkeypatch.setenv(key, value)
         monkeypatch.chdir(tmp_path)
