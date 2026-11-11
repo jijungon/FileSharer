@@ -764,7 +764,8 @@ button:focus-visible {
   color: var(--ink-muted-48);
 }
 
-.browser.drop-active {
+.browser.drop-active,
+.viewer-area.drop-active {
   outline: 2px dashed var(--primary);
   outline-offset: -8px;
 }
