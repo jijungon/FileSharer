@@ -113,6 +113,7 @@ jobs:
           echo "ADMIN_EMAIL=e2e@test.local" >> .env
           echo "ADMIN_PASSWORD=e2e-password-123" >> .env
           echo "BASE_URL=http://localhost:8484" >> .env
+          echo "ENABLE_LOCAL_LOGIN=1" >> .env  # e2e 는 비밀번호로 로그인한다(운영엔 없는 길)
           echo "ENABLE_TEST_RESET=1" >> .env  # 테스트 격리용 /api/test/reset 활성화(CI 전용)
       - run: docker compose up -d --build
       - name: 서버 기동 대기

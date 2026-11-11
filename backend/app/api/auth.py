@@ -6,6 +6,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from ..config import Settings, get_settings
 from ..deps import Principal, current_principal, get_db
 from ..models import User
 from ..security import verify_password
@@ -35,7 +36,16 @@ class LoginBody(BaseModel):
 
 
 @router.post("/login")
-def login(body: LoginBody, request: Request, db: Session = Depends(get_db)) -> dict:
+def login(
+    body: LoginBody,
+    request: Request,
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> dict:
+    # 비밀번호 로그인은 테스트·로컬 개발에서만 켠다. 꺼져 있으면 '없는 주소'처럼 군다 —
+    # 비밀번호가 맞는 계정이 DB에 남아 있어도 이 길로는 못 들어온다.
+    if not settings.local_login_enabled:
+        raise HTTPException(status_code=404, detail="Not Found")
     email = body.email.lower().strip()
     if _rate_limited(email):
         raise HTTPException(status_code=429, detail="시도가 너무 많습니다. 잠시 후 다시 시도하세요")

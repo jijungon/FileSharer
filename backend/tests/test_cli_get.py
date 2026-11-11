@@ -109,6 +109,7 @@ def test_one_command_end_to_end(tmp_path):
         "FRONTEND_URL": "",
         "ADMIN_EMAIL": "cli@test.local",
         "ADMIN_PASSWORD": "cli-pass-123",
+        "ENABLE_LOCAL_LOGIN": "1",
         "GOOGLE_CLIENT_ID": "",
         "GOOGLE_CLIENT_SECRET": "",
         "FILESHARER_ENV_FILE": str(tmp_path / "none.env"),

@@ -55,12 +55,16 @@ def cleanup_stale_shares(db: Session) -> int:
 
 
 def run_bootstrap(db: Session) -> None:
-    """기동 시 1회: 전체(org) 공간 보장 + (설정 시) 최초 로컬 관리자 생성 + 링크 정리."""
+    """기동 시 1회: 전체(org) 공간 보장 + 최초 로컬 관리자 생성 + 링크 정리.
+
+    로컬 관리자는 비밀번호 로그인이 켜진 곳(테스트·개발)에서만 만든다."""
     if db.scalar(select(Space).where(Space.type == "org")) is None:
         db.add(Space(type="org"))
 
     settings = get_settings()
-    if settings.admin_email and settings.admin_password:
+    # 비밀번호 로그인이 꺼진 곳(운영)에선 비밀번호 관리자를 만들지 않는다 — 못 쓰는 계정이
+    # 관리자 수만 채운다. 그런 곳의 첫 관리자는 구글로 처음 로그인한 사람이다.
+    if settings.local_login_enabled and settings.admin_email and settings.admin_password:
         exists = db.scalar(select(User).where(User.email == settings.admin_email.lower()))
         if exists is None and users_count(db) == 0:
             create_user(

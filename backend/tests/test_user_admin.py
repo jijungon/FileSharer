@@ -31,6 +31,7 @@ def cli(tmp_path):
         "ADMIN_PASSWORD": "boss-pass-123",
         "SECRET_KEY": "test-key",
         "APP_ENV": "test",
+        "ENABLE_LOCAL_LOGIN": "1",
     }
     for key in ("R2_ACCOUNT_ID", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY", "R2_BUCKET"):
         env.pop(key, None)
